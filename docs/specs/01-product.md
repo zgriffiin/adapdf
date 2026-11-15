@@ -104,19 +104,23 @@ Details are in [02-pipeline](02-pipeline.md). Pre-check rules are in
 
 | Part | Choice | Why |
 |---|---|---|
-| Language | Python 3.13 | Good libraries for .docx XML and Windows COM. Easy to maintain. |
-| .docx reading and fixes | `lxml` on the OOXML parts (python-docx where it is enough) | Works without Word, so tests run fast and on any machine. |
-| PDF export | Word through COM (`pywin32`), `Document.ExportAsFixedFormat` | Most accurate tags for Word content. Already installed. |
-| PDF metadata fixes | `pikepdf` | Free. Edits metadata without touching content. |
+| Language | Rust (stable, edition 2024) | Type-safe and memory-safe. One program with no runtime to install. No `unsafe` code, except where Windows COM needs it. |
+| .docx reading | `zip` and `roxmltree` on the OOXML parts | Works without Word, so tests run fast and on any machine. `roxmltree` is read-only and gives the byte range of every XML node. |
+| .docx fixes | Byte-range splices on the original XML text | A fix changes only the bytes it must change. Every other part and byte stays the same. |
+| PDF export | Word through COM (the `windows` crate), `Document.ExportAsFixedFormat` | Most accurate tags for Word content. Already installed. |
+| PDF metadata fixes | `lopdf`, written as an incremental update | Free. Adds the metadata change at the end of the file and leaves the content and tags as they are. |
 | Automated check | veraPDF command line, with a bundled Java runtime (Eclipse Temurin) | Free. No separate Java install for users. |
-| UI | `tkinter` | Part of the standard library. Enough for a file picker and an issue list. |
-| Packaging | PyInstaller folder build | Runs without admin rights or an installed Python. |
+| UI | `egui` / `eframe`, with AccessKit | One native window for a file picker and an issue list. AccessKit lets screen readers use the app itself. |
+| Packaging | Inno Setup installer, per user | Installs to `%LOCALAPPDATA%` with no admin rights. |
 
 Alternative considered: a Word ribbon add-in (C#/VSTO). It would be nicer to
 use inside Word, but it needs IT to deploy and is harder to test. Reconsider
 after v1 if users want it.
 
 ## Phases
+
+Phase 0 is postponed until real guides are in `samples/`. Until then, the
+code is built to the assumptions in these specs, and Phase 0 may change them.
 
 | Phase | Result |
 |---|---|
@@ -125,7 +129,7 @@ after v1 if users want it.
 | **2 — Pre-check (command line)** | All error-level rules in [03](03-precheck-rules.md), with tests based on sample .docx files. |
 | **3 — Export and check** | Word export, PDF metadata fixes, veraPDF run, report. |
 | **4 — Fixes** | Automatic fixes with backup and confirmation. |
-| **5 — App and packaging** | tkinter UI, PyInstaller build, install guide for the 3 users. |
+| **5 — App and packaging** | egui UI, Inno Setup installer, install guide for the 3 users. |
 
 ## Open questions
 

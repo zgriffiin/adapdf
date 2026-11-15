@@ -1,0 +1,2 @@
+# The fixture test compares these files byte for byte, so git must not change line endings.
+*.docx binary

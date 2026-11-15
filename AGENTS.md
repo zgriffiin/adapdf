@@ -19,6 +19,21 @@ pick one.
 
 ## Stack
 
-Python 3.13, lxml / python-docx, pywin32, pikepdf, veraPDF (bundled with a
-Java runtime), tkinter, PyInstaller. Tests that need Word are marked
-`windows_word`.
+Rust (stable, edition 2024). `zip` and `roxmltree` read the .docx; fixes are
+byte-range splices on the original XML. `lopdf` writes PDF metadata as an
+incremental update. Word runs through COM with the `windows` crate. veraPDF
+ships with a bundled Temurin Java runtime. The UI is `egui` / `eframe` with
+AccessKit. Inno Setup builds a per-user installer (no admin rights). Tests that
+need Word sit behind the cargo feature `windows_word`.
+
+## Checks before you finish
+
+```
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+```
+
+After you change a fixture or the fixture builder, run
+`cargo run --example gen-fixtures`. A test fails when `tests/fixtures/` differs
+from the generator.

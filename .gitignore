@@ -8,11 +8,5 @@ samples/
 # Bundled tools
 vendor/
 
-# Python
-__pycache__/
-*.pyc
-.venv/
-build/
-dist/
-*.egg-info/
-.pytest_cache/
+# Rust
+/target/

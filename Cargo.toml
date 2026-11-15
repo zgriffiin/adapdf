@@ -1,0 +1,25 @@
+[package]
+name = "adapdf"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Checks Word training guides for accessibility problems before PDF export."
+publish = false
+
+[lints.rust]
+# No unsafe code. Windows COM (M4) is the only place that may need it.
+unsafe_code = "forbid"
+
+[features]
+# Enables tests that need Microsoft Word installed. None in M1.
+windows_word = []
+
+# Versions are pinned to releases that were at least 48 hours old when chosen.
+[dependencies]
+clap = { version = "=4.6.7", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
+roxmltree = "=0.21.2"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+thiserror = "=2.0.21"
+ttf-parser = { version = "=0.25.1", default-features = false, features = ["std"] }
+zip = { version = "=9.5.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }

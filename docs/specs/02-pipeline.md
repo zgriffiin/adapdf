@@ -29,7 +29,8 @@ source without first writing a backup.
   message, a location, a "how to fix" text, and an auto-fix ID if one exists.
 - Location = nearest heading above + the first 60 characters of the
   paragraph + paragraph index. Page numbers are not known without Word, so
-  they are not used.
+  they are not used. In the data, the index counts from 0. The text report
+  shows it from 1.
 - **Errors block export.** Warnings do not.
 
 ## Stage 2 — Fix
@@ -39,7 +40,8 @@ source without first writing a backup.
   - checks that Word does not have the file open (looks for a `~$` lock
     file, and tries to open the file for writing);
   - writes the backup copy.
-- Applies the fixes by editing the XML, then saves the .docx.
+- Applies the fixes as byte-range splices on the original XML text, then
+  saves the .docx. Bytes outside the splices stay the same.
 - Runs stage 1 again and shows the new results.
 - Fixes that need human input (for example, alt text or a title) ask for
   the text in the UI. The tool never invents content.
@@ -48,20 +50,20 @@ source without first writing a backup.
 
 Uses Word through COM, hidden, with the document opened read-only:
 
-```python
-doc.ExportAsFixedFormat(
-    OutputFileName=pdf_path,
-    ExportFormat=17,              # wdExportFormatPDF
-    OpenAfterExport=False,
-    OptimizeFor=0,                # wdExportOptimizeForPrint
-    Item=0,                       # wdExportDocumentContent (no comments or markup)
-    IncludeDocProps=True,
-    CreateBookmarks=1,            # wdExportCreateHeadingBookmarks
-    DocStructureTags=True,        # the tags; required
-    BitmapMissingFonts=True,
-    UseISO19005_1=False,          # PDF/A off; it is not needed for PDF/UA
-)
-```
+Call `Document.ExportAsFixedFormat` with these parameters:
+
+| Parameter | Value | Meaning |
+|---|---|---|
+| `OutputFileName` | the PDF path | |
+| `ExportFormat` | 17 | `wdExportFormatPDF` |
+| `OpenAfterExport` | false | |
+| `OptimizeFor` | 0 | `wdExportOptimizeForPrint` |
+| `Item` | 0 | `wdExportDocumentContent` (no comments or markup) |
+| `IncludeDocProps` | true | |
+| `CreateBookmarks` | 1 | `wdExportCreateHeadingBookmarks` |
+| `DocStructureTags` | true | The tags. Required. |
+| `BitmapMissingFonts` | true | |
+| `UseISO19005_1` | false | PDF/A off. It is not needed for PDF/UA. |
 
 Before export, the tool also:
 
@@ -82,7 +84,9 @@ Rules for COM:
 ## Stage 4 — PDF metadata fixes
 
 Only document-level metadata. The tool never changes the content or the tags.
-Uses `pikepdf`. Each change is listed in the report.
+Uses `lopdf`, and writes the change as an incremental update (new bytes at the
+end of the file; the existing bytes are not rewritten). Each change is listed
+in the report.
 
 | Check | Fix if missing |
 |---|---|
@@ -151,11 +155,16 @@ document and selects the problem.
 ## Testing
 
 - Pre-check and fix rules: one small sample .docx for each rule, in
-  `tests/fixtures/`, with a passing example and a failing example. Build the
-  fixtures in Word, and do not use real city documents.
-- Export and veraPDF: integration tests marked `windows_word`. They run only
-  on a machine with Word.
+  `tests/fixtures/`, with a passing example and a failing example. Code
+  generates the fixtures (`cargo run --example gen-fixtures`). They are not
+  built by hand in Word. A test checks that the files on disk match the
+  generator byte for byte. A `windows_word` test checks that Word opens each
+  one. Do not use real city documents.
+- Export and veraPDF: integration tests behind the cargo feature
+  `windows_word`. They run only on a machine with Word.
 - Fixes: after each fix, run the pre-check again, check that only the target
   XML changed, and check that Word still opens the file.
 - Real guides go in `samples/`, which git ignores. Use them for the Phase 0
   test and for manual checks before a release.
+- [test-plan](../test-plan.md) lists every test level and links each rule to
+  its tests.
