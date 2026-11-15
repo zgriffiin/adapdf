@@ -5,8 +5,9 @@ use roxmltree::Node;
 use super::numbering::Numbering;
 use super::props::{ParFmt, RunFmt};
 use super::styles::Styles;
+use super::tables::{self, Table};
 use super::theme::Theme;
-use super::{Drawing, DrawingKind, Paragraph, Run, Section};
+use super::{Drawing, Paragraph, Run, Section, drawings};
 use crate::docx::{DOCUMENT_PART, MC_NS, WordNode, parse_xml};
 use crate::error::{Error, Result};
 
@@ -20,6 +21,7 @@ pub(super) struct Context<'a> {
 pub(super) struct Body {
     pub paragraphs: Vec<Paragraph>,
     pub sections: Vec<Section>,
+    pub tables: Vec<Table>,
     pub tracked_changes: usize,
 }
 
@@ -77,8 +79,10 @@ pub(super) fn parse(text: &str, ctx: &Context) -> Result<Body> {
             .map_or(Section::default(), parse_section),
     );
 
+    let tables = tables::parse(body, &paragraphs);
     Ok(Body {
         paragraphs,
+        tables,
         sections,
         tracked_changes: count_tracked_changes(&doc),
     })
@@ -86,7 +90,7 @@ pub(super) fn parse(text: &str, ctx: &Context) -> Result<Body> {
 
 /// True for paragraphs inside a text box or in the fallback copy of
 /// `mc:AlternateContent`. They are not part of the body flow.
-fn is_alternative_content(p: Node) -> bool {
+pub(super) fn is_alternative_content(p: Node) -> bool {
     p.ancestors().any(|a| {
         a.is_w("txbxContent")
             || (a.is_element()
@@ -163,6 +167,7 @@ fn parse_paragraph(
         });
     }
 
+    let extras = drawings::extras(p, ppr);
     Paragraph {
         index,
         style_id: style_id.map(str::to_string),
@@ -175,6 +180,8 @@ fn parse_paragraph(
         props: par.resolve(),
         in_table: p.ancestors().any(|a| a.is_w("tbl")),
         drawings,
+        equations: extras.equations,
+        has_break_or_field: extras.has_break_or_field,
         section,
         range: p.range(),
     }
@@ -207,14 +214,9 @@ fn scan_run(run: Node, text: &mut String, drawings: &mut Vec<Drawing>) {
                 text.push(c);
             }
         } else if child.is_w("drawing") {
-            let kind = if child.children().any(|n| n.tag_name().name() == "anchor") {
-                DrawingKind::Anchored
-            } else {
-                DrawingKind::Inline
-            };
-            drawings.push(drawing(child, kind));
+            drawings.push(drawings::drawing_ml(child));
         } else if child.is_w("pict") || child.is_w("object") {
-            drawings.push(drawing(child, DrawingKind::Legacy));
+            drawings.push(drawings::legacy(child));
         } else if child.is_element()
             && child.tag_name().namespace() == Some(MC_NS)
             && child.tag_name().name() == "AlternateContent"
@@ -226,12 +228,5 @@ fn scan_run(run: Node, text: &mut String, drawings: &mut Vec<Drawing>) {
                 scan_run(choice, text, drawings);
             }
         }
-    }
-}
-
-fn drawing(node: Node, kind: DrawingKind) -> Drawing {
-    Drawing {
-        kind,
-        text_box: node.descendants().any(|n| n.is_w("txbxContent")),
     }
 }

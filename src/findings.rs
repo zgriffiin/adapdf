@@ -37,10 +37,42 @@ pub enum RuleId {
     Hdg005,
     #[serde(rename = "HDG-006")]
     Hdg006,
+    #[serde(rename = "IMG-001")]
+    Img001,
+    #[serde(rename = "IMG-002")]
+    Img002,
+    #[serde(rename = "IMG-003")]
+    Img003,
+    #[serde(rename = "IMG-004")]
+    Img004,
+    #[serde(rename = "IMG-005")]
+    Img005,
+    #[serde(rename = "IMG-006")]
+    Img006,
+    #[serde(rename = "TXB-001")]
+    Txb001,
+    #[serde(rename = "TXB-002")]
+    Txb002,
+    #[serde(rename = "TXB-003")]
+    Txb003,
+    #[serde(rename = "TXB-004")]
+    Txb004,
     #[serde(rename = "LST-001")]
     Lst001,
     #[serde(rename = "LST-002")]
     Lst002,
+    #[serde(rename = "TBL-001")]
+    Tbl001,
+    #[serde(rename = "TBL-002")]
+    Tbl002,
+    #[serde(rename = "TBL-003")]
+    Tbl003,
+    #[serde(rename = "TBL-004")]
+    Tbl004,
+    #[serde(rename = "TBL-005")]
+    Tbl005,
+    #[serde(rename = "TBL-006")]
+    Tbl006,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -62,6 +94,12 @@ pub enum FixId {
     ApplyHeadingStyle,
     DeleteEmptyHeading,
     ApplyListStyle,
+    SetAltText,
+    MakeImageInline,
+    DeleteEmptyParagraphs,
+    MarkHeaderRow,
+    DeleteEmptyRow,
+    DisallowRowBreak,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -77,7 +115,7 @@ pub enum FixKind {
 
 impl RuleId {
     /// Every rule, in spec order.
-    pub const ALL: [RuleId; 14] = [
+    pub const ALL: [RuleId; 30] = [
         RuleId::Doc001,
         RuleId::Doc002,
         RuleId::Doc003,
@@ -90,8 +128,24 @@ impl RuleId {
         RuleId::Hdg004,
         RuleId::Hdg005,
         RuleId::Hdg006,
+        RuleId::Img001,
+        RuleId::Img002,
+        RuleId::Img003,
+        RuleId::Img004,
+        RuleId::Img005,
+        RuleId::Img006,
+        RuleId::Txb001,
+        RuleId::Txb002,
+        RuleId::Txb003,
+        RuleId::Txb004,
         RuleId::Lst001,
         RuleId::Lst002,
+        RuleId::Tbl001,
+        RuleId::Tbl002,
+        RuleId::Tbl003,
+        RuleId::Tbl004,
+        RuleId::Tbl005,
+        RuleId::Tbl006,
     ];
 
     /// The ID as written in the specs, for example `HDG-002`.
@@ -109,8 +163,24 @@ impl RuleId {
             RuleId::Hdg004 => "HDG-004",
             RuleId::Hdg005 => "HDG-005",
             RuleId::Hdg006 => "HDG-006",
+            RuleId::Img001 => "IMG-001",
+            RuleId::Img002 => "IMG-002",
+            RuleId::Img003 => "IMG-003",
+            RuleId::Img004 => "IMG-004",
+            RuleId::Img005 => "IMG-005",
+            RuleId::Img006 => "IMG-006",
+            RuleId::Txb001 => "TXB-001",
+            RuleId::Txb002 => "TXB-002",
+            RuleId::Txb003 => "TXB-003",
+            RuleId::Txb004 => "TXB-004",
             RuleId::Lst001 => "LST-001",
             RuleId::Lst002 => "LST-002",
+            RuleId::Tbl001 => "TBL-001",
+            RuleId::Tbl002 => "TBL-002",
+            RuleId::Tbl003 => "TBL-003",
+            RuleId::Tbl004 => "TBL-004",
+            RuleId::Tbl005 => "TBL-005",
+            RuleId::Tbl006 => "TBL-006",
         }
     }
 
@@ -122,6 +192,9 @@ impl RuleId {
                 Severity::Error
             }
             Doc003 | Doc004 | Hdg003 | Hdg005 | Hdg006 | Lst002 => Severity::Warning,
+            Img001 | Txb001 | Tbl001 | Tbl002 => Severity::Error,
+            Img002 | Img003 | Img004 | Img005 | Img006 | Txb002 | Txb003 | Txb004 | Tbl003
+            | Tbl004 | Tbl005 | Tbl006 => Severity::Warning,
         }
     }
 
@@ -134,6 +207,15 @@ impl RuleId {
             Hdg003 => FixKind::Auto(FixId::ApplyHeadingStyle),
             Hdg004 => FixKind::Auto(FixId::DeleteEmptyHeading),
             Lst001 => FixKind::Auto(FixId::ApplyListStyle),
+            Img001 | Img002 => FixKind::Ask(FixId::SetAltText),
+            Img004 => FixKind::Auto(FixId::MakeImageInline),
+            Txb004 => FixKind::Auto(FixId::DeleteEmptyParagraphs),
+            Tbl001 => FixKind::Auto(FixId::MarkHeaderRow),
+            Tbl005 => FixKind::Auto(FixId::DeleteEmptyRow),
+            Tbl006 => FixKind::Auto(FixId::DisallowRowBreak),
+            Img003 | Img005 | Img006 | Txb001 | Txb002 | Txb003 | Tbl002 | Tbl003 | Tbl004 => {
+                FixKind::Manual
+            }
             Doc003 | Doc004 | Doc005 | Doc006 | Hdg001 | Hdg002 | Hdg005 | Hdg006 | Lst002 => {
                 FixKind::Manual
             }
@@ -287,7 +369,7 @@ mod tests {
         assert_eq!(serde_json::to_value(Severity::Warning).unwrap(), "warning");
     }
 
-    /// The table in spec 03 for the M1 rules.
+    /// The tables in spec 03 for the DOC, HDG, IMG, TXB, LST and TBL rules.
     #[test]
     fn severities_and_fixes_match_spec_03() {
         use FixId::*;
@@ -307,6 +389,26 @@ mod tests {
             (Hdg006, Severity::Warning, FixKind::Manual),
             (Lst001, Severity::Error, FixKind::Auto(ApplyListStyle)),
             (Lst002, Severity::Warning, FixKind::Manual),
+            (Img001, Severity::Error, FixKind::Ask(SetAltText)),
+            (Img002, Severity::Warning, FixKind::Ask(SetAltText)),
+            (Img003, Severity::Warning, FixKind::Manual),
+            (Img004, Severity::Warning, FixKind::Auto(MakeImageInline)),
+            (Img005, Severity::Warning, FixKind::Manual),
+            (Img006, Severity::Warning, FixKind::Manual),
+            (Txb001, Severity::Error, FixKind::Manual),
+            (Txb002, Severity::Warning, FixKind::Manual),
+            (Txb003, Severity::Warning, FixKind::Manual),
+            (
+                Txb004,
+                Severity::Warning,
+                FixKind::Auto(DeleteEmptyParagraphs),
+            ),
+            (Tbl001, Severity::Error, FixKind::Auto(MarkHeaderRow)),
+            (Tbl002, Severity::Error, FixKind::Manual),
+            (Tbl003, Severity::Warning, FixKind::Manual),
+            (Tbl004, Severity::Warning, FixKind::Manual),
+            (Tbl005, Severity::Warning, FixKind::Auto(DeleteEmptyRow)),
+            (Tbl006, Severity::Warning, FixKind::Auto(DisallowRowBreak)),
         ];
         for (rule, severity, fix) in expected {
             assert_eq!(rule.severity(), severity, "{rule}");

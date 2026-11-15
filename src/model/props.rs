@@ -155,7 +155,7 @@ impl RunFmt {
 }
 
 /// A toggle element such as `w:b`: on unless `w:val` says off.
-fn toggle(node: &Node) -> bool {
+pub(super) fn toggle(node: &Node) -> bool {
     !matches!(node.w_attr("val"), Some("0" | "false" | "off" | "none"))
 }
 

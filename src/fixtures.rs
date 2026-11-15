@@ -14,6 +14,11 @@ use crate::findings::RuleId;
 use crate::fonts::{FontLookup, FontStatus};
 use crate::rules::document::TEMPLATE_FILE_NAME;
 
+mod objects;
+pub use objects::{
+    Image, Table, alt_of_length, equation, ole_object, split_runs, text_box, vml_text_box,
+};
+
 const W: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 /// Escapes text for XML content and attribute values.
@@ -167,6 +172,8 @@ pub struct Para {
     runs: Vec<Run>,
     raw_runs: Vec<String>,
     comments: Vec<String>,
+    /// A `w:tbl` written instead of the paragraph. See [`DocxBuilder::table`].
+    table_xml: Option<String>,
 }
 
 impl Para {
@@ -258,6 +265,9 @@ impl Para {
     }
 
     fn xml(&self, ids: &mut u32, comments: &mut Vec<String>) -> String {
+        if let Some(table) = &self.table_xml {
+            return table.clone();
+        }
         let mut ppr = String::new();
         if let Some(style) = &self.style {
             ppr += &format!(r#"<w:pStyle w:val="{}"/>"#, esc(style));
@@ -439,7 +449,11 @@ impl DocxBuilder {
         for para in &self.body {
             body += &para.xml(&mut ids, &mut comments);
         }
-        if self.body.last().is_some_and(|p| p.in_table) {
+        if self
+            .body
+            .last()
+            .is_some_and(|p| p.in_table || p.table_xml.is_some())
+        {
             body += "<w:p/>"; // a table cannot be the last thing in a body
         }
         let header_ref = if self.header_text.is_some() {
@@ -703,7 +717,7 @@ impl FontLookup for FixtureFonts {
 /// findings at all.
 pub fn catalogue() -> Vec<Fixture> {
     let long_text = words(401);
-    let pairs: Vec<(RuleId, DocxBuilder, DocxBuilder)> = vec![
+    let mut pairs: Vec<(RuleId, DocxBuilder, DocxBuilder)> = vec![
         (RuleId::Doc001, clean(), clean().title("")),
         (RuleId::Doc002, clean(), clean().no_language()),
         (
@@ -784,6 +798,7 @@ pub fn catalogue() -> Vec<Fixture> {
                 .paragraph(Para::new("3. Close the file.")),
         ),
     ];
+    pairs.extend(objects::pairs());
     pairs
         .into_iter()
         .flat_map(|(rule, pass, fail)| {

@@ -22,7 +22,7 @@ report, M5 app and installer.
 | Level | What it checks | Where | Status |
 |---|---|---|---|
 | Unit | The .docx reader, the document model (styles, numbering, theme, formatting, text boxes, sections), finding types, fonts, text output | `src/**` (`#[cfg(test)]`) | implemented |
-| Rule | Each rule against fixtures and small built documents: rule ID, severity, fix kind, location, thresholds | `tests/rules_document.rs`, `tests/rules_headings.rs`, `tests/rules_lists.rs` | implemented |
+| Rule | Each rule against fixtures and small built documents: rule ID, severity, fix kind, location, thresholds | `tests/rules_document.rs`, `tests/rules_headings.rs`, `tests/rules_lists.rs`, `tests/rules_images.rs`, `tests/rules_textboxes.rs`, `tests/rules_tables.rs` | implemented |
 | Fixture | The files in `tests/fixtures/` match the generator byte for byte. Every rule has a passing and a failing fixture. | `tests/fixtures.rs` | implemented |
 | CLI | `adapdf check`: exit codes 0, 1 and 2, text output, JSON shape | `tests/cli.rs` | implemented |
 | Word integration (`windows_word`) | Word opens every fixture. Later: Word exports a tagged PDF; fixes leave a file that Word opens. | `tests/`, behind the cargo feature `windows_word` | feature defined; no tests yet (planned M3, M4) |
@@ -36,7 +36,7 @@ report, M5 app and installer.
 |---|---|
 | Everything that runs without Word | `cargo test` |
 | Unit tests only | `cargo test --lib` |
-| Rule tests for one group | `cargo test --test rules_document` (or `rules_headings`, `rules_lists`) |
+| Rule tests for one group | `cargo test --test rules_document` (or `rules_headings`, `rules_lists`, `rules_images`, `rules_textboxes`, `rules_tables`) |
 | Tests for one rule | `cargo test hdg_003` (test names start with the rule ID in lower case) |
 | Fixture tests | `cargo test --test fixtures` |
 | CLI tests | `cargo test --test cli` |
@@ -71,8 +71,9 @@ veraPDF, installer and manual tests will get their steps here when they exist.
 
 ## Counts at the time of writing
 
-`cargo test` runs 168 tests: 71 unit, 13 CLI, 5 fixture, 31 DOC rule tests,
-31 HDG rule tests and 17 LST rule tests. The count changes as tests are added.
+`cargo test` runs 276 tests on the M2a branch: 89 unit, 13 CLI, 5 fixture, 31
+DOC rule tests, 31 HDG rule tests, 17 LST rule tests, 34 IMG rule tests, 27 TXB
+rule tests and 29 TBL rule tests. The count changes as tests are added.
 `cargo test -- --list` gives the current list.
 
 ## Traceability: pre-check rules
@@ -104,6 +105,30 @@ themselves are not built (planned M3). Severities and fix kinds for all 14
 rules are checked against spec 03 in
 `findings::tests::severities_and_fixes_match_spec_03`.
 
+### Implemented in M2a
+
+| Rule | Severity, fix | Fixtures | Tests | Status |
+|---|---|---|---|---|
+| IMG-001 | error, ask | `IMG-001-fail/pass.docx` | `img_001_*` in `tests/rules_images.rs` | implemented |
+| IMG-002 | warning, ask | `IMG-002-fail/pass.docx` | `img_002_*`; `rules::images::tests::*` for the placeholder patterns | implemented (heuristic) |
+| IMG-003 | warning, manual | `IMG-003-fail/pass.docx` | `img_003_*` | implemented |
+| IMG-004 | warning, auto | `IMG-004-fail/pass.docx` | `img_004_*` | implemented (pictures only, see below) |
+| IMG-005 | warning, manual | `IMG-005-fail/pass.docx` | `img_005_*` | implemented (heuristic) |
+| IMG-006 | warning, manual | `IMG-006-fail/pass.docx` | `img_006_*` | implemented (fixture uses an equation; OLE is tested in memory) |
+| TXB-001 | error, manual | `TXB-001-fail/pass.docx` | `txb_001_*` in `tests/rules_textboxes.rs` | implemented |
+| TXB-002 | warning, manual | `TXB-002-fail/pass.docx` | `txb_002_*` | implemented |
+| TXB-003 | warning, manual | `TXB-003-fail/pass.docx` | `txb_003_*`; `rules::textboxes::tests::*` | implemented |
+| TXB-004 | warning, auto | `TXB-004-fail/pass.docx` | `txb_004_*` | implemented |
+| TBL-001 | error, auto | `TBL-001-fail/pass.docx` | `tbl_001_*` in `tests/rules_tables.rs` | implemented |
+| TBL-002 | error, manual | `TBL-002-fail/pass.docx` | `tbl_002_*` | implemented |
+| TBL-003 | warning, manual | `TBL-003-fail/pass.docx` | `tbl_003_*` | implemented |
+| TBL-004 | warning, manual | `TBL-004-fail/pass.docx` | `tbl_004_*` | implemented (heuristic) |
+| TBL-005 | warning, auto | `TBL-005-fail/pass.docx` | `tbl_005_*` | implemented |
+| TBL-006 | warning, auto | `TBL-006-fail/pass.docx` | `tbl_006_*` | implemented |
+
+The model parts are tested in `model::drawings::tests::*` and
+`model::tables::tests::*`.
+
 ### Planned (M2)
 
 None of these rules, fixtures or tests exist yet. Each will get
@@ -111,9 +136,6 @@ None of these rules, fixtures or tests exist yet. Each will get
 
 | Rule | Status |
 |---|---|
-| IMG-001, IMG-002, IMG-003, IMG-004, IMG-005, IMG-006 | planned (M2) |
-| TXB-001, TXB-002, TXB-003, TXB-004 | planned (M2) |
-| TBL-001, TBL-002, TBL-003, TBL-004, TBL-005, TBL-006 | planned (M2) |
 | LNK-001, LNK-002, LNK-003 | planned (M2) |
 | CLR-001, CLR-002 | planned (M2) |
 | TXT-001, TXT-002, TXT-003, TXT-004 | planned (M2) |
@@ -218,6 +240,96 @@ changes.
   each a typed number or an automatically numbered item. Any other paragraph
   ends it. It fires when the list has both kinds. Bullets (typed or
   automatic) are not numbers. One finding per list, at its first typed number.
+
+## How M2a reads the rules
+
+Decisions for the IMG, TXB and TBL rules where spec 03 leaves room.
+
+- **Alt text.** The description is `descr` on `wp:docPr` (DrawingML) or `alt`
+  on the VML shape. The title (`title`, or `o:title`) is used only when the
+  description is empty. Text of only spaces is no alt text. A drawing marked
+  decorative (`adec:decorative` with `val="1"`) has no alt text to check: it
+  passes IMG-001 with no alt text, and IMG-002, IMG-003 and IMG-005 skip it.
+  VML has no decorative mark.
+- **What is a drawing.** One `w:drawing`, `w:pict` or `w:object` in a run, in
+  the part Word reads (`mc:Choice`, not `mc:Fallback`). The kind comes from
+  the graphic data URI: picture, chart (also chartex), SmartArt (diagram),
+  other (shape, group, canvas). A drawing with no graphic data is a picture.
+  VML is a picture when it has `v:imagedata`, an embedded object when it has
+  `o:OLEObject` (or is a `w:object`), and a shape otherwise.
+- **IMG-001.** Applies to pictures, charts, shapes and SmartArt. It does not
+  apply to embedded objects (IMG-006) or to a text box that has text
+  (TXB-001 reports it).
+- **IMG-002.** Placeholder alt text is: only one of `image`, `picture`,
+  `screenshot`, `graphic`, `photo`, `figure` (case, spaces and punctuation
+  around it ignored); or text that ends in an image extension; or one of
+  those words or a camera prefix (`img`, `dsc`, `dscn`, `pic`, `screen shot`)
+  followed only by digits and the separators `space _ - . : ( ) #`, with at
+  least one digit (`IMG_1234`, `Screenshot 2024-03-05 101530`, `Picture 1`).
+  The lists are named constants in `rules/images.rs`. Text such as `Setup
+  screen.png` is reported even though a person might mean it.
+- **IMG-003.** Counts characters (not bytes) of the trimmed alt text. 250
+  passes, 251 fails.
+- **IMG-004.** Pictures only (the spec says "image"). Floating charts, shapes
+  and SmartArt are not reported. VML floats when its style has
+  `position:absolute`. A floating decorative picture is still reported.
+- **IMG-005.** The caption is the paragraph just before or just after the
+  image, in a style named Caption. Alt text and caption are the same when they
+  match after case, repeated spaces and punctuation at both ends are ignored.
+  A label such as `Figure 1:` is not removed, so `Figure 1: Printer` and alt
+  text `Printer` are not the same.
+- **IMG-006.** One finding for the document, at the first object or equation,
+  with the counts (spec 03 says "the document has"). Equations are `m:oMath`
+  elements that are not inside another equation.
+- **Text boxes (TXB-001).** M1 left paragraphs in `w:txbxContent` out of the
+  body paragraph list, and out of the runs of the paragraph that holds the
+  box, so no other rule sees them. M2a keeps that. The text is stored on the
+  drawing (`Drawing::text`) and is what TXB-001 reads. A box with no text, or
+  only spaces, is not reported. One finding for each box; the location is the
+  paragraph that holds the box and the snippet is the box text. Pictures and
+  tables inside a text box are not read.
+- **TXB-002.** A section with `w:cols w:num` above 1. One finding for the
+  document, at the first paragraph of the first such section.
+- **TXB-003.** More than 2 spaces in a row, or more than 1 tab in a row, in the
+  paragraph text. The text joins the runs, so a row that crosses runs counts.
+  Spaces and tabs are counted separately ("in a row" applies to both). A
+  paragraph with only spaces is empty (TXB-004), not reported here. One
+  finding for each paragraph.
+- **TXB-004.** A paragraph is empty when it has no text but spaces, line
+  breaks or tabs, and no drawing, equation, page or column break, section
+  break, "page break before" or field. Paragraphs in a table are skipped, and
+  they end a row of empty paragraphs. One finding for each row of 2 or more,
+  at its first paragraph, with the count.
+- **Tables.** Every `w:tbl` in the body (not in a text box) is read, nested
+  ones too. The location is the first paragraph in the table, the heading
+  above it, and the text of the first cell. One finding for each table for
+  every table rule, so a table with 30 rows that can break gives one TBL-006
+  finding with a count.
+- **TBL-001.** The first row has no `w:tblHeader` (or it is switched off). It
+  applies to every table, including one-row and layout tables.
+- **TBL-003.** Any cell with `w:gridSpan` above 1 or any `w:vMerge`.
+- **TBL-004.** One row, or every row one grid column wide, or more than 50%
+  of the cells with no text (`LAYOUT_EMPTY_CELLS_PERCENT`). Cells that
+  continue a vertical merge are not counted. A cell with only a picture has
+  no text.
+- **TBL-005.** A row where every cell is empty (no text, picture, equation,
+  break or field). A row with a cell that continues a vertical merge is not
+  reported. The message lists the row numbers.
+- **TBL-006.** A row has no `w:cantSplit` (or it is switched off).
+
+## Known gaps in M2a
+
+- **Fixtures have no media parts.** The pictures in the IMG fixtures have no
+  image data, and charts, SmartArt and embedded objects exist only in memory
+  tests. Word may show the pictures as missing. The planned `windows_word`
+  test that opens every fixture will need a small image part in the builder.
+- **Drawings inside text boxes** and in headers, footers, footnotes and
+  endnotes are not read.
+- **Horizontal lines** (VML `o:hr`) are shapes without alt text, so IMG-001
+  reports them. Word does not report them. Not seen in a real guide yet.
+- **IMG-006 does not say how Word exports** an equation or an object. Phase 0
+  decides.
+- **No false-positive data** for IMG-002, IMG-005 and TBL-004.
 
 ## Known gaps in M1
 

@@ -19,15 +19,20 @@ use crate::docx::{
 use crate::error::{Error, Result};
 
 mod body;
+pub mod drawings;
 pub mod numbering;
 pub mod props;
 pub mod styles;
+pub mod tables;
 pub mod theme;
 
 use numbering::Numbering;
 use props::{ParagraphProps, RunProps};
 use styles::Styles;
+use tables::Table;
 use theme::Theme;
+
+pub use drawings::{Drawing, DrawingKind, ObjectKind};
 
 const R_NS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
@@ -35,6 +40,8 @@ const R_NS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relati
 pub struct Document {
     /// Body paragraphs in reading order.
     pub paragraphs: Vec<Paragraph>,
+    /// Tables in the body, outer tables before the tables inside them.
+    pub tables: Vec<Table>,
     /// Page layout sections; the last one is the document's final section.
     pub sections: Vec<Section>,
     pub styles: Styles,
@@ -67,6 +74,11 @@ pub struct Paragraph {
     pub props: ParagraphProps,
     pub in_table: bool,
     pub drawings: Vec<Drawing>,
+    /// Equations (`m:oMath`) in the paragraph.
+    pub equations: usize,
+    /// The paragraph has a page or column break, a field, a section break or
+    /// "page break before". It is not just empty space even without text.
+    pub has_break_or_field: bool,
     /// Index into [`Document::sections`].
     pub section: usize,
     /// Byte range of the `w:p` element in `word/document.xml` (the text from
@@ -80,6 +92,11 @@ impl Paragraph {
         self.text.trim().is_empty() && self.drawings.is_empty()
     }
 
+    /// Only empty space: no text, drawing, equation, break or field.
+    pub fn is_spacing_only(&self) -> bool {
+        self.is_blank() && self.equations == 0 && !self.has_break_or_field
+    }
+
     pub fn word_count(&self) -> usize {
         self.text.split_whitespace().count()
     }
@@ -90,23 +107,6 @@ pub struct Run {
     pub text: String,
     /// Effective properties after style inheritance and direct formatting.
     pub props: RunProps,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DrawingKind {
-    /// A DrawingML object "in line with text".
-    Inline,
-    /// A DrawingML object that floats (`wp:anchor`).
-    Anchored,
-    /// An older VML picture or an embedded object.
-    Legacy,
-}
-
-/// A picture, shape, chart or text box in a paragraph.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Drawing {
-    pub kind: DrawingKind,
-    pub text_box: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -213,6 +213,7 @@ impl Document {
 
         Ok(Document {
             paragraphs: parsed.paragraphs,
+            tables: parsed.tables,
             sections: parsed.sections,
             styles,
             numbering,

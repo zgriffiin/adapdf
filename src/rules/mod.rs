@@ -7,7 +7,10 @@ use crate::model::Document;
 
 pub mod document;
 pub mod headings;
+pub mod images;
 pub mod lists;
+pub mod tables;
+pub mod textboxes;
 
 pub type Rule = fn(&Document) -> Vec<Finding>;
 
@@ -25,8 +28,24 @@ pub const RULES: &[(RuleId, Rule)] = &[
     (RuleId::Hdg004, headings::hdg_004),
     (RuleId::Hdg005, headings::hdg_005),
     (RuleId::Hdg006, headings::hdg_006),
+    (RuleId::Img001, images::img_001),
+    (RuleId::Img002, images::img_002),
+    (RuleId::Img003, images::img_003),
+    (RuleId::Img004, images::img_004),
+    (RuleId::Img005, images::img_005),
+    (RuleId::Img006, images::img_006),
+    (RuleId::Txb001, textboxes::txb_001),
+    (RuleId::Txb002, textboxes::txb_002),
+    (RuleId::Txb003, textboxes::txb_003),
+    (RuleId::Txb004, textboxes::txb_004),
     (RuleId::Lst001, lists::lst_001),
     (RuleId::Lst002, lists::lst_002),
+    (RuleId::Tbl001, tables::tbl_001),
+    (RuleId::Tbl002, tables::tbl_002),
+    (RuleId::Tbl003, tables::tbl_003),
+    (RuleId::Tbl004, tables::tbl_004),
+    (RuleId::Tbl005, tables::tbl_005),
+    (RuleId::Tbl006, tables::tbl_006),
 ];
 
 /// Runs every rule. Findings are in rule order, and in document order within

@@ -139,13 +139,11 @@ fn text_box_paragraphs_are_not_body_paragraphs() {
     );
     let texts: Vec<&str> = doc.paragraphs.iter().map(|p| p.text.as_str()).collect();
     assert_eq!(texts, ["Before", "After"]);
-    assert_eq!(
-        doc.paragraphs[0].drawings,
-        [Drawing {
-            kind: DrawingKind::Anchored,
-            text_box: true
-        }]
-    );
+    let drawings = &doc.paragraphs[0].drawings;
+    assert_eq!(drawings.len(), 1, "the fallback copy is not counted");
+    assert_eq!(drawings[0].kind, DrawingKind::Anchored);
+    assert!(drawings[0].text_box);
+    assert_eq!(drawings[0].text, "Boxed text");
 }
 
 #[test]
@@ -154,20 +152,12 @@ fn drawings_are_classified() {
         r#"<w:p><w:r><w:drawing><wp:inline><wp:docPr id="1" name="Picture"/></wp:inline></w:drawing></w:r></w:p>
         <w:p><w:r><w:pict/></w:r></w:p>"#,
     );
-    assert_eq!(
-        doc.paragraphs[0].drawings,
-        [Drawing {
-            kind: DrawingKind::Inline,
-            text_box: false
-        }]
-    );
-    assert_eq!(
-        doc.paragraphs[1].drawings,
-        [Drawing {
-            kind: DrawingKind::Legacy,
-            text_box: false
-        }]
-    );
+    let inline = &doc.paragraphs[0].drawings;
+    assert_eq!((inline.len(), inline[0].kind), (1, DrawingKind::Inline));
+    assert!(!inline[0].text_box);
+    let legacy = &doc.paragraphs[1].drawings;
+    assert_eq!((legacy.len(), legacy[0].kind), (1, DrawingKind::Legacy));
+    assert!(!legacy[0].text_box);
     assert!(!doc.paragraphs[0].is_blank(), "a drawing is content");
 }
 
