@@ -63,7 +63,7 @@ impl Styles {
                 .w_child("pPrDefault")
                 .and_then(|n| n.w_child("pPr"));
             styles.doc_run = RunFmt::parse(rpr, theme);
-            styles.doc_par = ParFmt::parse(ppr);
+            styles.doc_par = ParFmt::parse(ppr, theme);
         }
         for node in root.children().filter(|n| n.is_w("style")) {
             let Some(id) = node.w_attr("styleId") else {
@@ -90,7 +90,7 @@ impl Styles {
                     .map(str::to_string),
                 is_default: flag("default"),
                 is_custom: flag("customStyle"),
-                par: ParFmt::parse(node.w_child("pPr")),
+                par: ParFmt::parse(node.w_child("pPr"), theme),
                 run: RunFmt::parse(node.w_child("rPr"), theme),
             };
             if style.is_default && kind == StyleKind::Paragraph {

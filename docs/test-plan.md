@@ -1,28 +1,28 @@
 # Test plan
 
-Status: M1. This plan says what is tested now and what is only planned. A row
+Status: M2 (all pre-check rules). This plan says what is tested now and what is only planned. A row
 marked "planned" has no test yet.
 
 ## Scope
 
-M1 builds stage 1 of the [pipeline](specs/02-pipeline.md#stage-1--pre-check):
+M1 built stage 1 of the [pipeline](specs/02-pipeline.md#stage-1--pre-check):
 open a .docx, build a typed view of it, run the pre-check rules, and report
-findings with `adapdf check`. The rules in scope are DOC-001 to DOC-006,
-HDG-001 to HDG-006, LST-001 and LST-002 from
-[03-precheck-rules](specs/03-precheck-rules.md).
+findings with `adapdf check`. M1 covered DOC-001 to DOC-006, HDG-001 to
+HDG-006, LST-001 and LST-002. M2a added the IMG, TXB and TBL rules and M2b
+added the LNK, CLR and TXT rules, so every rule in
+[03-precheck-rules](specs/03-precheck-rules.md) is now built.
 
-Not in M1: the other rules, fixes, Word export, PDF metadata fixes, veraPDF,
-the report, the app and the installer. The tables at the end list them as
-planned. The milestone numbers for them are the plan at the time of writing:
-M2 the other pre-check rules, M3 fixes, M4 export, PDF metadata, veraPDF and
-report, M5 app and installer.
+Not built: fixes, Word export, PDF metadata fixes, veraPDF, the report, the
+app and the installer. The tables at the end list them as planned. The
+milestone numbers for them are the plan at the time of writing: M3 fixes, M4
+export, PDF metadata, veraPDF and report, M5 app and installer.
 
 ## Test levels
 
 | Level | What it checks | Where | Status |
 |---|---|---|---|
 | Unit | The .docx reader, the document model (styles, numbering, theme, formatting, text boxes, sections), finding types, fonts, text output | `src/**` (`#[cfg(test)]`) | implemented |
-| Rule | Each rule against fixtures and small built documents: rule ID, severity, fix kind, location, thresholds | `tests/rules_document.rs`, `tests/rules_headings.rs`, `tests/rules_lists.rs`, `tests/rules_images.rs`, `tests/rules_textboxes.rs`, `tests/rules_tables.rs` | implemented |
+| Rule | Each rule against fixtures and small built documents: rule ID, severity, fix kind, location, thresholds | `tests/rules_document.rs`, `tests/rules_headings.rs`, `tests/rules_lists.rs`, `tests/rules_images.rs`, `tests/rules_textboxes.rs`, `tests/rules_tables.rs`, `tests/rules_links.rs`, `tests/rules_colour.rs`, `tests/rules_text.rs` | implemented |
 | Fixture | The files in `tests/fixtures/` match the generator byte for byte. Every rule has a passing and a failing fixture. | `tests/fixtures.rs` | implemented |
 | CLI | `adapdf check`: exit codes 0, 1 and 2, text output, JSON shape | `tests/cli.rs` | implemented |
 | Word integration (`windows_word`) | Word opens every fixture. Later: Word exports a tagged PDF; fixes leave a file that Word opens. | `tests/`, behind the cargo feature `windows_word` | feature defined; no tests yet (planned M3, M4) |
@@ -36,7 +36,7 @@ report, M5 app and installer.
 |---|---|
 | Everything that runs without Word | `cargo test` |
 | Unit tests only | `cargo test --lib` |
-| Rule tests for one group | `cargo test --test rules_document` (or `rules_headings`, `rules_lists`, `rules_images`, `rules_textboxes`, `rules_tables`) |
+| Rule tests for one group | `cargo test --test rules_document` (or `rules_headings`, `rules_lists`, `rules_images`, `rules_textboxes`, `rules_tables`, `rules_links`, `rules_colour`, `rules_text`) |
 | Tests for one rule | `cargo test hdg_003` (test names start with the rule ID in lower case) |
 | Fixture tests | `cargo test --test fixtures` |
 | CLI tests | `cargo test --test cli` |
@@ -71,9 +71,10 @@ veraPDF, installer and manual tests will get their steps here when they exist.
 
 ## Counts at the time of writing
 
-`cargo test` runs 276 tests on the M2a branch: 89 unit, 13 CLI, 5 fixture, 31
-DOC rule tests, 31 HDG rule tests, 17 LST rule tests, 34 IMG rule tests, 27 TXB
-rule tests and 29 TBL rule tests. The count changes as tests are added.
+`cargo test` runs 418 tests: 122 unit, 13 CLI, 5 fixture, 31 DOC rule tests,
+31 HDG rule tests, 17 LST rule tests, 34 IMG rule tests, 27 TXB rule tests, 29
+TBL rule tests, 23 LNK rule tests, 40 CLR rule tests and 46 TXT rule tests. The
+count changes as tests are added.
 `cargo test -- --list` gives the current list.
 
 ## Traceability: pre-check rules
@@ -81,7 +82,11 @@ rule tests and 29 TBL rule tests. The count changes as tests are added.
 Test names start with the rule ID in lower case, for example
 `hdg_003_threshold_is_12_words`. All fixtures are in `tests/fixtures/`.
 
-### Implemented in M1
+### Implemented (M1, M2a and M2b)
+
+All 39 rules of spec 03 are implemented, listed in spec order. DOC, HDG and
+LST came in M1; IMG, TXB and TBL in M2a (images, text boxes and tables); LNK,
+CLR and TXT in M2b (links, colour and text).
 
 | Rule | Severity, fix | Fixtures | Tests | Status |
 |---|---|---|---|---|
@@ -97,18 +102,6 @@ Test names start with the rule ID in lower case, for example
 | HDG-004 | error, auto | `HDG-004-fail/pass.docx` | `hdg_004_*` | implemented |
 | HDG-005 | warning, manual | `HDG-005-fail/pass.docx` | `hdg_005_*` | implemented |
 | HDG-006 | warning, manual | `HDG-006-fail/pass.docx` | `hdg_006_*` | implemented |
-| LST-001 | error, auto | `LST-001-fail/pass.docx` | `lst_001_*` in `tests/rules_lists.rs`; `rules::lists::tests::*` for the marker patterns | implemented |
-| LST-002 | warning, manual | `LST-002-fail/pass.docx` | `lst_002_*` | implemented |
-
-"auto" and "ask" in this table are the fix kinds the finding reports. The fixes
-themselves are not built (planned M3). Severities and fix kinds for all 14
-rules are checked against spec 03 in
-`findings::tests::severities_and_fixes_match_spec_03`.
-
-### Implemented in M2a
-
-| Rule | Severity, fix | Fixtures | Tests | Status |
-|---|---|---|---|---|
 | IMG-001 | error, ask | `IMG-001-fail/pass.docx` | `img_001_*` in `tests/rules_images.rs` | implemented |
 | IMG-002 | warning, ask | `IMG-002-fail/pass.docx` | `img_002_*`; `rules::images::tests::*` for the placeholder patterns | implemented (heuristic) |
 | IMG-003 | warning, manual | `IMG-003-fail/pass.docx` | `img_003_*` | implemented |
@@ -119,26 +112,33 @@ rules are checked against spec 03 in
 | TXB-002 | warning, manual | `TXB-002-fail/pass.docx` | `txb_002_*` | implemented |
 | TXB-003 | warning, manual | `TXB-003-fail/pass.docx` | `txb_003_*`; `rules::textboxes::tests::*` | implemented |
 | TXB-004 | warning, auto | `TXB-004-fail/pass.docx` | `txb_004_*` | implemented |
+| LST-001 | error, auto | `LST-001-fail/pass.docx` | `lst_001_*` in `tests/rules_lists.rs`; `rules::lists::tests::*` for the marker patterns | implemented |
+| LST-002 | warning, manual | `LST-002-fail/pass.docx` | `lst_002_*` | implemented |
 | TBL-001 | error, auto | `TBL-001-fail/pass.docx` | `tbl_001_*` in `tests/rules_tables.rs` | implemented |
 | TBL-002 | error, manual | `TBL-002-fail/pass.docx` | `tbl_002_*` | implemented |
 | TBL-003 | warning, manual | `TBL-003-fail/pass.docx` | `tbl_003_*` | implemented |
 | TBL-004 | warning, manual | `TBL-004-fail/pass.docx` | `tbl_004_*` | implemented (heuristic) |
 | TBL-005 | warning, auto | `TBL-005-fail/pass.docx` | `tbl_005_*` | implemented |
 | TBL-006 | warning, auto | `TBL-006-fail/pass.docx` | `tbl_006_*` | implemented |
+| LNK-001 | warning, manual | `LNK-001-fail/pass.docx` | `lnk_001_*` in `tests/rules_links.rs` | implemented |
+| LNK-002 | warning, manual | `LNK-002-fail/pass.docx` | `lnk_002_*` (40 and 41 characters) | implemented |
+| LNK-003 | error, manual | `LNK-003-fail/pass.docx` | `lnk_003_*`; `model::fields::tests::*` for reading links, fields and bookmarks | implemented |
+| CLR-001 | error, manual | `CLR-001-fail/pass.docx` | `clr_001_*` in `tests/rules_colour.rs`; `model::colour::tests::*` for the WCAG values | implemented |
+| CLR-002 | warning, manual | `CLR-002-fail/pass.docx` | `clr_002_*` | implemented (heuristic, see below) |
+| TXT-001 | warning, manual | `TXT-001-fail/pass.docx` | `txt_001_*` in `tests/rules_text.rs` (9.5 pt and 10 pt) | implemented |
+| TXT-002 | warning, auto | `TXT-002-fail/pass.docx` | `txt_002_*` | implemented |
+| TXT-003 | warning, manual | `TXT-003-fail/pass.docx` | `txt_003_*` | implemented (heuristic, see below) |
+| TXT-004 | warning, auto | `TXT-004-fail/pass.docx` | `txt_004_*` | implemented |
 
-The model parts are tested in `model::drawings::tests::*` and
-`model::tables::tests::*`.
+"auto" and "ask" in this table are the fix kinds the finding reports. The fixes
+themselves are not built (planned M3). Severities and fix kinds are checked
+against spec 03 in `findings::tests::severities_and_fixes_match_spec_03` (DOC,
+HDG, IMG, TXB, LST and TBL) and `severities_and_fixes_match_spec_03` in
+`tests/rules_links.rs` (LNK, CLR and TXT). The fixes `AlignLeft` (TXT-002) and
+`UpdateFields` (TXT-004) are not built (planned M3).
 
-### Planned (M2)
-
-None of these rules, fixtures or tests exist yet. Each will get
-`<ID>-fail.docx` and `<ID>-pass.docx` and tests that name the rule.
-
-| Rule | Status |
-|---|---|
-| LNK-001, LNK-002, LNK-003 | planned (M2) |
-| CLR-001, CLR-002 | planned (M2) |
-| TXT-001, TXT-002, TXT-003, TXT-004 | planned (M2) |
+The model parts for IMG, TXB and TBL are tested in `model::drawings::tests::*`
+and `model::tables::tests::*`.
 
 ## Traceability: pipeline and interfaces
 
@@ -331,6 +331,79 @@ Decisions for the IMG, TXB and TBL rules where spec 03 leaves room.
   decides.
 - **No false-positive data** for IMG-002, IMG-005 and TBL-004.
 
+## How M2b reads the rules
+
+Decisions made where spec 03 leaves room. Change the code and the tests
+together if the spec changes.
+
+- **Links.** A link is a `w:hyperlink` element or a `HYPERLINK` field (simple
+  or complex, in the body only). A hyperlink with `r:id` is external. One with
+  `w:anchor`, or a field with `\l` and no file, is internal. A field that has
+  a file and `\l` is external. The link text is the visible text. Links in
+  headers, footers and footnotes are not read.
+- **LNK-001.** Whole-text match against five phrases (`click here`, `here`,
+  `link`, `more`, `read more`), ignoring case, white space and punctuation at
+  both ends.
+- **LNK-002.** The trimmed text starts with `http://`, `https://` or `www.`
+  (any case), has no spaces, and has more than 40 characters.
+- **LNK-003.** The bookmark is looked up among all `w:bookmarkStart` names in
+  `word/document.xml`, ignoring case, plus Word's `_top`. Hidden `_Toc`
+  bookmarks count like any other, so a table of contents whose bookmarks are
+  gone is reported.
+- **CLR-001.** Foreground is the effective run colour (styles, theme colour
+  with tint and shade, then direct formatting). Background is, from the top:
+  run highlight, run shading, paragraph shading, table cell or table shading,
+  the page colour, white. The page colour counts only when
+  `w:displayBackgroundShape` is on in `settings.xml`, because Word shows and
+  exports it only then. Automatic text colour is white when the background has
+  a luma (Rec. 601 on the encoded channels) below 0.5, and black otherwise.
+  WCAG luminance is not used for this choice, because mid grey (#808080) has
+  luminance 0.22 but Word still draws black on it. The contrast itself is the
+  WCAG 2.1 formula. Large text is 18 pt or more, or 14 pt or more when bold.
+  Thresholds are 4.5 and 3.0, with no rounding up (4.499 fails). Runs with no
+  visible text are skipped. One finding for each pair of colours and size
+  class in a paragraph. Pattern shading is not blended: a solid pattern draws
+  its colour, other patterns draw the fill. Headers, footers and footnotes are
+  not checked. Table styles are not applied, so a fill or colour that comes
+  only from a table style is not seen. Shade and tint follow Word (a change of
+  the HSL lightness; accent 1 `4472C4` with tint `99` is `8FAADC`).
+- **CLR-002.** The run colour differs from the colour of the paragraph style
+  (automatic and black are the same). Other emphasis stops the finding: bold,
+  italic or underline that differs from the paragraph style, a highlight or
+  run shading, a character style, or a run inside a hyperlink. A coloured run
+  in a bold heading is therefore still reported, because the heading is bold
+  anyway. One finding for each colour in a paragraph. Text that is white on a
+  dark fill is reported too, because the rule cannot tell a legibility choice
+  from a meaning.
+- **Body paragraph (TXT-001, TXT-002).** A paragraph in the document body
+  (table cells included) that is not a heading, has no outline level, and is
+  not in a Title, Subtitle, Caption or TOC style. Headers, footers, footnotes
+  and endnotes are not body text.
+- **TXT-001.** One finding for each paragraph, for its smallest run that has
+  visible text. Smaller than 10 pt (20 half points) is reported; 10 pt passes.
+- **TXT-002.** The effective alignment (after styles) is `both`,
+  `distribute`, `thaiDistribute` or a kashida value. A paragraph with no text
+  is skipped.
+- **TXT-003.** Allowed: results of the fields PAGE, NUMPAGES, SECTIONPAGES,
+  DATE, TIME, CREATEDATE, SAVEDATE, PRINTDATE and TITLE; the typed words
+  "page" and "of"; typed numbers; and the document title, typed in any case.
+  The title is the Title property, or the text of the first Title or Heading 1
+  paragraph (the one DOC-001 suggests). Anything else is reported, including
+  the result of other fields (AUTHOR, FILENAME) and typed dates. One finding
+  for each header or footer part, with the extra words (lower case) as the
+  snippet.
+- **TXT-004.** A table of contents is a `TOC` field, or a content control
+  whose building block gallery is "Table of Contents" (reported once when it
+  holds a field). It is out of date when its field is marked `w:dirty`, or its
+  entries (the TOC 1 to TOC 9 paragraphs) are not the headings. The headings
+  are the built-in Heading styles in the levels of the `\o` switch (1 to 9
+  when there is none), or the paragraphs with an outline level in those levels
+  when the field has `\u`. Entry text is compared without the page number (the
+  part after the last tab, unless `\n`), without a heading number, and with
+  white space folded; order matters. With `\t` or `\b` the table may list other
+  paragraphs or only part of the document, so only a missing heading is
+  reported.
+
 ## Known gaps in M1
 
 - **Word is not used in any test.** No test checks that Word opens the
@@ -357,9 +430,11 @@ Decisions for the IMG, TXB and TBL rules where spec 03 leaves room.
   The results are not kept and are not a test.
 - **Model limits.** The model does not apply table styles, list-level
   overrides (`w:lvlOverride`) or Word's toggle rule for bold. Theme shade and
-  tint are applied per colour channel, which is an approximation of Word.
-  Only the standard (transitional) WordprocessingML namespace that Word writes
-  is read. These matter for later rules such as CLR-001.
+  tint follow Word's change of HSL lightness (checked against two palette
+  values, not against Word itself). Only the standard (transitional)
+  WordprocessingML namespace that Word writes is read. The colour theme is
+  read with Word's default mapping (`text1` is `dk1`); `w:clrSchemeMapping` is
+  not read. These matter for CLR-001.
 - **Spec 03 and spec 04 disagree on HDG-005.** Spec 04 uses Title for the
   guide title and Heading 1 for sections, so a guide made with the template has
   several Heading 1 paragraphs. HDG-005 (more than one Heading 1) would warn

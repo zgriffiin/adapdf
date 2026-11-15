@@ -28,25 +28,73 @@ impl Rgb {
         })
     }
 
-    /// Word's `themeShade`: darkens the colour. 0xFF keeps it as is.
-    /// This is a per-channel approximation of what Word does.
+    /// Word's `themeShade`: darkens the colour. 0xFF keeps it as is. Word
+    /// scales the lightness (HSL) of the colour by `shade / 255`. For
+    /// example accent 1 `4472C4` with shade `BF` gives `2F5597`, which is
+    /// Word's "Darker 25%".
     pub fn shade(self, shade: u8) -> Rgb {
-        let f = |c: u8| (u16::from(c) * u16::from(shade) / 255) as u8;
-        Rgb {
-            r: f(self.r),
-            g: f(self.g),
-            b: f(self.b),
+        if shade == 0xFF {
+            return self;
         }
+        let (h, s, l) = self.to_hsl();
+        Rgb::from_hsl(h, s, l * f64::from(shade) / 255.0)
     }
 
-    /// Word's `themeTint`: mixes the colour with white. 0xFF keeps it as is.
-    /// This is a per-channel approximation of what Word does.
+    /// Word's `themeTint`: lightens the colour. 0xFF keeps it as is. Word
+    /// moves the lightness (HSL) towards white: `l * t + (1 - t)` with
+    /// `t = tint / 255`. For example accent 1 `4472C4` with tint `99` gives
+    /// `8FAADC`, which is Word's "Lighter 40%".
     pub fn tint(self, tint: u8) -> Rgb {
-        let f = |c: u8| (255 - (255 - u16::from(c)) * u16::from(tint) / 255) as u8;
+        if tint == 0xFF {
+            return self;
+        }
+        let t = f64::from(tint) / 255.0;
+        let (h, s, l) = self.to_hsl();
+        Rgb::from_hsl(h, s, l * t + (1.0 - t))
+    }
+
+    /// Hue in sixths of a turn (0 to 6), saturation and lightness (0 to 1).
+    fn to_hsl(self) -> (f64, f64, f64) {
+        let (r, g, b) = (
+            f64::from(self.r) / 255.0,
+            f64::from(self.g) / 255.0,
+            f64::from(self.b) / 255.0,
+        );
+        let max = r.max(g).max(b);
+        let min = r.min(g).min(b);
+        let l = (max + min) / 2.0;
+        let d = max - min;
+        if d == 0.0 {
+            return (0.0, 0.0, l);
+        }
+        let s = d / (1.0 - (2.0 * l - 1.0).abs());
+        let h = if max == r {
+            ((g - b) / d).rem_euclid(6.0)
+        } else if max == g {
+            (b - r) / d + 2.0
+        } else {
+            (r - g) / d + 4.0
+        };
+        (h, s, l)
+    }
+
+    fn from_hsl(h: f64, s: f64, l: f64) -> Rgb {
+        let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+        let x = c * (1.0 - (h.rem_euclid(2.0) - 1.0).abs());
+        let (r, g, b) = match h as u8 {
+            0 => (c, x, 0.0),
+            1 => (x, c, 0.0),
+            2 => (0.0, c, x),
+            3 => (0.0, x, c),
+            4 => (x, 0.0, c),
+            _ => (c, 0.0, x),
+        };
+        let m = l - c / 2.0;
+        let byte = |v: f64| ((v + m) * 255.0).round().clamp(0.0, 255.0) as u8;
         Rgb {
-            r: f(self.r),
-            g: f(self.g),
-            b: f(self.b),
+            r: byte(r),
+            g: byte(g),
+            b: byte(b),
         }
     }
 }
@@ -176,6 +224,29 @@ mod tests {
         assert_eq!(c.shade(0).r, 0);
         assert_eq!(c.tint(0xFF), c);
         assert_eq!(c.tint(0), Rgb::from_hex("FFFFFF").unwrap());
+    }
+
+    #[test]
+    fn shade_and_tint_match_words_palette() {
+        let accent1 = Rgb::from_hex("4472C4").unwrap();
+        let near = |a: Rgb, hex: &str| {
+            let b = Rgb::from_hex(hex).unwrap();
+            let d = |x: u8, y: u8| x.abs_diff(y);
+            assert!(
+                d(a.r, b.r) <= 1 && d(a.g, b.g) <= 1 && d(a.b, b.b) <= 1,
+                "{a:?} is not {hex}"
+            );
+        };
+        near(accent1.shade(0xBF), "2F5597"); // Darker 25%
+        near(accent1.tint(0x99), "8FAADC"); // Lighter 40%
+        near(accent1.tint(0x66), "B4C7E7"); // Lighter 60%
+    }
+
+    #[test]
+    fn shade_and_tint_keep_the_hue_of_a_primary() {
+        let red = Rgb::from_hex("FF0000").unwrap();
+        assert_eq!(red.shade(0x80), Rgb::from_hex("800000").unwrap());
+        assert_eq!(red.tint(0x80), Rgb::from_hex("FF7F7F").unwrap());
     }
 
     #[test]

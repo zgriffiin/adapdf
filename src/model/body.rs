@@ -3,10 +3,10 @@
 use roxmltree::Node;
 
 use super::numbering::Numbering;
-use super::props::{ParFmt, RunFmt};
+use super::props::{ParFmt, RunFmt, parse_shading};
 use super::styles::Styles;
 use super::tables::{self, Table};
-use super::theme::Theme;
+use super::theme::{Rgb, Theme};
 use super::{Drawing, Paragraph, Run, Section, drawings};
 use crate::docx::{DOCUMENT_PART, MC_NS, WordNode, parse_xml};
 use crate::error::{Error, Result};
@@ -123,7 +123,7 @@ fn parse_paragraph(
         .filter(|id| styles.get(id).is_some())
         .or_else(|| styles.default_paragraph_id());
 
-    let direct = ParFmt::parse(ppr);
+    let direct = ParFmt::parse(ppr, ctx.theme);
     let mut par = styles.paragraph_par_fmt(style_id);
     par.overlay(&direct);
     // A style that gives a list but no level is linked to a level in the list.
@@ -164,6 +164,12 @@ fn parse_paragraph(
         runs.push(Run {
             text: run_text,
             props: fmt.resolve(),
+            char_style: run
+                .w_child("rPr")
+                .and_then(|r| r.w_child("rStyle"))
+                .and_then(|n| n.w_attr("val"))
+                .map(str::to_string),
+            in_hyperlink: run.ancestors().any(|a| a.is_w("hyperlink")),
         });
     }
 
@@ -179,6 +185,7 @@ fn parse_paragraph(
         runs,
         props: par.resolve(),
         in_table: p.ancestors().any(|a| a.is_w("tbl")),
+        container_fill: container_fill(p, ctx.theme),
         drawings,
         equations: extras.equations,
         has_break_or_field: extras.has_break_or_field,
@@ -187,14 +194,31 @@ fn parse_paragraph(
     }
 }
 
+/// The fill behind a paragraph that comes from the table around it: the
+/// shading of the nearest table cell (`w:tcPr/w:shd`) or, failing that, of the
+/// nearest table (`w:tblPr/w:shd`), working outwards through nested tables.
+/// Table styles are not applied.
+fn container_fill(p: Node, theme: &Theme) -> Option<Rgb> {
+    p.ancestors().find_map(|a| {
+        let pr = if a.is_w("tc") {
+            a.w_child("tcPr")
+        } else if a.is_w("tbl") {
+            a.w_child("tblPr")
+        } else {
+            None
+        }?;
+        parse_shading(&pr.w_child("shd")?, theme)?.rgb()
+    })
+}
+
 /// True when the nearest `w:p` above the run is `p` (so the run is not inside
 /// a paragraph nested in a text box).
-fn belongs_to(run: Node, p: Node) -> bool {
+pub(super) fn belongs_to(run: Node, p: Node) -> bool {
     run.ancestors().find(|a| a.is_w("p")) == Some(p)
 }
 
 /// Collects the text and drawings of one run.
-fn scan_run(run: Node, text: &mut String, drawings: &mut Vec<Drawing>) {
+pub(super) fn scan_run(run: Node, text: &mut String, drawings: &mut Vec<Drawing>) {
     for child in run.children().filter(Node::is_element) {
         if child.is_w("t") {
             text.push_str(child.text().unwrap_or(""));

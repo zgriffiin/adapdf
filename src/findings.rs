@@ -73,6 +73,24 @@ pub enum RuleId {
     Tbl005,
     #[serde(rename = "TBL-006")]
     Tbl006,
+    #[serde(rename = "LNK-001")]
+    Lnk001,
+    #[serde(rename = "LNK-002")]
+    Lnk002,
+    #[serde(rename = "LNK-003")]
+    Lnk003,
+    #[serde(rename = "CLR-001")]
+    Clr001,
+    #[serde(rename = "CLR-002")]
+    Clr002,
+    #[serde(rename = "TXT-001")]
+    Txt001,
+    #[serde(rename = "TXT-002")]
+    Txt002,
+    #[serde(rename = "TXT-003")]
+    Txt003,
+    #[serde(rename = "TXT-004")]
+    Txt004,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -100,6 +118,8 @@ pub enum FixId {
     MarkHeaderRow,
     DeleteEmptyRow,
     DisallowRowBreak,
+    AlignLeft,
+    UpdateFields,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -115,7 +135,7 @@ pub enum FixKind {
 
 impl RuleId {
     /// Every rule, in spec order.
-    pub const ALL: [RuleId; 30] = [
+    pub const ALL: [RuleId; 39] = [
         RuleId::Doc001,
         RuleId::Doc002,
         RuleId::Doc003,
@@ -146,6 +166,15 @@ impl RuleId {
         RuleId::Tbl004,
         RuleId::Tbl005,
         RuleId::Tbl006,
+        RuleId::Lnk001,
+        RuleId::Lnk002,
+        RuleId::Lnk003,
+        RuleId::Clr001,
+        RuleId::Clr002,
+        RuleId::Txt001,
+        RuleId::Txt002,
+        RuleId::Txt003,
+        RuleId::Txt004,
     ];
 
     /// The ID as written in the specs, for example `HDG-002`.
@@ -181,6 +210,15 @@ impl RuleId {
             RuleId::Tbl004 => "TBL-004",
             RuleId::Tbl005 => "TBL-005",
             RuleId::Tbl006 => "TBL-006",
+            RuleId::Lnk001 => "LNK-001",
+            RuleId::Lnk002 => "LNK-002",
+            RuleId::Lnk003 => "LNK-003",
+            RuleId::Clr001 => "CLR-001",
+            RuleId::Clr002 => "CLR-002",
+            RuleId::Txt001 => "TXT-001",
+            RuleId::Txt002 => "TXT-002",
+            RuleId::Txt003 => "TXT-003",
+            RuleId::Txt004 => "TXT-004",
         }
     }
 
@@ -188,10 +226,10 @@ impl RuleId {
     pub fn severity(self) -> Severity {
         use RuleId::*;
         match self {
-            Doc001 | Doc002 | Doc005 | Doc006 | Hdg001 | Hdg002 | Hdg004 | Lst001 => {
-                Severity::Error
-            }
-            Doc003 | Doc004 | Hdg003 | Hdg005 | Hdg006 | Lst002 => Severity::Warning,
+            Doc001 | Doc002 | Doc005 | Doc006 | Hdg001 | Hdg002 | Hdg004 | Lst001 | Lnk003
+            | Clr001 => Severity::Error,
+            Doc003 | Doc004 | Hdg003 | Hdg005 | Hdg006 | Lst002 | Lnk001 | Lnk002 | Clr002
+            | Txt001 | Txt002 | Txt003 | Txt004 => Severity::Warning,
             Img001 | Txb001 | Tbl001 | Tbl002 => Severity::Error,
             Img002 | Img003 | Img004 | Img005 | Img006 | Txb002 | Txb003 | Txb004 | Tbl003
             | Tbl004 | Tbl005 | Tbl006 => Severity::Warning,
@@ -213,12 +251,13 @@ impl RuleId {
             Tbl001 => FixKind::Auto(FixId::MarkHeaderRow),
             Tbl005 => FixKind::Auto(FixId::DeleteEmptyRow),
             Tbl006 => FixKind::Auto(FixId::DisallowRowBreak),
+            Txt002 => FixKind::Auto(FixId::AlignLeft),
+            Txt004 => FixKind::Auto(FixId::UpdateFields),
             Img003 | Img005 | Img006 | Txb001 | Txb002 | Txb003 | Tbl002 | Tbl003 | Tbl004 => {
                 FixKind::Manual
             }
-            Doc003 | Doc004 | Doc005 | Doc006 | Hdg001 | Hdg002 | Hdg005 | Hdg006 | Lst002 => {
-                FixKind::Manual
-            }
+            Doc003 | Doc004 | Doc005 | Doc006 | Hdg001 | Hdg002 | Hdg005 | Hdg006 | Lst002
+            | Lnk001 | Lnk002 | Lnk003 | Clr001 | Clr002 | Txt001 | Txt003 => FixKind::Manual,
         }
     }
 }
@@ -369,7 +408,8 @@ mod tests {
         assert_eq!(serde_json::to_value(Severity::Warning).unwrap(), "warning");
     }
 
-    /// The tables in spec 03 for the DOC, HDG, IMG, TXB, LST and TBL rules.
+    /// The tables in spec 03 for the DOC, HDG, IMG, TXB, LST and TBL rules. The
+    /// rest are in `tests/rules_links.rs`.
     #[test]
     fn severities_and_fixes_match_spec_03() {
         use FixId::*;

@@ -25,13 +25,23 @@ pub enum Color {
     Rgb(Rgb),
 }
 
+impl Color {
+    /// The colour, or `None` for [`Color::Auto`].
+    pub fn rgb(self) -> Option<Rgb> {
+        match self {
+            Color::Auto => None,
+            Color::Rgb(rgb) => Some(rgb),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Alignment {
     #[default]
     Left,
     Center,
     Right,
-    /// `both` or `distribute` in the XML.
+    /// `both`, `distribute`, `thaiDistribute` or a kashida value in the XML.
     Justify,
 }
 
@@ -64,8 +74,15 @@ impl Lang {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RunFmt {
     pub bold: Option<bool>,
+    pub italic: Option<bool>,
+    /// `w:u`: any underline style except `none` is on.
+    pub underline: Option<bool>,
     pub size_half_points: Option<u32>,
     pub color: Option<Color>,
+    /// `w:highlight`. [`Color::Auto`] means no highlight.
+    pub highlight: Option<Color>,
+    /// `w:shd` fill. [`Color::Auto`] means no fill.
+    pub shading: Option<Color>,
     pub font_ascii: Option<String>,
     pub font_h_ansi: Option<String>,
     pub lang: Lang,
@@ -75,9 +92,15 @@ pub struct RunFmt {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunProps {
     pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
     /// Text size in half points (24 = 12 pt).
     pub size_half_points: u32,
     pub color: Color,
+    /// The highlight colour, when there is one.
+    pub highlight: Option<Rgb>,
+    /// The fill behind the run (`w:shd`), when there is one.
+    pub shading: Option<Rgb>,
     pub font_ascii: Option<String>,
     pub font_h_ansi: Option<String>,
     pub lang: Lang,
@@ -91,6 +114,8 @@ impl RunFmt {
         };
         let mut fmt = RunFmt {
             bold: rpr.w_child("b").map(|n| toggle(&n)),
+            italic: rpr.w_child("i").map(|n| toggle(&n)),
+            underline: rpr.w_child("u").map(|n| toggle(&n)),
             size_half_points: rpr
                 .w_child("sz")
                 .and_then(|n| n.w_attr("val"))
@@ -100,6 +125,11 @@ impl RunFmt {
         if let Some(color) = rpr.w_child("color") {
             fmt.color = parse_color(&color, theme);
         }
+        fmt.highlight = rpr
+            .w_child("highlight")
+            .and_then(|n| n.w_attr("val"))
+            .and_then(parse_highlight);
+        fmt.shading = rpr.w_child("shd").and_then(|n| parse_shading(&n, theme));
         if let Some(fonts) = rpr.w_child("rFonts") {
             let pick = |theme_attr: &str, plain_attr: &str| {
                 fonts
@@ -127,11 +157,23 @@ impl RunFmt {
         if over.bold.is_some() {
             self.bold = over.bold;
         }
+        if over.italic.is_some() {
+            self.italic = over.italic;
+        }
+        if over.underline.is_some() {
+            self.underline = over.underline;
+        }
         if over.size_half_points.is_some() {
             self.size_half_points = over.size_half_points;
         }
         if over.color.is_some() {
             self.color = over.color;
+        }
+        if over.highlight.is_some() {
+            self.highlight = over.highlight;
+        }
+        if over.shading.is_some() {
+            self.shading = over.shading;
         }
         if over.font_ascii.is_some() {
             self.font_ascii.clone_from(&over.font_ascii);
@@ -145,8 +187,12 @@ impl RunFmt {
     pub fn resolve(&self) -> RunProps {
         RunProps {
             bold: self.bold.unwrap_or(false),
+            italic: self.italic.unwrap_or(false),
+            underline: self.underline.unwrap_or(false),
             size_half_points: self.size_half_points.unwrap_or(DEFAULT_SIZE_HALF_POINTS),
             color: self.color.unwrap_or(Color::Auto),
+            highlight: self.highlight.and_then(Color::rgb),
+            shading: self.shading.and_then(Color::rgb),
             font_ascii: self.font_ascii.clone(),
             font_h_ansi: self.font_h_ansi.clone(),
             lang: self.lang.clone(),
@@ -159,25 +205,84 @@ pub(super) fn toggle(node: &Node) -> bool {
     !matches!(node.w_attr("val"), Some("0" | "false" | "off" | "none"))
 }
 
-fn parse_color(node: &Node, theme: &Theme) -> Option<Color> {
+/// A theme colour with its shade and tint, from the attributes of `node`
+/// (for a text colour: `themeColor`, `themeShade`, `themeTint`). `None` when
+/// the node names no known theme colour. Shade is applied before tint.
+pub fn themed(
+    node: &Node,
+    theme: &Theme,
+    colour_attr: &str,
+    shade_attr: &str,
+    tint_attr: &str,
+) -> Option<Rgb> {
     let hex_attr = |name: &str| {
         node.w_attr(name)
             .and_then(|v| u8::from_str_radix(v, 16).ok())
     };
-    if let Some(base) = node.w_attr("themeColor").and_then(|t| theme.color(t)) {
-        let mut rgb = base;
-        if let Some(shade) = hex_attr("themeShade") {
-            rgb = rgb.shade(shade);
-        }
-        if let Some(tint) = hex_attr("themeTint") {
-            rgb = rgb.tint(tint);
-        }
+    let mut rgb = node.w_attr(colour_attr).and_then(|t| theme.color(t))?;
+    if let Some(shade) = hex_attr(shade_attr) {
+        rgb = rgb.shade(shade);
+    }
+    if let Some(tint) = hex_attr(tint_attr) {
+        rgb = rgb.tint(tint);
+    }
+    Some(rgb)
+}
+
+fn parse_color(node: &Node, theme: &Theme) -> Option<Color> {
+    if let Some(rgb) = themed(node, theme, "themeColor", "themeShade", "themeTint") {
         return Some(Color::Rgb(rgb));
     }
     match node.w_attr("val")? {
         "auto" => Some(Color::Auto),
         hex => Rgb::from_hex(hex).map(Color::Rgb),
     }
+}
+
+/// Reads a `w:shd` node as the fill it draws. `fill="auto"` is no fill
+/// ([`Color::Auto`]). Patterns are not blended: a solid pattern (`val="solid"`)
+/// draws the pattern colour, every other pattern draws the fill.
+pub fn parse_shading(node: &Node, theme: &Theme) -> Option<Color> {
+    if node.w_attr("val") == Some("solid") {
+        if let Some(rgb) = themed(node, theme, "themeColor", "themeShade", "themeTint") {
+            return Some(Color::Rgb(rgb));
+        }
+        if let Some(rgb) = node.w_attr("color").and_then(Rgb::from_hex) {
+            return Some(Color::Rgb(rgb));
+        }
+    }
+    if let Some(rgb) = themed(node, theme, "themeFill", "themeFillShade", "themeFillTint") {
+        return Some(Color::Rgb(rgb));
+    }
+    match node.w_attr("fill")? {
+        "auto" => Some(Color::Auto),
+        hex => Rgb::from_hex(hex).map(Color::Rgb),
+    }
+}
+
+/// The 16 highlight colours that Word can write in `w:highlight`.
+fn parse_highlight(name: &str) -> Option<Color> {
+    let hex = match name {
+        "none" => return Some(Color::Auto),
+        "black" => "000000",
+        "blue" => "0000FF",
+        "cyan" => "00FFFF",
+        "green" => "00FF00",
+        "magenta" => "FF00FF",
+        "red" => "FF0000",
+        "yellow" => "FFFF00",
+        "white" => "FFFFFF",
+        "darkBlue" => "000080",
+        "darkCyan" => "008080",
+        "darkGreen" => "008000",
+        "darkMagenta" => "800080",
+        "darkRed" => "800000",
+        "darkYellow" => "808000",
+        "darkGray" => "808080",
+        "lightGray" => "C0C0C0",
+        _ => return None,
+    };
+    Rgb::from_hex(hex).map(Color::Rgb)
 }
 
 /// Paragraph properties set by one layer.
@@ -188,6 +293,8 @@ pub struct ParFmt {
     pub outline_level: Option<u8>,
     pub num_id: Option<i64>,
     pub num_level: Option<u8>,
+    /// `w:shd` fill. [`Color::Auto`] means no fill.
+    pub shading: Option<Color>,
 }
 
 /// A paragraph's place in an automatic list.
@@ -206,11 +313,14 @@ pub struct ParagraphProps {
     pub outline_level: Option<u8>,
     /// Set when the paragraph is in an automatic list.
     pub num: Option<NumPr>,
+    /// The fill behind the paragraph (`w:shd`), when there is one.
+    pub shading: Option<Rgb>,
 }
 
 impl ParFmt {
-    /// Reads a `w:pPr` node. `None` gives an empty layer.
-    pub fn parse(ppr: Option<Node>) -> ParFmt {
+    /// Reads a `w:pPr` node. `None` gives an empty layer. The theme gives
+    /// the colour of a theme fill.
+    pub fn parse(ppr: Option<Node>, theme: &Theme) -> ParFmt {
         let Some(ppr) = ppr else {
             return ParFmt::default();
         };
@@ -219,9 +329,11 @@ impl ParFmt {
                 "left" | "start" => Some(Alignment::Left),
                 "center" => Some(Alignment::Center),
                 "right" | "end" => Some(Alignment::Right),
-                "both" | "distribute" => Some(Alignment::Justify),
+                "both" | "distribute" | "thaiDistribute" | "lowKashida" | "mediumKashida"
+                | "highKashida" => Some(Alignment::Justify),
                 _ => None,
             }),
+            shading: ppr.w_child("shd").and_then(|n| parse_shading(&n, theme)),
             outline_level: ppr
                 .w_child("outlineLvl")
                 .and_then(|n| n.w_attr("val"))
@@ -254,6 +366,9 @@ impl ParFmt {
         if over.num_level.is_some() {
             self.num_level = over.num_level;
         }
+        if over.shading.is_some() {
+            self.shading = over.shading;
+        }
     }
 
     pub fn resolve(&self) -> ParagraphProps {
@@ -265,6 +380,7 @@ impl ParFmt {
                 num_id,
                 level: self.num_level.unwrap_or(0),
             }),
+            shading: self.shading.and_then(Color::rgb),
         }
     }
 }
@@ -285,7 +401,7 @@ mod tests {
     fn par_fmt(inner: &str) -> ParFmt {
         let xml = format!("<w:pPr {NS}>{inner}</w:pPr>");
         let doc = parse_xml("t", &xml).unwrap();
-        ParFmt::parse(Some(doc.root_element()))
+        ParFmt::parse(Some(doc.root_element()), &Theme::default())
     }
 
     fn theme() -> Theme {
@@ -382,6 +498,98 @@ mod tests {
         assert!(!p.bold);
         assert_eq!(p.size_half_points, DEFAULT_SIZE_HALF_POINTS);
         assert_eq!(p.color, Color::Auto);
+    }
+
+    #[test]
+    fn italic_and_underline_toggles() {
+        let t = Theme::default();
+        let f = run_fmt(r#"<w:i/><w:u w:val="single"/>"#, &t);
+        assert_eq!((f.italic, f.underline), (Some(true), Some(true)));
+        let f = run_fmt(r#"<w:i w:val="0"/><w:u w:val="none"/>"#, &t);
+        assert_eq!((f.italic, f.underline), (Some(false), Some(false)));
+        let p = run_fmt("", &t).resolve();
+        assert!(!p.italic && !p.underline);
+    }
+
+    #[test]
+    fn highlight_names_and_none() {
+        let t = Theme::default();
+        let rgb = |hex: &str| Some(Color::Rgb(Rgb::from_hex(hex).unwrap()));
+        assert_eq!(
+            run_fmt(r#"<w:highlight w:val="yellow"/>"#, &t).highlight,
+            rgb("FFFF00")
+        );
+        assert_eq!(
+            run_fmt(r#"<w:highlight w:val="darkBlue"/>"#, &t).highlight,
+            rgb("000080")
+        );
+        let none = run_fmt(r#"<w:highlight w:val="none"/>"#, &t);
+        assert_eq!(none.highlight, Some(Color::Auto));
+        assert_eq!(none.resolve().highlight, None, "none is no highlight");
+        assert_eq!(
+            run_fmt(r#"<w:highlight w:val="pink"/>"#, &t).highlight,
+            None
+        );
+    }
+
+    #[test]
+    fn shading_fill_auto_theme_fill_and_solid_pattern() {
+        let rgb = |hex: &str| Some(Color::Rgb(Rgb::from_hex(hex).unwrap()));
+        let shd = |attrs: &str, theme: &Theme| {
+            let f = run_fmt(&format!("<w:shd {attrs}/>"), theme);
+            f.shading
+        };
+        let t = Theme::default();
+        assert_eq!(
+            shd(r#"w:val="clear" w:color="auto" w:fill="FFFF00""#, &t),
+            rgb("FFFF00")
+        );
+        assert_eq!(
+            shd(r#"w:val="clear" w:color="auto" w:fill="auto""#, &t),
+            Some(Color::Auto)
+        );
+        assert_eq!(shd(r#"w:val="clear" w:color="auto""#, &t), None);
+        // A solid pattern draws the pattern colour.
+        assert_eq!(
+            shd(r#"w:val="solid" w:color="1F3864" w:fill="FFFFFF""#, &t),
+            rgb("1F3864")
+        );
+        // A theme fill wins over the fill.
+        let theme = theme();
+        assert_eq!(
+            shd(
+                r#"w:val="clear" w:fill="FFFFFF" w:themeFill="accent1""#,
+                &theme
+            ),
+            rgb("156082")
+        );
+        let Some(Color::Rgb(tinted)) = shd(
+            r#"w:val="clear" w:fill="FFFFFF" w:themeFill="accent1" w:themeFillTint="33""#,
+            &theme,
+        ) else {
+            panic!("expected a fill")
+        };
+        assert!(
+            tinted.r > 0xB0 && tinted.g > 0xD0 && tinted.b > 0xD0,
+            "{tinted:?}"
+        );
+    }
+
+    #[test]
+    fn paragraph_shading_and_layers() {
+        let t = Theme::default();
+        let xml =
+            format!(r#"<w:pPr {NS}><w:shd w:val="clear" w:color="auto" w:fill="DDEEFF"/></w:pPr>"#);
+        let doc = parse_xml("t", &xml).unwrap();
+        let mut f = ParFmt::parse(Some(doc.root_element()), &t);
+        assert_eq!(f.resolve().shading, Rgb::from_hex("DDEEFF"));
+        let none = par_fmt(r#"<w:shd w:val="clear" w:color="auto" w:fill="auto"/>"#);
+        f.overlay(&none);
+        assert_eq!(
+            f.resolve().shading,
+            None,
+            "a later fill=auto removes the fill"
+        );
     }
 
     #[test]

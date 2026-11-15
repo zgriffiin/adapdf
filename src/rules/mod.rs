@@ -5,11 +5,14 @@ use crate::findings::{Finding, RuleId};
 use crate::fonts::FontLookup;
 use crate::model::Document;
 
+pub mod colour;
 pub mod document;
 pub mod headings;
 pub mod images;
+pub mod links;
 pub mod lists;
 pub mod tables;
+pub mod text;
 pub mod textboxes;
 
 pub type Rule = fn(&Document) -> Vec<Finding>;
@@ -46,6 +49,15 @@ pub const RULES: &[(RuleId, Rule)] = &[
     (RuleId::Tbl004, tables::tbl_004),
     (RuleId::Tbl005, tables::tbl_005),
     (RuleId::Tbl006, tables::tbl_006),
+    (RuleId::Lnk001, links::lnk_001),
+    (RuleId::Lnk002, links::lnk_002),
+    (RuleId::Lnk003, links::lnk_003),
+    (RuleId::Clr001, colour::clr_001),
+    (RuleId::Clr002, colour::clr_002),
+    (RuleId::Txt001, text::txt_001),
+    (RuleId::Txt002, text::txt_002),
+    (RuleId::Txt003, text::txt_003),
+    (RuleId::Txt004, text::txt_004),
 ];
 
 /// Runs every rule. Findings are in rule order, and in document order within

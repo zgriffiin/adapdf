@@ -7,10 +7,9 @@ It checks the Word document, fixes what it safely can, exports a tagged PDF
 through Word, checks the PDF with veraPDF, and writes a report that serves as
 evidence. A person then confirms the result in PAC and signs off the checklist.
 
-Status: milestone M1 is built. `adapdf check` runs the document, heading and
-list rules (DOC-001 to DOC-006, HDG-001 to HDG-006, LST-001, LST-002). The other
-rules, fixes, export and the app are planned. See the [test plan](docs/test-plan.md)
-for what is tested and what is not.
+Status: the pre-check rules are built (all of spec 03). `adapdf check` runs
+them. Fixes, export and the app are not built yet. See the
+[test plan](docs/test-plan.md) for what is tested and what is not.
 
 ## Specs
 
