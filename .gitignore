@@ -1,0 +1,18 @@
+# Real documents and generated output
+samples/
+*.backup-*.docx
+*.accessibility.html
+*.accessibility.json
+~$*
+
+# Bundled tools
+vendor/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
