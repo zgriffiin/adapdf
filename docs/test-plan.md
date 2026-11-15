@@ -104,6 +104,24 @@ themselves are not built (planned M3). Severities and fix kinds for all 14
 rules are checked against spec 03 in
 `findings::tests::severities_and_fixes_match_spec_03`.
 
+### Implemented in M2b (links, colour and text)
+
+| Rule | Severity, fix | Fixtures | Tests | Status |
+|---|---|---|---|---|
+| LNK-001 | warning, manual | `LNK-001-fail/pass.docx` | `lnk_001_*` in `tests/rules_links.rs` | implemented |
+| LNK-002 | warning, manual | `LNK-002-fail/pass.docx` | `lnk_002_*` (40 and 41 characters) | implemented |
+| LNK-003 | error, manual | `LNK-003-fail/pass.docx` | `lnk_003_*`; `model::fields::tests::*` for reading links, fields and bookmarks | implemented |
+| CLR-001 | error, manual | `CLR-001-fail/pass.docx` | `clr_001_*` in `tests/rules_colour.rs`; `model::colour::tests::*` for the WCAG values | implemented |
+| CLR-002 | warning, manual | `CLR-002-fail/pass.docx` | `clr_002_*` | implemented (heuristic, see below) |
+| TXT-001 | warning, manual | `TXT-001-fail/pass.docx` | `txt_001_*` in `tests/rules_text.rs` (9.5 pt and 10 pt) | implemented |
+| TXT-002 | warning, auto | `TXT-002-fail/pass.docx` | `txt_002_*` | implemented |
+| TXT-003 | warning, manual | `TXT-003-fail/pass.docx` | `txt_003_*` | implemented (heuristic, see below) |
+| TXT-004 | warning, auto | `TXT-004-fail/pass.docx` | `txt_004_*` | implemented |
+
+Severities and fix kinds are checked against spec 03 in
+`severities_and_fixes_match_spec_03` in `tests/rules_links.rs`. The fixes
+`AlignLeft` (TXT-002) and `UpdateFields` (TXT-004) are not built (planned M3).
+
 ### Planned (M2)
 
 None of these rules, fixtures or tests exist yet. Each will get
@@ -114,9 +132,6 @@ None of these rules, fixtures or tests exist yet. Each will get
 | IMG-001, IMG-002, IMG-003, IMG-004, IMG-005, IMG-006 | planned (M2) |
 | TXB-001, TXB-002, TXB-003, TXB-004 | planned (M2) |
 | TBL-001, TBL-002, TBL-003, TBL-004, TBL-005, TBL-006 | planned (M2) |
-| LNK-001, LNK-002, LNK-003 | planned (M2) |
-| CLR-001, CLR-002 | planned (M2) |
-| TXT-001, TXT-002, TXT-003, TXT-004 | planned (M2) |
 
 ## Traceability: pipeline and interfaces
 
@@ -219,6 +234,79 @@ changes.
   ends it. It fires when the list has both kinds. Bullets (typed or
   automatic) are not numbers. One finding per list, at its first typed number.
 
+## How M2b reads the rules
+
+Decisions made where spec 03 leaves room. Change the code and the tests
+together if the spec changes.
+
+- **Links.** A link is a `w:hyperlink` element or a `HYPERLINK` field (simple
+  or complex, in the body only). A hyperlink with `r:id` is external. One with
+  `w:anchor`, or a field with `\l` and no file, is internal. A field that has
+  a file and `\l` is external. The link text is the visible text. Links in
+  headers, footers and footnotes are not read.
+- **LNK-001.** Whole-text match against five phrases (`click here`, `here`,
+  `link`, `more`, `read more`), ignoring case, white space and punctuation at
+  both ends.
+- **LNK-002.** The trimmed text starts with `http://`, `https://` or `www.`
+  (any case), has no spaces, and has more than 40 characters.
+- **LNK-003.** The bookmark is looked up among all `w:bookmarkStart` names in
+  `word/document.xml`, ignoring case, plus Word's `_top`. Hidden `_Toc`
+  bookmarks count like any other, so a table of contents whose bookmarks are
+  gone is reported.
+- **CLR-001.** Foreground is the effective run colour (styles, theme colour
+  with tint and shade, then direct formatting). Background is, from the top:
+  run highlight, run shading, paragraph shading, table cell or table shading,
+  the page colour, white. The page colour counts only when
+  `w:displayBackgroundShape` is on in `settings.xml`, because Word shows and
+  exports it only then. Automatic text colour is white when the background has
+  a luma (Rec. 601 on the encoded channels) below 0.5, and black otherwise.
+  WCAG luminance is not used for this choice, because mid grey (#808080) has
+  luminance 0.22 but Word still draws black on it. The contrast itself is the
+  WCAG 2.1 formula. Large text is 18 pt or more, or 14 pt or more when bold.
+  Thresholds are 4.5 and 3.0, with no rounding up (4.499 fails). Runs with no
+  visible text are skipped. One finding for each pair of colours and size
+  class in a paragraph. Pattern shading is not blended: a solid pattern draws
+  its colour, other patterns draw the fill. Headers, footers and footnotes are
+  not checked. Table styles are not applied, so a fill or colour that comes
+  only from a table style is not seen. Shade and tint follow Word (a change of
+  the HSL lightness; accent 1 `4472C4` with tint `99` is `8FAADC`).
+- **CLR-002.** The run colour differs from the colour of the paragraph style
+  (automatic and black are the same). Other emphasis stops the finding: bold,
+  italic or underline that differs from the paragraph style, a highlight or
+  run shading, a character style, or a run inside a hyperlink. A coloured run
+  in a bold heading is therefore still reported, because the heading is bold
+  anyway. One finding for each colour in a paragraph. Text that is white on a
+  dark fill is reported too, because the rule cannot tell a legibility choice
+  from a meaning.
+- **Body paragraph (TXT-001, TXT-002).** A paragraph in the document body
+  (table cells included) that is not a heading, has no outline level, and is
+  not in a Title, Subtitle, Caption or TOC style. Headers, footers, footnotes
+  and endnotes are not body text.
+- **TXT-001.** One finding for each paragraph, for its smallest run that has
+  visible text. Smaller than 10 pt (20 half points) is reported; 10 pt passes.
+- **TXT-002.** The effective alignment (after styles) is `both`,
+  `distribute`, `thaiDistribute` or a kashida value. A paragraph with no text
+  is skipped.
+- **TXT-003.** Allowed: results of the fields PAGE, NUMPAGES, SECTIONPAGES,
+  DATE, TIME, CREATEDATE, SAVEDATE, PRINTDATE and TITLE; the typed words
+  "page" and "of"; typed numbers; and the document title, typed in any case.
+  The title is the Title property, or the text of the first Title or Heading 1
+  paragraph (the one DOC-001 suggests). Anything else is reported, including
+  the result of other fields (AUTHOR, FILENAME) and typed dates. One finding
+  for each header or footer part, with the extra words (lower case) as the
+  snippet.
+- **TXT-004.** A table of contents is a `TOC` field, or a content control
+  whose building block gallery is "Table of Contents" (reported once when it
+  holds a field). It is out of date when its field is marked `w:dirty`, or its
+  entries (the TOC 1 to TOC 9 paragraphs) are not the headings. The headings
+  are the built-in Heading styles in the levels of the `\o` switch (1 to 9
+  when there is none), or the paragraphs with an outline level in those levels
+  when the field has `\u`. Entry text is compared without the page number (the
+  part after the last tab, unless `\n`), without a heading number, and with
+  white space folded; order matters. With `\t` or `\b` the table may list other
+  paragraphs or only part of the document, so only a missing heading is
+  reported.
+
 ## Known gaps in M1
 
 - **Word is not used in any test.** No test checks that Word opens the
@@ -245,9 +333,11 @@ changes.
   The results are not kept and are not a test.
 - **Model limits.** The model does not apply table styles, list-level
   overrides (`w:lvlOverride`) or Word's toggle rule for bold. Theme shade and
-  tint are applied per colour channel, which is an approximation of Word.
-  Only the standard (transitional) WordprocessingML namespace that Word writes
-  is read. These matter for later rules such as CLR-001.
+  tint follow Word's change of HSL lightness (checked against two palette
+  values, not against Word itself). Only the standard (transitional)
+  WordprocessingML namespace that Word writes is read. The colour theme is
+  read with Word's default mapping (`text1` is `dk1`); `w:clrSchemeMapping` is
+  not read. These matter for CLR-001.
 - **Spec 03 and spec 04 disagree on HDG-005.** Spec 04 uses Title for the
   guide title and Heading 1 for sections, so a guide made with the template has
   several Heading 1 paragraphs. HDG-005 (more than one Heading 1) would warn

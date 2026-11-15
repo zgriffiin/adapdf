@@ -14,6 +14,13 @@ use crate::findings::RuleId;
 use crate::fonts::{FontLookup, FontStatus};
 use crate::rules::document::TEMPLATE_FILE_NAME;
 
+mod links_colour_text;
+use links_colour_text::shd_xml;
+pub use links_colour_text::{
+    TEST_THEME, TOC_INSTRUCTION, complex_field_xml, page_x_of_y_xml, raw_docx, simple_field_xml,
+    text_paragraph_xml,
+};
+
 const W: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 /// Escapes text for XML content and attribute values.
@@ -55,6 +62,11 @@ pub struct Run {
     lang_east_asia: Option<String>,
     lang_bidi: Option<String>,
     inserted: bool,
+    italic: bool,
+    underline: bool,
+    highlight: Option<String>,
+    shading: Option<String>,
+    char_style: Option<String>,
 }
 
 impl Run {
@@ -110,6 +122,9 @@ impl Run {
 
     fn xml(&self, ids: &mut u32) -> String {
         let mut rpr = String::new();
+        if let Some(style) = &self.char_style {
+            rpr += &format!(r#"<w:rStyle w:val="{}"/>"#, esc(style));
+        }
         if let Some(font) = &self.font {
             let font = esc(font);
             rpr += &format!(r#"<w:rFonts w:ascii="{font}" w:hAnsi="{font}"/>"#);
@@ -117,11 +132,26 @@ impl Run {
         if self.bold {
             rpr += "<w:b/>";
         }
+        if self.italic {
+            rpr += "<w:i/>";
+        }
         if let Some(color) = &self.color {
             rpr += &format!(r#"<w:color w:val="{}"/>"#, esc(color));
         }
         if let Some(size) = self.size {
             rpr += &format!(r#"<w:sz w:val="{size}"/>"#);
+        }
+        if let Some(name) = &self.highlight {
+            rpr += &format!(r#"<w:highlight w:val="{}"/>"#, esc(name));
+        }
+        if self.underline {
+            rpr += r#"<w:u w:val="single"/>"#;
+        }
+        if let Some(fill) = &self.shading {
+            rpr += &format!(
+                r#"<w:shd w:val="clear" w:color="auto" w:fill="{}"/>"#,
+                esc(fill)
+            );
         }
         if self.lang.is_some() || self.lang_east_asia.is_some() || self.lang_bidi.is_some() {
             rpr += "<w:lang";
@@ -167,6 +197,13 @@ pub struct Para {
     runs: Vec<Run>,
     raw_runs: Vec<String>,
     comments: Vec<String>,
+    shading: Option<String>,
+    cell_shading: Option<String>,
+    bookmark: Option<String>,
+    /// Relationship ids and targets of the external links in this paragraph.
+    link_targets: Vec<(String, String)>,
+    raw_before: String,
+    raw_after: String,
 }
 
 impl Para {
@@ -267,6 +304,9 @@ impl Para {
                 r#"<w:numPr><w:ilvl w:val="{level}"/><w:numId w:val="{num_id}"/></w:numPr>"#
             );
         }
+        if let Some(fill) = &self.shading {
+            ppr += &shd_xml(fill);
+        }
         if self.justify {
             ppr += r#"<w:jc w:val="both"/>"#;
         }
@@ -289,11 +329,19 @@ impl Para {
         for id in &comment_ids {
             content += &format!(r#"<w:commentRangeStart w:id="{id}"/>"#);
         }
+        let bookmark_id = self.bookmark.as_ref().map(|name| {
+            *ids += 1;
+            content += &format!(r#"<w:bookmarkStart w:id="{ids}" w:name="{}"/>"#, esc(name));
+            *ids
+        });
         for run in &self.runs {
             content += &run.xml(ids);
         }
         for raw in &self.raw_runs {
             content += raw;
+        }
+        if let Some(id) = bookmark_id {
+            content += &format!(r#"<w:bookmarkEnd w:id="{id}"/>"#);
         }
         for id in &comment_ids {
             content += &format!(
@@ -301,13 +349,19 @@ impl Para {
             );
         }
         let p = format!("<w:p>{ppr}{content}</w:p>");
-        if self.in_table {
+        let block = if self.in_table {
+            let cell_shd = self
+                .cell_shading
+                .as_deref()
+                .map(shd_xml)
+                .unwrap_or_default();
             format!(
-                r#"<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tblGrid><w:gridCol w:w="9360"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="9360" w:type="dxa"/></w:tcPr>{p}</w:tc></w:tr></w:tbl>"#
+                r#"<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tblGrid><w:gridCol w:w="9360"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="9360" w:type="dxa"/>{cell_shd}</w:tcPr>{p}</w:tc></w:tr></w:tbl>"#
             )
         } else {
             p
-        }
+        };
+        format!("{}{block}{}", self.raw_before, self.raw_after)
     }
 }
 
@@ -330,6 +384,15 @@ pub struct DocxBuilder {
     body_size: u32,
     custom_styles: Vec<CustomStyle>,
     header_text: Option<String>,
+    /// Paragraph XML for the header, instead of the plain text in
+    /// `header_text` (which then only says that a header exists).
+    header_raw: Option<String>,
+    /// Paragraph XML for a footer.
+    footer_raw: Option<String>,
+    /// The page colour `RRGGBB`, and whether the settings show it.
+    page_background: Option<(String, bool)>,
+    /// Character styles: id, name and the XML inside `w:rPr`.
+    char_styles: Vec<(String, String, String)>,
     body: Vec<Para>,
 }
 
@@ -350,6 +413,10 @@ impl DocxBuilder {
             body_size: 22,
             custom_styles: Vec::new(),
             header_text: None,
+            header_raw: None,
+            footer_raw: None,
+            page_background: None,
+            char_styles: Vec::new(),
             body: Vec::new(),
         }
     }
@@ -447,9 +514,19 @@ impl DocxBuilder {
         } else {
             ""
         };
+        let footer_ref = if self.footer_raw.is_some() {
+            r#"<w:footerReference w:type="default" r:id="rIdFooter1"/>"#
+        } else {
+            ""
+        };
+        let background = self
+            .page_background
+            .as_ref()
+            .map(|(hex, _)| format!(r#"<w:background w:color="{}"/>"#, esc(hex)))
+            .unwrap_or_default();
         let document = format!(
             r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="{W}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:v="urn:schemas-microsoft-com:vml"><w:body>{body}<w:sectPr>{header_ref}<w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>"#
+<w:document xmlns:w="{W}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:v="urn:schemas-microsoft-com:vml">{background}<w:body>{body}<w:sectPr>{header_ref}{footer_ref}<w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>"#
         );
 
         let mut parts: Vec<(String, Vec<u8>)> = vec![
@@ -475,12 +552,22 @@ impl DocxBuilder {
             ));
         }
         if let Some(text) = &self.header_text {
+            let paragraphs = self
+                .header_raw
+                .clone()
+                .unwrap_or_else(|| format!("<w:p><w:r><w:t>{}</w:t></w:r></w:p>", esc(text)));
             let header = format!(
                 r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:hdr xmlns:w="{W}"><w:p><w:r><w:t>{}</w:t></w:r></w:p></w:hdr>"#,
-                esc(text)
+<w:hdr xmlns:w="{W}">{paragraphs}</w:hdr>"#
             );
             parts.push(("word/header1.xml".into(), header.into_bytes()));
+        }
+        if let Some(paragraphs) = &self.footer_raw {
+            let footer = format!(
+                r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:ftr xmlns:w="{W}">{paragraphs}</w:ftr>"#
+            );
+            parts.push(("word/footer1.xml".into(), footer.into_bytes()));
         }
         if !comments.is_empty() {
             let items: String = comments
@@ -530,6 +617,9 @@ impl DocxBuilder {
         if self.header_text.is_some() {
             add("word/header1.xml", "officedocument.wordprocessingml.header");
         }
+        if self.footer_raw.is_some() {
+            add("word/footer1.xml", "officedocument.wordprocessingml.footer");
+        }
         if !comments.is_empty() {
             add(
                 "word/comments.xml",
@@ -564,6 +654,21 @@ impl DocxBuilder {
                 r#"<Relationship Id="rIdHeader1" Type="{BASE}/header" Target="header1.xml"/>"#
             );
         }
+        if self.footer_raw.is_some() {
+            rels += &format!(
+                r#"<Relationship Id="rIdFooter1" Type="{BASE}/footer" Target="footer1.xml"/>"#
+            );
+        }
+        let mut link_ids = Vec::new();
+        for (id, url) in self.body.iter().flat_map(|p| &p.link_targets) {
+            if !link_ids.contains(&id) {
+                link_ids.push(id);
+                rels += &format!(
+                    r#"<Relationship Id="{id}" Type="{BASE}/hyperlink" Target="{}" TargetMode="External"/>"#,
+                    esc(url)
+                );
+            }
+        }
         if !comments.is_empty() {
             rels += &format!(
                 r#"<Relationship Id="rIdComments" Type="{BASE}/comments" Target="comments.xml"/>"#
@@ -577,6 +682,13 @@ impl DocxBuilder {
 
     fn settings(&self) -> String {
         let mut settings = String::new();
+        if self
+            .page_background
+            .as_ref()
+            .is_some_and(|(_, shown)| *shown)
+        {
+            settings += "<w:displayBackgroundShape/>";
+        }
         if self.template.is_some() {
             settings += r#"<w:attachedTemplate r:id="rIdTemplate"/>"#;
         }
@@ -623,6 +735,14 @@ impl DocxBuilder {
 "#,
                 esc(&style.id),
                 esc(&style.name)
+            );
+        }
+        for (id, name, rpr) in &self.char_styles {
+            styles += &format!(
+                r#"<w:style w:type="character" w:styleId="{}"><w:name w:val="{}"/><w:rPr>{rpr}</w:rPr></w:style>
+"#,
+                esc(id),
+                esc(name)
             );
         }
         format!(
@@ -703,7 +823,7 @@ impl FontLookup for FixtureFonts {
 /// findings at all.
 pub fn catalogue() -> Vec<Fixture> {
     let long_text = words(401);
-    let pairs: Vec<(RuleId, DocxBuilder, DocxBuilder)> = vec![
+    let mut pairs: Vec<(RuleId, DocxBuilder, DocxBuilder)> = vec![
         (RuleId::Doc001, clean(), clean().title("")),
         (RuleId::Doc002, clean(), clean().no_language()),
         (
@@ -784,6 +904,7 @@ pub fn catalogue() -> Vec<Fixture> {
                 .paragraph(Para::new("3. Close the file.")),
         ),
     ];
+    pairs.extend(links_colour_text::pairs());
     pairs
         .into_iter()
         .flat_map(|(rule, pass, fail)| {

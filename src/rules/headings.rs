@@ -75,7 +75,7 @@ pub fn hdg_002(doc: &Document) -> Vec<Finding> {
 }
 
 /// Built-in styles that are short and large or bold on purpose.
-fn is_exempt_style(p: &Paragraph) -> bool {
+pub(crate) fn is_exempt_style(p: &Paragraph) -> bool {
     p.style_name.as_deref().is_some_and(|name| {
         let name = name.to_ascii_lowercase();
         name == "title" || name == "subtitle" || name == "caption" || name.starts_with("toc")

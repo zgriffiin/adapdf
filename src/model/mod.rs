@@ -19,6 +19,8 @@ use crate::docx::{
 use crate::error::{Error, Result};
 
 mod body;
+pub mod colour;
+pub mod fields;
 pub mod numbering;
 pub mod props;
 pub mod styles;
@@ -27,7 +29,7 @@ pub mod theme;
 use numbering::Numbering;
 use props::{ParagraphProps, RunProps};
 use styles::Styles;
-use theme::Theme;
+use theme::{Rgb, Theme};
 
 const R_NS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
@@ -50,6 +52,16 @@ pub struct Document {
     /// from the default paragraph style, then the document defaults, then the
     /// theme font language in `settings.xml`.
     pub default_language: Option<String>,
+    /// Links in the body (`w:hyperlink` elements and `HYPERLINK` fields).
+    pub links: Vec<fields::Link>,
+    /// The name of every bookmark in `word/document.xml`.
+    pub bookmarks: Vec<String>,
+    pub tocs: Vec<fields::Toc>,
+    /// The page colour (`w:background`), whether or not Word shows it. See
+    /// [`Settings::display_background_shape`].
+    pub page_background: Option<Rgb>,
+    /// The text of each header and footer part.
+    pub header_footers: Vec<fields::HeaderFooter>,
 }
 
 #[derive(Debug, Clone)]
@@ -66,6 +78,8 @@ pub struct Paragraph {
     /// Effective properties after style inheritance and direct formatting.
     pub props: ParagraphProps,
     pub in_table: bool,
+    /// The fill behind the paragraph that comes from its table cell or table.
+    pub container_fill: Option<Rgb>,
     pub drawings: Vec<Drawing>,
     /// Index into [`Document::sections`].
     pub section: usize,
@@ -90,6 +104,17 @@ pub struct Run {
     pub text: String,
     /// Effective properties after style inheritance and direct formatting.
     pub props: RunProps,
+    /// The id of the character style the run names, if any.
+    pub char_style: Option<String>,
+    /// True when the run is inside a `w:hyperlink` element.
+    pub in_hyperlink: bool,
+}
+
+impl Run {
+    /// Some text that shows (spaces and tabs do not count).
+    pub fn has_visible_text(&self) -> bool {
+        !self.text.trim().is_empty()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -133,6 +158,9 @@ pub struct Settings {
     pub attached_template: Option<String>,
     /// `w:themeFontLang`, the language of the theme fonts.
     pub theme_font_lang: Option<String>,
+    /// `w:displayBackgroundShape` is on. Word shows (and exports) the page
+    /// colour only then.
+    pub display_background_shape: bool,
 }
 
 /// Tracked changes and comments.
@@ -181,6 +209,18 @@ impl Document {
             .text(DOCUMENT_PART)?
             .ok_or_else(|| Error::NotDocx(format!("it has no {DOCUMENT_PART}")))?;
         let parsed = body::parse(document_text, &ctx)?;
+        let body_fields = fields::scan_body(
+            document_text,
+            &parsed.paragraphs,
+            &theme,
+            &package.relationships(DOCUMENT_PART)?,
+        )?;
+        let mut header_footers = Vec::new();
+        for name in &header_footer_parts {
+            if let Some(text) = package.text(name)? {
+                header_footers.push(fields::scan_header_footer(name, text)?);
+            }
+        }
 
         let mut markup = Markup {
             tracked_changes: parsed.tracked_changes,
@@ -222,6 +262,11 @@ impl Document {
             header_footer_parts,
             body_run,
             default_language,
+            links: body_fields.links,
+            bookmarks: body_fields.bookmarks,
+            tocs: body_fields.tocs,
+            page_background: body_fields.page_background,
+            header_footers,
         })
     }
 
@@ -286,9 +331,14 @@ fn load_settings(package: &Package) -> Result<Settings> {
                 .find(|r| r.id == id)
         })
         .map(|r| percent_decode(&r.target));
+    let display_background_shape = root
+        .children()
+        .find(|n| n.tag_name().name() == "displayBackgroundShape")
+        .is_some_and(|n| !matches!(n.attribute((W_NS, "val")), Some("0" | "false" | "off")));
     Ok(Settings {
         attached_template,
         theme_font_lang,
+        display_background_shape,
     })
 }
 
