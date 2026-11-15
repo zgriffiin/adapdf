@@ -1,10 +1,14 @@
 //! Text box and layout rules TXB-001 to TXB-004.
 //!
 //! Text in a text box is not a body paragraph (see the module notes in
-//! `model::drawings`), so the other rules never see it. TXB-001 reports it.
+//! `model::drawings`), so the other rules never see it. TXB-001 reports it,
+//! and the text in the shapes of a group or canvas.
+
+use std::collections::HashSet;
 
 use crate::findings::{Finding, Location, RuleId, snippet};
 use crate::model::{Document, Paragraph};
+use crate::rules::images::screenshots;
 
 /// TXB-003: more spaces than this in a row is spacing made with spaces.
 pub const MAX_SPACES_IN_A_ROW: usize = 2;
@@ -19,28 +23,83 @@ pub const MAX_EMPTY_PARAGRAPHS_IN_A_ROW: usize = 1;
 /// TXB-002: a section with more columns than this is a column section.
 pub const MAX_COLUMNS: u32 = 1;
 
-/// TXB-001: a text box or shape contains text. One finding for each text box.
-/// The snippet in the location is the text in the box.
+/// TXB-001: a text box, or a group or canvas with shapes that have text,
+/// contains text. One finding for each text box, group or canvas. The snippet
+/// in the location is the text in it.
+///
+/// Shapes drawn on a screenshot (see [`screenshots`]) are one finding for the
+/// screenshot, at the paragraph of the picture, with its own message. A shape
+/// drawn on a screenshot that is marked decorative is not reported.
 pub fn txb_001(doc: &Document) -> Vec<Finding> {
-    doc.paragraphs
+    let screenshots = screenshots(doc);
+    let on_screenshot: HashSet<(usize, usize)> = screenshots
         .iter()
-        .flat_map(|p| p.drawings.iter().map(move |d| (p, d)))
-        .filter(|(_, d)| d.has_box_text())
-        .map(|(p, d)| {
+        .flat_map(|s| s.shapes.iter().map(|(slot, _)| *slot))
+        .collect();
+    let mut found: Vec<(usize, Finding)> = Vec::new();
+    for p in &doc.paragraphs {
+        for (slot, d) in p.drawings.iter().enumerate() {
+            if !d.has_box_text() || on_screenshot.contains(&(p.index, slot)) {
+                continue;
+            }
+            let (message, how_to_fix) = if d.is_container() {
+                (
+                    format!(
+                        "A group of shapes or a drawing canvas contains text (\"{}\"). Text in shapes is often skipped or read in the wrong order by screen readers.",
+                        snippet(&d.text)
+                    ),
+                    "Save the flowchart or diagram as a picture (right-click it and choose Save as Picture, then insert the picture in line with text). Give the picture alt text that summarises it, and write its steps in the body text, for example as a numbered list.",
+                )
+            } else {
+                (
+                    format!(
+                        "A text box contains text (\"{}\"). Text boxes are often skipped or read in the wrong order by screen readers.",
+                        snippet(&d.text)
+                    ),
+                    "Move the text into the body of the document and delete the text box. To keep the look, use a paragraph style (for example a callout style) with a border or shading.",
+                )
+            };
+            found.push((
+                p.index,
+                Finding::new(
+                    RuleId::Txb001,
+                    message,
+                    how_to_fix,
+                    Location {
+                        snippet: Some(snippet(&d.text)),
+                        ..Location::paragraph(doc, p)
+                    },
+                ),
+            ));
+        }
+    }
+    for s in &screenshots {
+        let text = s
+            .text_shapes()
+            .map(|d| d.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        if text.is_empty() {
+            continue;
+        }
+        found.push((
+            s.paragraph.index,
             Finding::new(
                 RuleId::Txb001,
                 format!(
-                    "A text box contains text (\"{}\"). Text boxes are often skipped or read in the wrong order by screen readers.",
-                    snippet(&d.text)
+                    "Text typed in a shape on a screenshot is read out of order or not at all (\"{}\").",
+                    snippet(&text)
                 ),
-                "Move the text into the body of the document and delete the text box. To keep the look, use a paragraph style (for example a callout style) with a border or shading.",
+                "Put the text in the step text or in the alt text of the screenshot, then delete the text from the shape. If the text only repeats the step text, mark the shape as decorative instead (right-click it, choose Edit Alt Text, and select Mark as decorative).",
                 Location {
-                    snippet: Some(snippet(&d.text)),
-                    ..Location::paragraph(doc, p)
+                    snippet: Some(snippet(&text)),
+                    ..Location::paragraph(doc, s.paragraph)
                 },
-            )
-        })
-        .collect()
+            ),
+        ));
+    }
+    found.sort_by_key(|(index, _)| *index); // stable: keeps order within a paragraph
+    found.into_iter().map(|(_, finding)| finding).collect()
 }
 
 /// TXB-002: a section has more than one column. One finding for the

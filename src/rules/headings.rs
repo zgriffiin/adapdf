@@ -1,4 +1,5 @@
-//! Heading rules HDG-001 to HDG-006.
+//! Heading rules HDG-001 to HDG-004 and HDG-006. HDG-005 was removed: WCAG 2.1
+//! and PDF/UA-1 do not require a single Heading 1.
 //!
 //! A heading is a paragraph in a built-in Heading 1 to 9 style that has some
 //! text ([`Document::headings`]). Title is not a heading here.
@@ -18,9 +19,6 @@ pub const FAKE_HEADING_MAX_WORDS: usize = 12;
 /// HDG-003: the deepest heading level the tool suggests. The template does not
 /// use levels below 4.
 pub const MAX_SUGGESTED_HEADING_LEVEL: u8 = 4;
-
-/// HDG-005: more Heading 1 paragraphs than this is reported.
-pub const MAX_HEADING_1: usize = 1;
 
 /// HDG-001: no headings in a document longer than one page.
 pub fn hdg_001(doc: &Document) -> Vec<Finding> {
@@ -151,26 +149,6 @@ pub fn hdg_004(doc: &Document) -> Vec<Finding> {
             ))
         })
         .collect()
-}
-
-/// HDG-005: more than one Heading 1. One finding, at the second one.
-pub fn hdg_005(doc: &Document) -> Vec<Finding> {
-    let h1: Vec<&Paragraph> = doc
-        .headings()
-        .filter(|h| h.heading_level == Some(1))
-        .collect();
-    if h1.len() <= MAX_HEADING_1 {
-        return Vec::new();
-    }
-    vec![Finding::new(
-        RuleId::Hdg005,
-        format!(
-            "The document has {} paragraphs in the Heading 1 style. A document normally has one Heading 1, the main title.",
-            h1.len()
-        ),
-        "Keep one Heading 1 for the main title and use Heading 2 for the sections. If several Heading 1 paragraphs are on purpose, you can leave this warning.",
-        Location::paragraph(doc, h1[MAX_HEADING_1]),
-    )]
 }
 
 /// HDG-006: a style that is not a built-in Heading style has an outline

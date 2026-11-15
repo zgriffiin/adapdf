@@ -76,6 +76,143 @@ fn txb_001_text_in_a_text_box_is_not_body_text_for_other_rules() {
     assert_eq!(count(&builder, RuleId::Txb001), 1);
 }
 
+/// A picture with alt text and these drawings anchored in the same paragraph.
+fn screenshot_with(shapes: &[Image]) -> DocxBuilder {
+    let picture = Image::picture().alt("The Save dialog with the File name box selected");
+    let paragraph = shapes
+        .iter()
+        .fold(Para::empty().raw_run(&picture.xml()), |para, shape| {
+            para.raw_run(&shape.xml())
+        });
+    clean().paragraph(paragraph)
+}
+
+fn boxed_arrow(text: &str) -> Image {
+    Image::shape().floating().text(text)
+}
+
+const SCREENSHOT_MESSAGE: &str =
+    "Text typed in a shape on a screenshot is read out of order or not at all";
+
+#[test]
+fn txb_001_text_in_shapes_on_a_screenshot_is_one_finding_for_the_screenshot() {
+    let builder = screenshot_with(&[
+        boxed_arrow("Click Save"),
+        boxed_arrow("Then close"),
+        Image::shape().floating().decorative(),
+    ]);
+    let found = rule_findings(&builder, RuleId::Txb001);
+    assert_eq!(found.len(), 1);
+    let f = &found[0];
+    assert_eq!(f.severity, Severity::Error);
+    assert_eq!(f.fix, FixKind::Manual);
+    assert!(f.message.contains(SCREENSHOT_MESSAGE), "{}", f.message);
+    assert!(f.message.contains("Click Save"), "{}", f.message);
+    assert_eq!(
+        f.location.paragraph_index,
+        Some(2),
+        "the picture's paragraph"
+    );
+    assert_eq!(f.location.snippet.as_deref(), Some("Click Save Then close"));
+    assert!(f.how_to_fix.contains("step text"), "{}", f.how_to_fix);
+    assert!(f.how_to_fix.contains("decorative"), "{}", f.how_to_fix);
+    // The shapes are not reported again by IMG-001 or IMG-004.
+    assert_eq!(count(&builder, RuleId::Img001), 0);
+    assert_eq!(count(&builder, RuleId::Img004), 0);
+    assert_eq!(count(&builder, RuleId::Img007), 0);
+}
+
+#[test]
+fn txb_001_arrows_and_text_shapes_on_one_screenshot_give_img_007_and_txb_001() {
+    let builder = screenshot_with(&[
+        Image::shape().floating(),
+        Image::shape().floating(),
+        boxed_arrow("Click Save"),
+    ]);
+    assert_eq!(count(&builder, RuleId::Txb001), 1);
+    assert_eq!(count(&builder, RuleId::Img007), 1);
+    assert_eq!(count(&builder, RuleId::Img001), 0);
+}
+
+#[test]
+fn txb_001_a_decorative_shape_with_text_on_a_screenshot_is_not_reported() {
+    let builder = screenshot_with(&[boxed_arrow("Click Save").decorative()]);
+    assert!(common::check(&builder).is_empty());
+}
+
+#[test]
+fn txb_001_vml_shapes_with_text_on_a_screenshot() {
+    let builder = screenshot_with(&[Image::vml_shape().floating().text("Click Save")]);
+    let found = rule_findings(&builder, RuleId::Txb001);
+    assert_eq!(found.len(), 1);
+    assert!(found[0].message.contains(SCREENSHOT_MESSAGE));
+}
+
+#[test]
+fn txb_001_text_in_shapes_far_from_a_screenshot_is_a_text_box() {
+    let builder = clean()
+        .paragraph(Para::empty().raw_run(&Image::picture().alt("The Save dialog").xml()))
+        .para("Step text.")
+        .paragraph(Para::empty().raw_run(&boxed_arrow("Click Save").xml()));
+    let found = rule_findings(&builder, RuleId::Txb001);
+    assert_eq!(found.len(), 1);
+    assert!(found[0].message.starts_with("A text box contains text"));
+    assert_eq!(found[0].location.paragraph_index, Some(4));
+}
+
+#[test]
+fn txb_001_findings_stay_in_document_order() {
+    let builder = clean()
+        .paragraph(Para::new("Before.").raw_run(&text_box("First")))
+        .para("Filler.")
+        .paragraph(
+            Para::empty()
+                .raw_run(&Image::picture().alt("The Save dialog").xml())
+                .raw_run(&boxed_arrow("Second").xml()),
+        )
+        .para("Filler.")
+        .paragraph(Para::new("After.").raw_run(&text_box("Third")));
+    let places: Vec<_> = rule_findings(&builder, RuleId::Txb001)
+        .iter()
+        .map(|f| f.location.paragraph_index)
+        .collect();
+    assert_eq!(places, [Some(2), Some(4), Some(6)]);
+}
+
+#[test]
+fn txb_001_a_flowchart_canvas_with_text_in_its_shapes_is_one_finding() {
+    let canvas = Image::canvas().alt("A flowchart of the sign-in steps");
+    assert!(common::check(&clean().paragraph(Para::empty().raw_run(&canvas.xml()))).is_empty());
+    let with_text = clean().paragraph(Para::empty().raw_run(&canvas.text("Start").xml()));
+    let found = rule_findings(&with_text, RuleId::Txb001);
+    assert_eq!(found.len(), 1);
+    assert!(
+        found[0]
+            .message
+            .starts_with("A group of shapes or a drawing canvas contains text"),
+        "{}",
+        found[0].message
+    );
+    assert!(
+        found[0].how_to_fix.contains("picture"),
+        "{}",
+        found[0].how_to_fix
+    );
+    assert_eq!(found[0].location.snippet.as_deref(), Some("Start"));
+    // The canvas has alt text and is in line with the text.
+    assert_eq!(count(&with_text, RuleId::Img001), 0);
+    assert_eq!(count(&with_text, RuleId::Img004), 0);
+}
+
+#[test]
+fn txb_001_groups_with_text_in_their_shapes_are_reported_once() {
+    for group in [Image::group(), Image::vml_group()] {
+        let builder =
+            clean().paragraph(Para::empty().raw_run(&group.alt("A flowchart").text("Start").xml()));
+        assert_eq!(count(&builder, RuleId::Txb001), 1);
+    }
+}
+
 // ---- TXB-002 -------------------------------------------------------------
 
 #[test]

@@ -1,14 +1,30 @@
-//! Image and object rules IMG-001 to IMG-006.
+//! Image and object rules IMG-001 to IMG-007.
 //!
 //! The rules read [`Paragraph::drawings`]: DrawingML (`w:drawing`), VML
 //! (`w:pict`) and embedded objects (`w:object`). Alt text is the description
 //! (`descr`, or VML `alt`), or the title when there is no description. A
 //! drawing marked decorative has no alt text and needs none. A text box with
-//! text is not asked for alt text, because TXB-001 reports it. The tool never
-//! writes alt text; the fix for IMG-001 and IMG-002 asks the user.
+//! text is not asked for alt text, because TXB-001 reports it. A group or a
+//! canvas is one drawing, with its own alt text. The tool never writes alt
+//! text; the fix for IMG-001 and IMG-002 asks the user.
+//!
+//! Annotated screenshots (IMG-007): staff draw arrows and boxes over a
+//! screenshot in Word. [`screenshots`] finds each picture with the floating
+//! shapes drawn on it. IMG-007 reports the shapes that have no alt text and
+//! are not decorative, once for the screenshot. IMG-001 and IMG-004 then skip
+//! those shapes (see `unresolved_annotations`), and TXB-001 reports the shapes
+//! that have text once for the screenshot.
+
+use std::collections::HashSet;
 
 use crate::findings::{Finding, Location, RuleId, snippet};
 use crate::model::{Document, Drawing, ObjectKind, Paragraph};
+
+/// IMG-007: a floating shape is drawn on a picture when it is anchored in the
+/// paragraph of the picture, or in a paragraph at most this many paragraphs
+/// before or after it. The rule uses the paragraph the shape is anchored in,
+/// not where the shape is on the page: the position would need page layout.
+pub const ANNOTATION_MAX_PARAGRAPH_DISTANCE: usize = 1;
 
 /// IMG-003: alt text with more characters than this is too long.
 pub const MAX_ALT_TEXT_CHARS: usize = 250;
@@ -54,6 +70,8 @@ fn label(object: ObjectKind) -> &'static str {
         ObjectKind::Picture => "picture",
         ObjectKind::Chart => "chart",
         ObjectKind::Shape => "shape",
+        ObjectKind::Group => "group of shapes",
+        ObjectKind::Canvas => "drawing canvas",
         ObjectKind::SmartArt => "SmartArt graphic",
         ObjectKind::Ole => "embedded object",
     }
@@ -65,12 +83,113 @@ fn drawings(doc: &Document) -> impl Iterator<Item = (&Paragraph, &Drawing)> {
         .flat_map(|p| p.drawings.iter().map(move |d| (p, d)))
 }
 
-/// IMG-001: a picture, chart, shape or SmartArt has no alt text and is not
-/// marked decorative.
+/// Where a drawing is: the paragraph index and its place in
+/// [`Paragraph::drawings`].
+type Slot = (usize, usize);
+
+/// A picture with the floating shapes drawn on it. See the module notes.
+pub(crate) struct Screenshot<'a> {
+    /// The paragraph that holds the picture.
+    pub paragraph: &'a Paragraph,
+    /// The floating shapes (not pictures, not groups) anchored near the
+    /// picture, with where they are.
+    pub shapes: Vec<(Slot, &'a Drawing)>,
+}
+
+impl Screenshot<'_> {
+    /// Shapes with no alt text that are not decorative and have no text: the
+    /// shapes IMG-007 reports.
+    pub fn unresolved(&self) -> impl Iterator<Item = Slot> + '_ {
+        self.shapes
+            .iter()
+            .filter(|(_, d)| !d.has_box_text() && !d.decorative && d.alt_text().is_none())
+            .map(|(slot, _)| *slot)
+    }
+
+    /// Shapes that have text and are not decorative: the shapes TXB-001
+    /// reports for the screenshot. A decorative shape is an artifact, so its
+    /// text is not read and is not reported.
+    pub fn text_shapes(&self) -> impl Iterator<Item = &Drawing> + '_ {
+        self.shapes
+            .iter()
+            .map(|(_, d)| *d)
+            .filter(|d| d.has_box_text() && !d.decorative)
+    }
+}
+
+/// Every picture that has a floating shape drawn on it, in document order. A
+/// picture is inline or floating. A picture inside a group is not a picture
+/// here (a group is one drawing), so a picture and shapes that are already
+/// grouped are not a screenshot.
+///
+/// A shape belongs to one picture: the one in its own paragraph, else the one
+/// in the paragraph before, else the one in the paragraph after. A paragraph
+/// with two pictures counts as one screenshot.
+pub(crate) fn screenshots(doc: &Document) -> Vec<Screenshot<'_>> {
+    let mut found: Vec<Screenshot> = Vec::new();
+    for p in &doc.paragraphs {
+        if p.drawings.iter().any(|d| d.object == ObjectKind::Picture) {
+            found.push(Screenshot {
+                paragraph: p,
+                shapes: Vec::new(),
+            });
+        }
+    }
+    for p in &doc.paragraphs {
+        for (slot, d) in p.drawings.iter().enumerate() {
+            if !(d.floating && d.object == ObjectKind::Shape) {
+                continue;
+            }
+            let nearby = (0..=ANNOTATION_MAX_PARAGRAPH_DISTANCE).flat_map(|distance| {
+                [
+                    p.index.checked_sub(distance),
+                    (distance > 0).then_some(p.index + distance),
+                ]
+            });
+            let owner = nearby
+                .flatten()
+                .find_map(|i| found.iter().position(|s| s.paragraph.index == i));
+            if let Some(owner) = owner {
+                found[owner].shapes.push(((p.index, slot), d));
+            }
+        }
+    }
+    found.retain(|s| !s.shapes.is_empty());
+    found
+}
+
+/// The shapes drawn on a screenshot that IMG-007 reports. IMG-001 and IMG-004
+/// skip them, because IMG-007 replaces those findings.
+fn unresolved_annotations(doc: &Document) -> HashSet<Slot> {
+    screenshots(doc)
+        .iter()
+        .flat_map(|s| s.unresolved())
+        .collect()
+}
+
+/// Every drawing with its place.
+fn slotted_drawings(doc: &Document) -> impl Iterator<Item = (&Paragraph, Slot, &Drawing)> {
+    doc.paragraphs.iter().flat_map(|p| {
+        p.drawings
+            .iter()
+            .enumerate()
+            .map(move |(slot, d)| (p, (p.index, slot), d))
+    })
+}
+
+/// IMG-001: a picture, chart, shape, group, canvas or SmartArt has no alt text
+/// and is not marked decorative. A shape drawn on a screenshot is reported by
+/// IMG-007 instead.
 pub fn img_001(doc: &Document) -> Vec<Finding> {
-    drawings(doc)
-        .filter(|(_, d)| d.needs_alt_text() && !d.decorative && d.alt_text().is_none())
-        .map(|(p, d)| {
+    let annotations = unresolved_annotations(doc);
+    slotted_drawings(doc)
+        .filter(|(_, slot, d)| {
+            d.needs_alt_text()
+                && !d.decorative
+                && d.alt_text().is_none()
+                && !annotations.contains(slot)
+        })
+        .map(|(p, _, d)| {
             Finding::new(
                 RuleId::Img001,
                 format!(
@@ -146,16 +265,27 @@ pub fn img_003(doc: &Document) -> Vec<Finding> {
         .collect()
 }
 
-/// IMG-004: a picture is floating (not "In line with text"). Charts, shapes
-/// and SmartArt are not checked, because the spec names images.
+/// IMG-004: a floating object (not "In line with text") needs a place in the
+/// reading order: a picture, chart, SmartArt, group, canvas or shape. Not
+/// reported: a decorative object (an artifact has no reading order), a text
+/// box with text (TXB-001 reports it) and a shape drawn on a screenshot that
+/// IMG-007 reports.
 pub fn img_004(doc: &Document) -> Vec<Finding> {
-    drawings(doc)
-        .filter(|(_, d)| d.object == ObjectKind::Picture && d.floating)
-        .map(|(p, _)| {
+    let annotations = unresolved_annotations(doc);
+    slotted_drawings(doc)
+        .filter(|(_, slot, d)| {
+            d.floating
+                && !d.decorative
+                && d.object != ObjectKind::Ole
+                && !d.is_text_box_with_text()
+                && !annotations.contains(slot)
+        })
+        .map(|(p, _, d)| {
+            let label = label(d.object);
             Finding::new(
                 RuleId::Img004,
-                "A picture floats instead of being in line with the text. Its place in the reading order may be wrong.",
-                "Select the picture, choose Layout Options, and select In Line with Text.",
+                format!("A {label} floats instead of being in line with the text. Its place in the reading order may be wrong."),
+                format!("Select the {label}, choose Layout Options, and select In Line with Text."),
                 Location::paragraph(doc, p),
             )
         })
@@ -246,6 +376,35 @@ pub fn img_006(doc: &Document) -> Vec<Finding> {
         "Check how they read in the PDF with the PAC screen-reader preview. If they are wrong, replace an equation with text, or an object with a table or a picture that has alt text.",
         Location::paragraph(doc, first),
     )]
+}
+
+/// IMG-007: a screenshot has arrows, boxes or lines drawn on it in Word that
+/// are not grouped with it and are not marked decorative. One finding for each
+/// screenshot, at the paragraph of the picture, with the number of shapes that
+/// have no alt text. See [`screenshots`] for how shapes are matched to a
+/// picture.
+pub fn img_007(doc: &Document) -> Vec<Finding> {
+    screenshots(doc)
+        .iter()
+        .filter_map(|s| {
+            let count = s.unresolved().count();
+            (count > 0).then(|| {
+                let (things, them, they) = if count == 1 {
+                    ("arrow or box", "it", "it has")
+                } else {
+                    ("arrows or boxes", "them", "they have")
+                };
+                Finding::new(
+                    RuleId::Img007,
+                    format!(
+                        "This screenshot has {count} {things} drawn on it in Word. Screen readers cannot read {them}, and {they} no alt text."
+                    ),
+                    "Choose one way to fix it. (a) Make sure the alt text of the screenshot says what the arrows and boxes point to, for example \"The Save dialog. A red box shows the File name field.\" Then mark each arrow and box as decorative: right-click it, choose Edit Alt Text, and select Mark as decorative. (b) Select the screenshot and the arrows and boxes, right-click, and choose Group. Give the group alt text that describes the screenshot and what is highlighted, then set the group to In Line with Text. The tool can mark the arrows and boxes as decorative for you, but only after you confirm that the alt text of the screenshot describes what they highlight.",
+                    Location::paragraph(doc, s.paragraph),
+                )
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]

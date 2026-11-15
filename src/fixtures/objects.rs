@@ -3,7 +3,7 @@
 //!
 //! The pictures have no image data and the charts, SmartArt and embedded
 //! objects have no parts behind them, so these documents are for the checker
-//! only. The fixture files on disk use only a picture, a text box, an
+//! only. The fixture files on disk use only pictures, shapes, a text box, an
 //! equation and tables.
 
 use super::{DocxBuilder, Para, Run, clean, esc};
@@ -13,7 +13,10 @@ const PICTURE_URI: &str = "http://schemas.openxmlformats.org/drawingml/2006/pict
 const CHART_URI: &str = "http://schemas.openxmlformats.org/drawingml/2006/chart";
 const DIAGRAM_URI: &str = "http://schemas.openxmlformats.org/drawingml/2006/diagram";
 const SHAPE_URI: &str = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
+const GROUP_URI: &str = "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup";
+const CANVAS_URI: &str = "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas";
 const OFFICE_NS: &str = "urn:schemas-microsoft-com:office:office";
+const PICTURE_XML: &str = r#"<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="Picture 1"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>"#;
 const EXTENT: &str = r#"<wp:extent cx="914400" cy="914400"/>"#;
 
 #[derive(Debug, Clone, Copy)]
@@ -22,8 +25,11 @@ enum ImageKind {
     Chart,
     SmartArt,
     Shape,
+    Group,
+    Canvas,
     VmlPicture,
     VmlShape,
+    VmlGroup,
 }
 
 /// A drawing in a run, for [`Para::raw_run`]. Use [`Image::xml`].
@@ -34,6 +40,8 @@ pub struct Image {
     title: Option<String>,
     decorative: bool,
     floating: bool,
+    /// Text in a shape (or in a shape inside a group or canvas).
+    text: Option<String>,
 }
 
 impl Image {
@@ -44,6 +52,7 @@ impl Image {
             title: None,
             decorative: false,
             floating: false,
+            text: None,
         }
     }
 
@@ -63,6 +72,21 @@ impl Image {
     /// A DrawingML shape with no text.
     pub fn shape() -> Image {
         Image::new(ImageKind::Shape)
+    }
+
+    /// A group (`wpg:wgp`) of a picture and a shape.
+    pub fn group() -> Image {
+        Image::new(ImageKind::Group)
+    }
+
+    /// A drawing canvas (`wpc:wpc`) with two shapes, like a small flowchart.
+    pub fn canvas() -> Image {
+        Image::new(ImageKind::Canvas)
+    }
+
+    /// An older VML group (`v:group`) of a picture and a shape.
+    pub fn vml_group() -> Image {
+        Image::new(ImageKind::VmlGroup)
     }
 
     /// An older VML picture (`v:shape` with `v:imagedata`).
@@ -87,6 +111,13 @@ impl Image {
         self
     }
 
+    /// Text in the shape, or in one shape of a group or canvas. A shape with
+    /// text is a text box. Pictures, charts and SmartArt ignore it.
+    pub fn text(mut self, text: &str) -> Image {
+        self.text = Some(text.to_string());
+        self
+    }
+
     /// Marks the drawing decorative (DrawingML only).
     pub fn decorative(mut self) -> Image {
         self.decorative = true;
@@ -103,29 +134,39 @@ impl Image {
     /// The run XML.
     pub fn xml(&self) -> String {
         match self.kind {
-            ImageKind::VmlPicture | ImageKind::VmlShape => self.vml(),
+            ImageKind::VmlPicture | ImageKind::VmlShape | ImageKind::VmlGroup => self.vml(),
             _ => self.drawing_ml(),
         }
     }
 
     fn drawing_ml(&self) -> String {
-        let (uri, graphic) = match self.kind {
-            ImageKind::Picture => (
-                PICTURE_URI,
-                r#"<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="Picture 1"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>"#,
-            ),
+        let (uri, graphic): (&str, String) = match self.kind {
+            ImageKind::Picture => (PICTURE_URI, PICTURE_XML.to_string()),
             ImageKind::Chart => (
                 CHART_URI,
-                r#"<c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"/>"#,
+                r#"<c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"/>"#.to_string(),
             ),
             ImageKind::SmartArt => (
                 DIAGRAM_URI,
-                r#"<dgm:relIds xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram"/>"#,
+                r#"<dgm:relIds xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram"/>"#.to_string(),
             ),
-            _ => (
-                SHAPE_URI,
-                r#"<wps:wsp><wps:cNvSpPr/><wps:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></wps:spPr><wps:bodyPr/></wps:wsp>"#,
+            ImageKind::Group => (
+                GROUP_URI,
+                format!(
+                    r#"<wpg:wgp xmlns:wpg="{GROUP_URI}"><wpg:cNvGrpSpPr/><wpg:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/><a:chOff x="0" y="0"/><a:chExt cx="914400" cy="914400"/></a:xfrm></wpg:grpSpPr>{}{}</wpg:wgp>"#,
+                    PICTURE_XML,
+                    wps_shape(self.text.as_deref())
+                ),
             ),
+            ImageKind::Canvas => (
+                CANVAS_URI,
+                format!(
+                    r#"<wpc:wpc xmlns:wpc="{CANVAS_URI}"><wpc:bg/><wpc:whole/>{}{}</wpc:wpc>"#,
+                    wps_shape(self.text.as_deref()),
+                    wps_shape(None)
+                ),
+            ),
+            _ => (SHAPE_URI, wps_shape(self.text.as_deref())),
         };
         let mut doc_pr = r#"<wp:docPr id="1" name="Object 1""#.to_string();
         if let Some(alt) = &self.alt {
@@ -141,7 +182,7 @@ impl Image {
         doc_pr += "</wp:docPr>";
         format!(
             "<w:r>{}</w:r>",
-            drawing(self.floating, &doc_pr, uri, graphic)
+            drawing(self.floating, &doc_pr, uri, &graphic)
         )
     }
 
@@ -160,14 +201,43 @@ impl Image {
             .as_ref()
             .map(|t| format!(r#" o:title="{}""#, esc(t)))
             .unwrap_or_default();
+        let text_box = self
+            .text
+            .as_ref()
+            .map(|t| {
+                format!(
+                    r#"<v:textbox><w:txbxContent><w:p><w:r><w:t xml:space="preserve">{}</w:t></w:r></w:p></w:txbxContent></v:textbox>"#,
+                    esc(t)
+                )
+            })
+            .unwrap_or_default();
         let shape = match self.kind {
             ImageKind::VmlPicture => {
                 format!(r#"<v:shape {attrs}><v:imagedata{title}/></v:shape>"#)
             }
+            ImageKind::VmlGroup => format!(
+                r#"<v:group {attrs}{title}><v:shape id="_x0000_s1030" style="position:absolute;width:36pt;height:36pt"><v:imagedata/></v:shape><v:rect id="_x0000_s1031" style="position:absolute;width:18pt;height:18pt">{text_box}</v:rect></v:group>"#
+            ),
+            _ if self.text.is_some() => format!(r#"<v:rect {attrs}{title}>{text_box}</v:rect>"#),
             _ => format!(r#"<v:rect {attrs}{title}/>"#),
         };
         format!(r#"<w:r><w:pict xmlns:o="{OFFICE_NS}">{shape}</w:pict></w:r>"#)
     }
+}
+
+/// A DrawingML shape (`wps:wsp`), with a text box when it has text.
+fn wps_shape(text: Option<&str>) -> String {
+    let text_box = text
+        .map(|t| {
+            format!(
+                r#"<wps:txbx><w:txbxContent><w:p><w:r><w:t xml:space="preserve">{}</w:t></w:r></w:p></w:txbxContent></wps:txbx>"#,
+                esc(t)
+            )
+        })
+        .unwrap_or_default();
+    format!(
+        r#"<wps:wsp><wps:cNvSpPr/><wps:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></wps:spPr>{text_box}<wps:bodyPr/></wps:wsp>"#
+    )
 }
 
 /// `w:drawing` with a DrawingML object. `floating` writes `wp:anchor`, else
@@ -424,6 +494,18 @@ fn with_image(image: &Image) -> DocxBuilder {
     clean().paragraph(Para::empty().raw_run(&image.xml()))
 }
 
+/// A screenshot with three floating shapes (arrows or boxes) drawn on it, in
+/// the same paragraph.
+fn annotated(picture: &Image, shape: &Image) -> DocxBuilder {
+    clean().paragraph(
+        Para::empty()
+            .raw_run(&picture.xml())
+            .raw_run(&shape.xml())
+            .raw_run(&shape.xml())
+            .raw_run(&shape.xml()),
+    )
+}
+
 /// The passing and failing fixture of the IMG, TXB and TBL rules, as
 /// `(rule, passing, failing)`.
 pub(super) fn pairs() -> Vec<(RuleId, DocxBuilder, DocxBuilder)> {
@@ -465,6 +547,11 @@ pub(super) fn pairs() -> Vec<(RuleId, DocxBuilder, DocxBuilder)> {
             RuleId::Img006,
             clean().para("Print the guide on A4 paper."),
             clean().paragraph(Para::new("The area is ").raw_run(&equation("A=wh"))),
+        ),
+        (
+            RuleId::Img007,
+            annotated(&good_picture, &Image::shape().floating().decorative()),
+            annotated(&good_picture, &Image::shape().floating()),
         ),
         (
             RuleId::Txb001,

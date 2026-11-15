@@ -1,6 +1,7 @@
 # Test plan
 
-Status: M2 (all pre-check rules). This plan says what is tested now and what is only planned. A row
+Status: M2 (all pre-check rules), plus groups, canvases and annotated
+screenshots (IMG-007). This plan says what is tested now and what is only planned. A row
 marked "planned" has no test yet.
 
 ## Scope
@@ -8,8 +9,11 @@ marked "planned" has no test yet.
 M1 built stage 1 of the [pipeline](specs/02-pipeline.md#stage-1--pre-check):
 open a .docx, build a typed view of it, run the pre-check rules, and report
 findings with `adapdf check`. M1 covered DOC-001 to DOC-006, HDG-001 to
-HDG-006, LST-001 and LST-002. M2a added the IMG, TXB and TBL rules and M2b
-added the LNK, CLR and TXT rules, so every rule in
+HDG-004, HDG-006, LST-001 and LST-002. (HDG-005, more than one Heading 1, was
+removed later: WCAG 2.1 and PDF/UA-1 do not require a single Heading 1.) M2a
+added the IMG, TXB and TBL rules and M2b added the LNK, CLR and TXT rules. A
+later change added groups and drawing canvases as one object, widened IMG-004,
+and added IMG-007 (annotated screenshots). Every rule in
 [03-precheck-rules](specs/03-precheck-rules.md) is now built.
 
 Not built: fixes, Word export, PDF metadata fixes, veraPDF, the report, the
@@ -71,8 +75,8 @@ veraPDF, installer and manual tests will get their steps here when they exist.
 
 ## Counts at the time of writing
 
-`cargo test` runs 418 tests: 122 unit, 13 CLI, 5 fixture, 31 DOC rule tests,
-31 HDG rule tests, 17 LST rule tests, 34 IMG rule tests, 27 TXB rule tests, 29
+`cargo test` runs 450 tests: 125 unit, 13 CLI, 5 fixture, 31 DOC rule tests,
+27 HDG rule tests, 17 LST rule tests, 59 IMG rule tests, 35 TXB rule tests, 29
 TBL rule tests, 23 LNK rule tests, 40 CLR rule tests and 46 TXT rule tests. The
 count changes as tests are added.
 `cargo test -- --list` gives the current list.
@@ -82,11 +86,12 @@ count changes as tests are added.
 Test names start with the rule ID in lower case, for example
 `hdg_003_threshold_is_12_words`. All fixtures are in `tests/fixtures/`.
 
-### Implemented (M1, M2a and M2b)
+### Implemented (M1, M2a, M2b and IMG-007)
 
 All 39 rules of spec 03 are implemented, listed in spec order. DOC, HDG and
 LST came in M1; IMG, TXB and TBL in M2a (images, text boxes and tables); LNK,
-CLR and TXT in M2b (links, colour and text).
+CLR and TXT in M2b (links, colour and text). IMG-007 came after M2. HDG-005
+was removed and is not numbered again.
 
 | Rule | Severity, fix | Fixtures | Tests | Status |
 |---|---|---|---|---|
@@ -100,15 +105,15 @@ CLR and TXT in M2b (links, colour and text).
 | HDG-002 | error, manual | `HDG-002-fail/pass.docx` | `hdg_002_*` | implemented |
 | HDG-003 | warning, auto | `HDG-003-fail/pass.docx` | `hdg_003_*` | implemented (heuristic) |
 | HDG-004 | error, auto | `HDG-004-fail/pass.docx` | `hdg_004_*` | implemented |
-| HDG-005 | warning, manual | `HDG-005-fail/pass.docx` | `hdg_005_*` | implemented |
 | HDG-006 | warning, manual | `HDG-006-fail/pass.docx` | `hdg_006_*` | implemented |
-| IMG-001 | error, ask | `IMG-001-fail/pass.docx` | `img_001_*` in `tests/rules_images.rs` | implemented |
+| IMG-001 | error, ask | `IMG-001-fail/pass.docx` | `img_001_*` in `tests/rules_images.rs` (groups and canvases: `img_001_a_group_*`) | implemented (a group or canvas is one object; shapes that IMG-007 reports are skipped) |
 | IMG-002 | warning, ask | `IMG-002-fail/pass.docx` | `img_002_*`; `rules::images::tests::*` for the placeholder patterns | implemented (heuristic) |
 | IMG-003 | warning, manual | `IMG-003-fail/pass.docx` | `img_003_*` | implemented |
-| IMG-004 | warning, auto | `IMG-004-fail/pass.docx` | `img_004_*` | implemented (pictures only, see below) |
+| IMG-004 | warning, auto | `IMG-004-fail/pass.docx` | `img_004_*` | implemented (every floating object that is not decorative, see below) |
 | IMG-005 | warning, manual | `IMG-005-fail/pass.docx` | `img_005_*` | implemented (heuristic) |
 | IMG-006 | warning, manual | `IMG-006-fail/pass.docx` | `img_006_*` | implemented (fixture uses an equation; OLE is tested in memory) |
-| TXB-001 | error, manual | `TXB-001-fail/pass.docx` | `txb_001_*` in `tests/rules_textboxes.rs` | implemented |
+| IMG-007 | error, ask | `IMG-007-fail/pass.docx` | `img_007_*` | implemented (heuristic: anchor paragraph, see below) |
+| TXB-001 | error, manual | `TXB-001-fail/pass.docx` | `txb_001_*` in `tests/rules_textboxes.rs` | implemented (also text in groups and canvases, and one finding for the text shapes on a screenshot) |
 | TXB-002 | warning, manual | `TXB-002-fail/pass.docx` | `txb_002_*` | implemented |
 | TXB-003 | warning, manual | `TXB-003-fail/pass.docx` | `txb_003_*`; `rules::textboxes::tests::*` | implemented |
 | TXB-004 | warning, auto | `TXB-004-fail/pass.docx` | `txb_004_*` | implemented |
@@ -138,7 +143,7 @@ HDG, IMG, TXB, LST and TBL) and `severities_and_fixes_match_spec_03` in
 `UpdateFields` (TXT-004) are not built (planned M3).
 
 The model parts for IMG, TXB and TBL are tested in `model::drawings::tests::*`
-and `model::tables::tests::*`.
+(including groups, canvases and VML groups) and `model::tables::tests::*`.
 
 ## Traceability: pipeline and interfaces
 
@@ -171,8 +176,8 @@ changes.
   paragraph index counts from 0 in the data and from 1 in the text report.
 - **Heading.** A paragraph in a built-in Heading 1 to Heading 9 style (by the
   style's name) that has some text. Title is not a heading. An empty heading
-  is not counted as a heading by HDG-001, HDG-002 and HDG-005, because
-  HDG-004 reports it.
+  is not counted as a heading by HDG-001 and HDG-002, because HDG-004
+  reports it.
 - **Formatting.** "Bold", "larger than body text" and the language are the
   effective values: document defaults, then the paragraph style and its base
   styles, then the character style, then direct formatting. Table styles are
@@ -224,7 +229,9 @@ changes.
   and the Title, Subtitle, Caption and TOC styles. The suggested level is one
   below the heading above it (at most Heading 4), or Heading 1 if there is
   none.
-- **HDG-005.** One finding, at the second Heading 1.
+- **HDG-005.** Removed. Spec 04 uses several Heading 1 paragraphs, and WCAG
+  2.1 and PDF/UA-1 do not require a single Heading 1. The fixtures, tests and
+  spec row are deleted, and the other rules keep their numbers.
 - **HDG-006.** The style (not a built-in Heading style) has an outline level
   from 1 to 9, directly or through a base style; the level "body text" does
   not count. One finding per style, at the first paragraph that uses it. A style
@@ -254,12 +261,18 @@ Decisions for the IMG, TXB and TBL rules where spec 03 leaves room.
 - **What is a drawing.** One `w:drawing`, `w:pict` or `w:object` in a run, in
   the part Word reads (`mc:Choice`, not `mc:Fallback`). The kind comes from
   the graphic data URI: picture, chart (also chartex), SmartArt (diagram),
-  other (shape, group, canvas). A drawing with no graphic data is a picture.
-  VML is a picture when it has `v:imagedata`, an embedded object when it has
-  `o:OLEObject` (or is a `w:object`), and a shape otherwise.
-- **IMG-001.** Applies to pictures, charts, shapes and SmartArt. It does not
-  apply to embedded objects (IMG-006) or to a text box that has text
-  (TXB-001 reports it).
+  group (`wordprocessingGroup`), canvas (`wordprocessingCanvas`), other
+  (shape). A drawing with no graphic data is a picture. VML is a group when
+  its first shape is a `v:group` (its inner pictures are not read), a picture
+  when it has `v:imagedata`, an embedded object when it has `o:OLEObject` (or
+  is a `w:object`), and a shape otherwise. A group or canvas is one drawing:
+  the alt text, the decorative mark and the floating state come from its own
+  `wp:docPr` (or the attributes of the VML group), and the pictures and shapes
+  inside are not drawings of their own.
+- **IMG-001.** Applies to pictures, charts, shapes, groups, canvases and
+  SmartArt. It does not apply to embedded objects (IMG-006), to a text box that
+  has text (TXB-001 reports it), or to a shape that IMG-007 reports. A group or
+  canvas whose shapes have text still needs its own alt text.
 - **IMG-002.** Placeholder alt text is: only one of `image`, `picture`,
   `screenshot`, `graphic`, `photo`, `figure` (case, spaces and punctuation
   around it ignored); or text that ends in an image extension; or one of
@@ -270,9 +283,16 @@ Decisions for the IMG, TXB and TBL rules where spec 03 leaves room.
   screen.png` is reported even though a person might mean it.
 - **IMG-003.** Counts characters (not bytes) of the trimmed alt text. 250
   passes, 251 fails.
-- **IMG-004.** Pictures only (the spec says "image"). Floating charts, shapes
-  and SmartArt are not reported. VML floats when its style has
-  `position:absolute`. A floating decorative picture is still reported.
+- **IMG-004.** Any floating (`wp:anchor`) object that needs a place in the
+  reading order: picture, chart, SmartArt, group, canvas and shape. VML floats
+  when its style has `position:absolute`. Not reported: a decorative object (an
+  artifact has no reading order), a text box with text (TXB-001 reports it; a
+  group with text is not a text box and is reported), and a shape that IMG-007
+  reports. The fix is still `MakeImageInline`. Inline conversion is simple for
+  a picture, chart or SmartArt. It is not checked for a group or canvas (Word
+  may keep the layout of the shapes inside, or not), and for a single floating
+  shape it moves the shape off its place. M3 must check this before it applies
+  the fix to groups, canvases and shapes.
 - **IMG-005.** The caption is the paragraph just before or just after the
   image, in a style named Caption. Alt text and caption are the same when they
   match after case, repeated spaces and punctuation at both ends are ignored.
@@ -287,7 +307,10 @@ Decisions for the IMG, TXB and TBL rules where spec 03 leaves room.
   drawing (`Drawing::text`) and is what TXB-001 reads. A box with no text, or
   only spaces, is not reported. One finding for each box; the location is the
   paragraph that holds the box and the snippet is the box text. Pictures and
-  tables inside a text box are not read.
+  tables inside a text box are not read. The text in the shapes of a group or
+  canvas is joined and reported the same way, once for the group or canvas,
+  with its own message. Shapes drawn on a screenshot are reported once for the
+  screenshot (see "Annotated screenshots" below).
 - **TXB-002.** A section with `w:cols w:num` above 1. One finding for the
   document, at the first paragraph of the first such section.
 - **TXB-003.** More than 2 spaces in a row, or more than 1 tab in a row, in the
@@ -330,6 +353,64 @@ Decisions for the IMG, TXB and TBL rules where spec 03 leaves room.
 - **IMG-006 does not say how Word exports** an equation or an object. Phase 0
   decides.
 - **No false-positive data** for IMG-002, IMG-005 and TBL-004.
+- **A callout text box next to a screenshot** is read as a shape drawn on the
+  screenshot (it is floating and in a neighbouring paragraph), so it gets the
+  screenshot message of TXB-001. The fix advice (put the text in the step
+  text) still applies.
+- **A group of only arrows** that is anchored next to a picture is not an
+  annotation (groups are not shapes for IMG-007). It is one group: IMG-001
+  needs its alt text, and IMG-004 reports it when it floats.
+- **VML shapes cannot be marked decorative** in the file (there is no VML
+  mark). A VML shape on a screenshot with no alt text is reported by IMG-007,
+  and the M3 fix must handle it (for example by writing the alt text, or by
+  asking the user to convert the file).
+- **Word's tagging of groups and decorative shapes** is not checked (Phase 0).
+
+## Annotated screenshots, groups and canvases
+
+Decisions for IMG-007 and the changes to IMG-001, IMG-004 and TXB-001. Users
+are city staff who draw arrows, boxes and lines over screenshots in Word, and
+who make flowcharts from shapes. Change the code and the tests together if
+spec 03 changes.
+
+- **Screenshot.** A picture (inline or floating, DrawingML or VML, not inside
+  a group) with one or more annotation shapes. An annotation shape is a
+  floating (`wp:anchor`, or VML `position:absolute`) shape that is not a
+  picture, chart, SmartArt, group or canvas. A text box is a shape.
+- **Detection uses the anchor paragraph, not the position.** A shape belongs to
+  a picture when it is anchored in the same paragraph, or in the paragraph
+  just before or just after (`ANNOTATION_MAX_PARAGRAPH_DISTANCE` = 1). Page
+  layout is not known without Word. A shape two paragraphs away is a shape on
+  its own: IMG-001 and IMG-004 report it as before.
+- **One owner.** A shape belongs to one picture: the one in its paragraph, else
+  the one before, else the one after. A paragraph with two pictures is one
+  screenshot. Each screenshot gives at most one IMG-007 and one TXB-001.
+- **Already grouped.** A group is one drawing, so a picture and shapes in one
+  group are not a screenshot. IMG-001 checks the alt text of the group, and
+  IMG-007 does not fire. The tool does not look at what is inside the group.
+- **Unresolved shape.** A shape with no text, no decorative mark and no alt
+  text. If a screenshot has any, IMG-007 fires once (error, ask) at the
+  paragraph of the picture, with the number of unresolved shapes. A shape with
+  alt text is fine for IMG-007 (IMG-004 still reports it if it floats).
+- **Suppression.** `rules::images::unresolved_annotations` lists the
+  unresolved shapes. IMG-001 and IMG-004 skip them, so IMG-007 replaces both.
+  Nothing else is hidden: the picture's own IMG-001 (no alt text), IMG-002,
+  IMG-003 and IMG-005 are separate problems and still fire.
+- **Shapes with text on a screenshot.** TXB-001 fires once for the screenshot
+  (message: "Text typed in a shape on a screenshot is read out of order or not
+  at all"), at the paragraph of the picture, with the joined text as the
+  snippet. These shapes are not counted by IMG-007. A shape that is marked
+  decorative is not reported, because the fix text offers that when the text
+  repeats the step text. (Outside a screenshot, TXB-001 still reports a
+  decorative text box.)
+- **Groups and canvases.** One drawing each. Text in the shapes inside counts
+  for TXB-001 (one finding for the group or canvas, with a message about
+  saving the flowchart as a picture and writing its steps in the body).
+- **IMG-004 and the fix.** The fix ID `MakeImageInline` is unchanged. See the
+  IMG-004 note above.
+- **Spec 03 says** (new note): Phase 0 must confirm how Word tags a grouped
+  picture and shapes (one Figure or several), and how it tags a shape marked
+  decorative.
 
 ## How M2b reads the rules
 
@@ -435,7 +516,6 @@ together if the spec changes.
   WordprocessingML namespace that Word writes is read. The colour theme is
   read with Word's default mapping (`text1` is `dk1`); `w:clrSchemeMapping` is
   not read. These matter for CLR-001.
-- **Spec 03 and spec 04 disagree on HDG-005.** Spec 04 uses Title for the
-  guide title and Heading 1 for sections, so a guide made with the template has
-  several Heading 1 paragraphs. HDG-005 (more than one Heading 1) would warn
-  on it. M1 follows spec 03. This needs a decision.
+- **HDG-005 is removed.** Spec 04 uses several Heading 1 paragraphs and
+  neither WCAG 2.1 nor PDF/UA-1 asks for one, so the rule is gone from spec 03
+  and from the code.

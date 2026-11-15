@@ -96,6 +96,38 @@ paragraph styles:
   example, "The Save dialog with the File name box selected"). It does not
   repeat the caption.
 
+### Annotating screenshots in Word
+
+Authors often draw arrows and boxes on a screenshot to show where to click.
+Word makes them as separate floating shapes. A screen reader cannot read
+them. Use one of these ways:
+
+1. **Group them (preferred).** Select the screenshot and its shapes,
+   right-click, and choose Group. Give the group alt text that says what the
+   screenshot shows and what is highlighted (for example, "The Save dialog. A
+   red box shows the File name field."). Then set the group to In Line with
+   Text.
+2. **Mark each shape decorative.** Right-click each arrow and box, choose Edit
+   Alt Text, and select Mark as decorative. Then make sure the alt text of the
+   screenshot says what the arrows and boxes point to.
+
+Never type instructions inside a shape on a screenshot. Put them in the step
+text. The screenshot stays inline (In Line with Text) in both ways. The
+pre-check reports a screenshot with shapes that are neither grouped nor
+decorative (IMG-007).
+
+### Flowcharts
+
+- Make a flowchart from shapes in a drawing canvas, then group it, or save it
+  as a picture (right-click, Save as Picture) and insert the picture in line
+  with text.
+- Give it alt text that summarises the flowchart (WCAG 1.1.1).
+- Also write its steps in the body text, for example as a numbered list. The
+  alt text is a summary, not the whole flowchart.
+- Until Phase 0 shows how Word tags text inside grouped shapes, the pre-check
+  reports text in the shapes of a group or canvas (TXB-001). A flowchart
+  saved as a picture does not have this problem.
+
 ## Headers, footers and cover
 
 - Header: the guide title, from a `TITLE` field so it matches the

@@ -275,46 +275,6 @@ fn hdg_004_only_looks_at_headings() {
     assert!(rule_findings(&builder, RuleId::Hdg004).is_empty());
 }
 
-// ---- HDG-005 -------------------------------------------------------------
-
-#[test]
-fn hdg_005_fails_on_a_second_heading_1() {
-    let f = the_failing_finding(RuleId::Hdg005);
-    assert_eq!(f.severity, Severity::Warning);
-    assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(
-        f.location.paragraph_index,
-        Some(2),
-        "at the second Heading 1"
-    );
-    assert_eq!(f.location.snippet.as_deref(), Some("Second title"));
-    assert!(f.message.contains("2 paragraphs"), "{}", f.message);
-}
-
-#[test]
-fn hdg_005_passes_with_one_heading_1() {
-    assert!(of(&fixture_findings(RuleId::Hdg005, false), RuleId::Hdg005).is_empty());
-}
-
-#[test]
-fn hdg_005_gives_one_finding_however_many_there_are() {
-    let builder = DocxBuilder::new()
-        .heading(1, "a")
-        .heading(1, "b")
-        .heading(1, "c");
-    let f = rule_findings(&builder, RuleId::Hdg005);
-    assert_eq!(f.len(), 1);
-    assert!(f[0].message.contains("3 paragraphs"), "{}", f[0].message);
-}
-
-#[test]
-fn hdg_005_title_style_is_not_a_heading_1() {
-    let builder = DocxBuilder::new()
-        .paragraph(Para::new("Guide").style("Title"))
-        .heading(1, "Only heading");
-    assert!(rule_findings(&builder, RuleId::Hdg005).is_empty());
-}
-
 // ---- HDG-006 -------------------------------------------------------------
 
 #[test]

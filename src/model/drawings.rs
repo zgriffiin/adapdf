@@ -9,6 +9,13 @@
 //! `is_alternative_content` in `body.rs`). Their text is kept only here, in
 //! [`Drawing::text`]. Pictures and other drawings inside a text box are not
 //! read.
+//!
+//! Groups and canvases: a group of shapes (DrawingML `wpg:wgp`, VML
+//! `v:group`) and a drawing canvas (`wpc:wpc`) are ONE drawing. The alt text,
+//! the decorative mark and the position come from the group's or canvas's own
+//! `wp:docPr` (or the VML group's attributes). The pictures and shapes inside
+//! are not drawings of their own. Text in their shapes is in
+//! [`Drawing::text`], as for a text box.
 
 use roxmltree::Node;
 
@@ -53,9 +60,13 @@ pub enum ObjectKind {
     /// A drawing with no graphic data is also a picture.
     Picture,
     Chart,
-    /// A shape, group, canvas or other drawing that is not a picture. A text
-    /// box is a shape with [`Drawing::text_box`] set.
+    /// A shape or other drawing that is not a picture, chart, SmartArt, group
+    /// or canvas. A text box is a shape with [`Drawing::text_box`] set.
     Shape,
+    /// A group of shapes and pictures (DrawingML `wpg:wgp`, VML `v:group`).
+    Group,
+    /// A drawing canvas (`wpc:wpc`). A flowchart made in Word is often one.
+    Canvas,
     SmartArt,
     /// An embedded object (OLE): `w:object`, or VML with `o:OLEObject`.
     Ole,
@@ -71,7 +82,8 @@ pub struct Drawing {
     pub floating: bool,
     /// The drawing holds a text box (`w:txbxContent`).
     pub text_box: bool,
-    /// The text in the text box, paragraphs joined with a space, trimmed.
+    /// The text in the text box, or in all the shapes of a group or canvas,
+    /// paragraphs joined with a space, trimmed.
     pub text: String,
     /// The description: `wp:docPr/@descr`, or VML `@alt`.
     pub description: Option<String>,
@@ -97,17 +109,30 @@ impl Drawing {
             .find(|t| !t.is_empty())
     }
 
-    /// True for a drawing whose text is the content (a text box with text).
-    /// TXB-001 reports it, so IMG-001 does not ask for alt text as well.
+    /// True for a group or a canvas.
+    pub fn is_container(&self) -> bool {
+        matches!(self.object, ObjectKind::Group | ObjectKind::Canvas)
+    }
+
+    /// True when the drawing holds text in a text box or in the shapes of a
+    /// group or canvas. TXB-001 reports it.
     pub fn has_box_text(&self) -> bool {
         self.text_box && !self.text.is_empty()
     }
 
+    /// True for a single text box that has text (not a group or canvas). The
+    /// text is the content: TXB-001 reports it, so IMG-001 does not ask for
+    /// alt text and IMG-004 does not report it.
+    pub fn is_text_box_with_text(&self) -> bool {
+        self.has_box_text() && !self.is_container()
+    }
+
     /// True when IMG-001 expects alt text or a decorative mark: a picture,
-    /// chart, shape or SmartArt that is not a text box with text. Embedded
-    /// objects are reported by IMG-006.
+    /// chart, shape, group, canvas or SmartArt that is not a text box with
+    /// text. A group or canvas always needs it, also when its shapes have
+    /// text. Embedded objects are reported by IMG-006.
     pub fn needs_alt_text(&self) -> bool {
-        self.object != ObjectKind::Ole && !self.has_box_text()
+        self.object != ObjectKind::Ole && !self.is_text_box_with_text()
     }
 }
 
@@ -152,6 +177,8 @@ pub(super) fn drawing_ml(node: Node) -> Drawing {
         None | Some("picture") => ObjectKind::Picture,
         Some("chart" | "chartex") => ObjectKind::Chart,
         Some("diagram") => ObjectKind::SmartArt,
+        Some("wordprocessingGroup") => ObjectKind::Group,
+        Some("wordprocessingCanvas") => ObjectKind::Canvas,
         Some(_) => ObjectKind::Shape,
     };
     let decorative = doc_pr.is_some_and(|d| {
@@ -183,10 +210,17 @@ pub(super) fn legacy(node: Node) -> Drawing {
             && n.tag_name().namespace() == Some(V_NS)
             && VML_SHAPES.contains(&n.tag_name().name())
     });
-    let image_data = node.descendants().find(|n| is(*n, V_NS, "imagedata"));
+    let group = shape.is_some_and(|s| s.tag_name().name() == "group");
+    // The pictures inside a group are not the group's own.
+    let image_data = node
+        .descendants()
+        .find(|n| is(*n, V_NS, "imagedata"))
+        .filter(|_| !group);
     let ole = node.is_w("object") || node.descendants().any(|n| is(n, O_NS, "OLEObject"));
     let object = if ole {
         ObjectKind::Ole
+    } else if group {
+        ObjectKind::Group
     } else if image_data.is_some() {
         ObjectKind::Picture
     } else {
@@ -316,6 +350,61 @@ mod tests {
             kind("http://schemas.microsoft.com/office/word/2010/wordprocessingShape"),
             ObjectKind::Shape
         );
+    }
+
+    #[test]
+    fn a_group_or_canvas_is_one_drawing_with_its_own_alt_text() {
+        let one = |kind: &str, inner: &str| {
+            let run = format!(
+                r#"<w:r><w:drawing><wp:anchor><wp:docPr id="1" name="G" descr="Sign-in flow"/><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/{kind}">{inner}</a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>"#
+            );
+            let found = drawings(&run);
+            assert_eq!(found.len(), 1, "{kind}");
+            found.into_iter().next().unwrap()
+        };
+        let pic = r#"<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="Inner" descr="Inner alt"/></pic:nvPicPr></pic:pic>"#;
+        let group = one(
+            "wordprocessingGroup",
+            &format!("<wpg:wgp xmlns:wpg=\"urn:t\">{pic}</wpg:wgp>"),
+        );
+        assert_eq!(group.object, ObjectKind::Group);
+        assert!(group.is_container() && group.floating);
+        assert_eq!(group.alt_text(), Some("Sign-in flow"));
+        let canvas = one("wordprocessingCanvas", "<wpc:wpc xmlns:wpc=\"urn:t\"/>");
+        assert_eq!(canvas.object, ObjectKind::Canvas);
+        assert!(canvas.is_container());
+    }
+
+    #[test]
+    fn text_in_the_shapes_of_a_group_is_kept_and_the_group_still_needs_alt_text() {
+        let d = drawings(
+            r#"<w:r><w:drawing><wp:inline><wp:docPr id="1" name="G"/><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"><wpg:wgp xmlns:wpg="urn:t"><wps:wsp><wps:txbx><w:txbxContent><w:p><w:r><w:t>Start</w:t></w:r></w:p></w:txbxContent></wps:txbx></wps:wsp><wps:wsp><wps:txbx><w:txbxContent><w:p><w:r><w:t>Stop</w:t></w:r></w:p></w:txbxContent></wps:txbx></wps:wsp></wpg:wgp></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>"#,
+        )
+        .remove(0);
+        assert_eq!(d.object, ObjectKind::Group);
+        assert_eq!(d.text, "Start Stop");
+        assert!(d.has_box_text());
+        assert!(!d.is_text_box_with_text());
+        assert!(d.needs_alt_text());
+    }
+
+    #[test]
+    fn a_vml_group_is_one_drawing_and_its_pictures_are_not_its_own() {
+        let d = drawings(
+            r#"<w:r><w:pict xmlns:o="urn:schemas-microsoft-com:office:office"><v:shapetype id="t"/><v:group id="g" alt="Sign-in flow" o:title="Flow" style="position:absolute;width:10pt"><v:shape id="a" alt="Inner" style="position:absolute"><v:imagedata o:title="Inner title"/></v:shape><v:rect id="b" style="position:absolute"/></v:group></w:pict></w:r>"#,
+        );
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].object, ObjectKind::Group);
+        assert!(d[0].floating);
+        assert_eq!(d[0].description.as_deref(), Some("Sign-in flow"));
+        assert_eq!(d[0].title.as_deref(), Some("Flow"));
+        // With no attributes of its own, the group has no alt text.
+        let bare = drawings(
+            r#"<w:r><w:pict><v:group id="g"><v:shape id="a" alt="Inner"><v:imagedata/></v:shape></v:group></w:pict></w:r>"#,
+        );
+        assert_eq!(bare[0].object, ObjectKind::Group);
+        assert_eq!(bare[0].alt_text(), None);
+        assert!(!bare[0].floating);
     }
 
     #[test]

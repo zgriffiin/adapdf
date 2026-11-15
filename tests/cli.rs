@@ -64,13 +64,13 @@ fn exit_code_0_when_there_are_no_findings() {
 
 #[test]
 fn exit_code_0_when_there_are_only_warnings() {
-    let path = fixture(RuleId::Hdg005, true);
+    let path = fixture(RuleId::Hdg006, true);
     let out = check(&path, &[]);
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     let text = stdout(&out);
     assert!(text.contains("WARNINGS (1"), "{text}");
     assert!(!text.contains("ERRORS"), "{text}");
-    assert!(text.contains("[HDG-005]"), "{text}");
+    assert!(text.contains("[HDG-006]"), "{text}");
 }
 
 #[test]

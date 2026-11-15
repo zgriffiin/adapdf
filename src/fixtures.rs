@@ -883,11 +883,6 @@ pub fn catalogue() -> Vec<Fixture> {
             clean().heading(2, "").para("Plug it in."),
         ),
         (
-            RuleId::Hdg005,
-            clean().heading(2, "Setup").para("Plug it in."),
-            clean().heading(1, "Second title").para("Plug it in."),
-        ),
-        (
             RuleId::Hdg006,
             clean()
                 .custom_style("Callout", "Callout", None)

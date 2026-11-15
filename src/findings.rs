@@ -33,8 +33,6 @@ pub enum RuleId {
     Hdg003,
     #[serde(rename = "HDG-004")]
     Hdg004,
-    #[serde(rename = "HDG-005")]
-    Hdg005,
     #[serde(rename = "HDG-006")]
     Hdg006,
     #[serde(rename = "IMG-001")]
@@ -49,6 +47,8 @@ pub enum RuleId {
     Img005,
     #[serde(rename = "IMG-006")]
     Img006,
+    #[serde(rename = "IMG-007")]
+    Img007,
     #[serde(rename = "TXB-001")]
     Txb001,
     #[serde(rename = "TXB-002")]
@@ -114,6 +114,7 @@ pub enum FixId {
     ApplyListStyle,
     SetAltText,
     MakeImageInline,
+    MarkAnnotationsDecorative,
     DeleteEmptyParagraphs,
     MarkHeaderRow,
     DeleteEmptyRow,
@@ -146,7 +147,6 @@ impl RuleId {
         RuleId::Hdg002,
         RuleId::Hdg003,
         RuleId::Hdg004,
-        RuleId::Hdg005,
         RuleId::Hdg006,
         RuleId::Img001,
         RuleId::Img002,
@@ -154,6 +154,7 @@ impl RuleId {
         RuleId::Img004,
         RuleId::Img005,
         RuleId::Img006,
+        RuleId::Img007,
         RuleId::Txb001,
         RuleId::Txb002,
         RuleId::Txb003,
@@ -190,7 +191,6 @@ impl RuleId {
             RuleId::Hdg002 => "HDG-002",
             RuleId::Hdg003 => "HDG-003",
             RuleId::Hdg004 => "HDG-004",
-            RuleId::Hdg005 => "HDG-005",
             RuleId::Hdg006 => "HDG-006",
             RuleId::Img001 => "IMG-001",
             RuleId::Img002 => "IMG-002",
@@ -198,6 +198,7 @@ impl RuleId {
             RuleId::Img004 => "IMG-004",
             RuleId::Img005 => "IMG-005",
             RuleId::Img006 => "IMG-006",
+            RuleId::Img007 => "IMG-007",
             RuleId::Txb001 => "TXB-001",
             RuleId::Txb002 => "TXB-002",
             RuleId::Txb003 => "TXB-003",
@@ -228,9 +229,9 @@ impl RuleId {
         match self {
             Doc001 | Doc002 | Doc005 | Doc006 | Hdg001 | Hdg002 | Hdg004 | Lst001 | Lnk003
             | Clr001 => Severity::Error,
-            Doc003 | Doc004 | Hdg003 | Hdg005 | Hdg006 | Lst002 | Lnk001 | Lnk002 | Clr002
-            | Txt001 | Txt002 | Txt003 | Txt004 => Severity::Warning,
-            Img001 | Txb001 | Tbl001 | Tbl002 => Severity::Error,
+            Doc003 | Doc004 | Hdg003 | Hdg006 | Lst002 | Lnk001 | Lnk002 | Clr002 | Txt001
+            | Txt002 | Txt003 | Txt004 => Severity::Warning,
+            Img001 | Img007 | Txb001 | Tbl001 | Tbl002 => Severity::Error,
             Img002 | Img003 | Img004 | Img005 | Img006 | Txb002 | Txb003 | Txb004 | Tbl003
             | Tbl004 | Tbl005 | Tbl006 => Severity::Warning,
         }
@@ -247,6 +248,7 @@ impl RuleId {
             Lst001 => FixKind::Auto(FixId::ApplyListStyle),
             Img001 | Img002 => FixKind::Ask(FixId::SetAltText),
             Img004 => FixKind::Auto(FixId::MakeImageInline),
+            Img007 => FixKind::Ask(FixId::MarkAnnotationsDecorative),
             Txb004 => FixKind::Auto(FixId::DeleteEmptyParagraphs),
             Tbl001 => FixKind::Auto(FixId::MarkHeaderRow),
             Tbl005 => FixKind::Auto(FixId::DeleteEmptyRow),
@@ -256,8 +258,8 @@ impl RuleId {
             Img003 | Img005 | Img006 | Txb001 | Txb002 | Txb003 | Tbl002 | Tbl003 | Tbl004 => {
                 FixKind::Manual
             }
-            Doc003 | Doc004 | Doc005 | Doc006 | Hdg001 | Hdg002 | Hdg005 | Hdg006 | Lst002
-            | Lnk001 | Lnk002 | Lnk003 | Clr001 | Clr002 | Txt001 | Txt003 => FixKind::Manual,
+            Doc003 | Doc004 | Doc005 | Doc006 | Hdg001 | Hdg002 | Hdg006 | Lst002 | Lnk001
+            | Lnk002 | Lnk003 | Clr001 | Clr002 | Txt001 | Txt003 => FixKind::Manual,
         }
     }
 }
@@ -425,7 +427,6 @@ mod tests {
             (Hdg002, Severity::Error, FixKind::Manual),
             (Hdg003, Severity::Warning, FixKind::Auto(ApplyHeadingStyle)),
             (Hdg004, Severity::Error, FixKind::Auto(DeleteEmptyHeading)),
-            (Hdg005, Severity::Warning, FixKind::Manual),
             (Hdg006, Severity::Warning, FixKind::Manual),
             (Lst001, Severity::Error, FixKind::Auto(ApplyListStyle)),
             (Lst002, Severity::Warning, FixKind::Manual),
@@ -435,6 +436,11 @@ mod tests {
             (Img004, Severity::Warning, FixKind::Auto(MakeImageInline)),
             (Img005, Severity::Warning, FixKind::Manual),
             (Img006, Severity::Warning, FixKind::Manual),
+            (
+                Img007,
+                Severity::Error,
+                FixKind::Ask(MarkAnnotationsDecorative),
+            ),
             (Txb001, Severity::Error, FixKind::Manual),
             (Txb002, Severity::Warning, FixKind::Manual),
             (Txb003, Severity::Warning, FixKind::Manual),
