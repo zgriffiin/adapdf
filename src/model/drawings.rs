@@ -408,6 +408,20 @@ mod tests {
     }
 
     #[test]
+    fn a_shape_group_or_canvas_in_alternate_content_is_one_drawing() {
+        use crate::fixtures::Image;
+        for image in [Image::shape(), Image::group(), Image::canvas()] {
+            let image = image.floating().alt("A box");
+            let xml = image.xml();
+            assert!(xml.contains("<mc:Fallback>"), "{xml}");
+            let found = drawings(&xml);
+            assert_eq!(found.len(), 1, "the fallback copy is not a second drawing");
+            assert!(found[0].floating);
+            assert_eq!(found[0].alt_text(), Some("A box"));
+        }
+    }
+
+    #[test]
     fn inline_and_anchored_drawings() {
         let inline = drawings(
             r#"<w:r><w:drawing><wp:inline><wp:docPr id="1" name="P"/></wp:inline></w:drawing></w:r>"#,

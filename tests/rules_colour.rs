@@ -7,7 +7,7 @@ use adapdf::fixtures::{DocxBuilder, FixtureFonts, Para, Run, clean, raw_docx};
 use adapdf::rules::colour::{
     LARGE_BOLD_TEXT_HALF_POINTS, LARGE_TEXT_HALF_POINTS, MIN_CONTRAST_LARGE, MIN_CONTRAST_NORMAL,
 };
-use common::{fixture_findings, of, rule_findings, the_failing_finding};
+use common::{assert_location, fixture_findings, of, rule_findings, the_failing_finding};
 
 /// One paragraph with one run. `size` is in half points.
 fn one_run(color: &str, size: u32, bold: bool) -> DocxBuilder {
@@ -50,9 +50,13 @@ fn clr_001_fails_for_light_grey_text() {
     let f = the_failing_finding(RuleId::Clr001);
     assert_eq!(f.severity, Severity::Error);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.part, "word/document.xml");
-    assert_eq!(f.location.paragraph_index, Some(2));
-    assert_eq!(f.location.heading.as_deref(), Some("Test guide"));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some("Light grey text."),
+        Some("Test guide"),
+    );
     assert!(f.message.contains("4.48:1"), "{}", f.message);
     assert!(f.message.contains("#777777"), "{}", f.message);
     assert!(f.message.contains("#FFFFFF"), "{}", f.message);
@@ -500,8 +504,13 @@ fn clr_002_fails_for_text_that_only_differs_in_colour() {
     let f = the_failing_finding(RuleId::Clr002);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.paragraph_index, Some(2));
-    assert_eq!(f.location.heading.as_deref(), Some("Test guide"));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some("Warning: save your work first."),
+        Some("Test guide"),
+    );
     assert!(f.message.contains("#C00000"), "{}", f.message);
     assert!(f.message.contains("Warning:"), "{}", f.message);
 }

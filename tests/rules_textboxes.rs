@@ -7,7 +7,7 @@ use adapdf::fixtures::{
     DocxBuilder, Image, Para, Table, clean, equation, split_runs, text_box, vml_text_box, words,
 };
 use adapdf::rules::textboxes::{MAX_SPACES_IN_A_ROW, MAX_TABS_IN_A_ROW};
-use common::{fixture_findings, of, rule_findings, the_failing_finding};
+use common::{assert_location, fixture_findings, of, rule_findings, the_failing_finding};
 
 fn count(builder: &DocxBuilder, rule: RuleId) -> usize {
     rule_findings(builder, rule).len()
@@ -24,11 +24,13 @@ fn txb_001_fails_on_a_text_box_with_text() {
     let f = the_failing_finding(RuleId::Txb001);
     assert_eq!(f.severity, Severity::Error);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.paragraph_index, Some(2));
-    assert_eq!(f.location.heading.as_deref(), Some("Test guide"));
-    assert_eq!(
-        f.location.snippet.as_deref(),
-        Some("Note: save your work before you print.")
+    // The snippet is the text in the box, not the paragraph that holds it.
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some("Note: save your work before you print."),
+        Some("Test guide"),
     );
 }
 
@@ -220,8 +222,9 @@ fn txb_002_fails_on_a_column_section() {
     let f = the_failing_finding(RuleId::Txb002);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Manual);
-    // The section holds the whole document, so it starts at the first paragraph.
-    assert_eq!(f.location.paragraph_index, Some(0));
+    // The section holds the whole document, so it starts at the first paragraph
+    // (the heading itself, so there is no heading above it).
+    assert_location(&f, "word/document.xml", Some(0), Some("Test guide"), None);
     assert!(f.message.contains("1 section "), "{}", f.message);
 }
 
@@ -259,8 +262,13 @@ fn txb_003_fails_on_spacing_made_with_spaces() {
     let f = the_failing_finding(RuleId::Txb003);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.paragraph_index, Some(2));
-    assert_eq!(f.location.snippet.as_deref(), Some("Name:     Ana Silva"));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some("Name:     Ana Silva"),
+        Some("Test guide"),
+    );
 }
 
 #[test]
@@ -325,8 +333,14 @@ fn txb_004_fails_on_two_empty_paragraphs_in_a_row() {
     let f = the_failing_finding(RuleId::Txb004);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Auto(FixId::DeleteEmptyParagraphs));
-    assert_eq!(f.location.paragraph_index, Some(3), "the first empty one");
-    assert_eq!(f.location.heading.as_deref(), Some("Test guide"));
+    // At the first empty paragraph, which has no text.
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(3),
+        Some(""),
+        Some("Test guide"),
+    );
     assert!(f.message.contains("2 empty"), "{}", f.message);
 }
 

@@ -5,7 +5,7 @@ mod common;
 use adapdf::findings::{FixId, FixKind, RuleId, Severity};
 use adapdf::fixtures::{DocxBuilder, Para, clean};
 use adapdf::rules::links::{BUILT_IN_BOOKMARKS, MAX_URL_LINK_CHARS, VAGUE_LINK_TEXTS};
-use common::{fixture_findings, of, rule_findings, the_failing_finding};
+use common::{assert_location, fixture_findings, of, rule_findings, the_failing_finding};
 
 const URL: &str = "https://example.org/parking";
 
@@ -47,9 +47,13 @@ fn lnk_001_fails_on_click_here() {
     let f = the_failing_finding(RuleId::Lnk001);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.part, "word/document.xml");
-    assert_eq!(f.location.paragraph_index, Some(2));
-    assert_eq!(f.location.heading.as_deref(), Some("Test guide"));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some("To read the parking policy, click here"),
+        Some("Test guide"),
+    );
     assert!(f.message.contains("click here"), "{}", f.message);
 }
 
@@ -131,7 +135,14 @@ fn lnk_002_fails_on_a_long_address() {
     let f = the_failing_finding(RuleId::Lnk002);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.paragraph_index, Some(2));
+    // The snippet is the first 60 characters of the paragraph.
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some("Visit https://example.org/departments/parking/policy-2026-fi"),
+        Some("Test guide"),
+    );
     assert!(f.message.contains("characters"), "{}", f.message);
 }
 
@@ -194,8 +205,13 @@ fn lnk_003_fails_when_the_bookmark_is_missing() {
     let f = the_failing_finding(RuleId::Lnk003);
     assert_eq!(f.severity, Severity::Error);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.paragraph_index, Some(3));
-    assert_eq!(f.location.heading.as_deref(), Some("Setup"));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(3),
+        Some("See the setup section"),
+        Some("Setup"),
+    );
     assert!(f.message.contains("\"Nowhere\""), "{}", f.message);
 }
 

@@ -5,7 +5,7 @@ mod common;
 use adapdf::findings::{FixId, FixKind, RuleId, Severity};
 use adapdf::fixtures::{DocxBuilder, Table, clean};
 use adapdf::rules::tables::LAYOUT_EMPTY_CELLS_PERCENT;
-use common::{fixture_findings, of, rule_findings, the_failing_finding};
+use common::{assert_location, fixture_findings, of, rule_findings, the_failing_finding};
 
 fn count(builder: &DocxBuilder, rule: RuleId) -> usize {
     rule_findings(builder, rule).len()
@@ -26,10 +26,13 @@ fn tbl_001_fails_without_a_header_row() {
     let f = the_failing_finding(RuleId::Tbl001);
     assert_eq!(f.severity, Severity::Error);
     assert_eq!(f.fix, FixKind::Auto(FixId::MarkHeaderRow));
-    assert_eq!(f.location.part, "word/document.xml");
-    assert_eq!(f.location.paragraph_index, Some(2));
-    assert_eq!(f.location.heading.as_deref(), Some("Test guide"));
-    assert_eq!(f.location.snippet.as_deref(), Some("Setting"));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some("Setting"),
+        Some("Test guide"),
+    );
 }
 
 #[test]
@@ -58,12 +61,19 @@ fn tbl_001_a_header_flag_that_is_off_does_not_count() {
 #[test]
 fn tbl_001_one_finding_for_each_table() {
     let builder = clean()
-        .table(good())
+        .table(good().no_header_row())
         .heading(2, "Second")
         .table(good().no_header_row());
     let found = rule_findings(&builder, RuleId::Tbl001);
-    assert_eq!(found.len(), 1);
-    assert_eq!(found[0].location.heading.as_deref(), Some("Second"));
+    assert_eq!(found.len(), 2, "two failing tables, two findings");
+    assert_eq!(found[0].location.heading.as_deref(), Some("Test guide"));
+    assert_eq!(found[1].location.heading.as_deref(), Some("Second"));
+    // A passing table in between is not reported.
+    let builder = clean()
+        .table(good().no_header_row())
+        .table(good())
+        .table(good().no_header_row());
+    assert_eq!(count(&builder, RuleId::Tbl001), 2);
 }
 
 #[test]
@@ -81,10 +91,14 @@ fn tbl_002_fails_on_a_table_inside_a_table() {
     let f = the_failing_finding(RuleId::Tbl002);
     assert_eq!(f.severity, Severity::Error);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.heading.as_deref(), Some("Test guide"));
     // The inner table: 3 paragraphs of the outer table come before it.
-    assert_eq!(f.location.paragraph_index, Some(2 + 3));
-    assert_eq!(f.location.snippet.as_deref(), Some("Setting"));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2 + 3),
+        Some("Setting"),
+        Some("Test guide"),
+    );
 }
 
 #[test]
@@ -106,8 +120,13 @@ fn tbl_003_fails_on_merged_cells() {
     let f = the_failing_finding(RuleId::Tbl003);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.paragraph_index, Some(2));
-    assert_eq!(f.location.snippet.as_deref(), Some("Settings"));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some("Settings"),
+        Some("Test guide"),
+    );
 }
 
 #[test]
@@ -139,7 +158,13 @@ fn tbl_004_fails_on_a_table_with_one_row() {
     let f = the_failing_finding(RuleId::Tbl004);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.paragraph_index, Some(2));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some("Setting"),
+        Some("Test guide"),
+    );
     assert!(f.message.contains("one row"), "{}", f.message);
 }
 
@@ -200,7 +225,13 @@ fn tbl_005_fails_on_an_empty_row() {
     let f = the_failing_finding(RuleId::Tbl005);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Auto(FixId::DeleteEmptyRow));
-    assert_eq!(f.location.paragraph_index, Some(2));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some("Setting"),
+        Some("Test guide"),
+    );
     assert!(f.message.contains("row 3"), "{}", f.message);
 }
 
@@ -245,7 +276,13 @@ fn tbl_006_fails_when_rows_can_break_across_pages() {
     let f = the_failing_finding(RuleId::Tbl006);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Auto(FixId::DisallowRowBreak));
-    assert_eq!(f.location.paragraph_index, Some(2));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some("Setting"),
+        Some("Test guide"),
+    );
     assert!(f.message.contains("3 of 3 rows"), "{}", f.message);
 }
 

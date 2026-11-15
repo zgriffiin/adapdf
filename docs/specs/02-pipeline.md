@@ -19,6 +19,13 @@ For an input `Guide.docx`, the tool writes these files next to it:
 The output folder can be changed in settings. The tool never overwrites the
 source without first writing a backup.
 
+- An existing `Guide.pdf` is replaced. If another program has it locked, the
+  tool stops with exit code 2 and says which file is locked.
+- When stage 1 finds errors, the tool still writes the report. The report
+  says "Fail" and lists the errors. It does not write a PDF.
+- A PDF that Word exported without tags (stage 4) is an error finding, so
+  the exit code is 1.
+
 ## Stage 1 — Pre-check
 
 - Opens the .docx as a zip and reads the OOXML parts:

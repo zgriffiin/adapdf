@@ -7,7 +7,7 @@ use adapdf::fixtures::{
     DocxBuilder, Image, Para, alt_of_length, clean, equation, ole_object, text_box,
 };
 use adapdf::rules::images::MAX_ALT_TEXT_CHARS;
-use common::{check, fixture_findings, of, rule_findings, the_failing_finding};
+use common::{assert_location, check, fixture_findings, of, rule_findings, the_failing_finding};
 
 /// A clean document with one paragraph that holds only this drawing.
 fn with(image: &Image) -> DocxBuilder {
@@ -50,9 +50,14 @@ fn img_001_fails_on_a_picture_without_alt_text() {
     let f = the_failing_finding(RuleId::Img001);
     assert_eq!(f.severity, Severity::Error);
     assert_eq!(f.fix, FixKind::Ask(FixId::SetAltText));
-    assert_eq!(f.location.part, "word/document.xml");
-    assert_eq!(f.location.paragraph_index, Some(2));
-    assert_eq!(f.location.heading.as_deref(), Some("Test guide"));
+    // The paragraph holds only the picture, so its snippet is empty.
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some(""),
+        Some("Test guide"),
+    );
     assert!(f.message.contains("picture"), "{}", f.message);
     assert_eq!(f.suggestion, None, "the tool never invents alt text");
 }
@@ -192,7 +197,13 @@ fn img_002_fails_on_alt_text_that_looks_like_a_file_name() {
     let f = the_failing_finding(RuleId::Img002);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Ask(FixId::SetAltText));
-    assert_eq!(f.location.paragraph_index, Some(2));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some(""),
+        Some("Test guide"),
+    );
     assert!(f.message.contains("IMG_1234.jpg"), "{}", f.message);
     assert_eq!(f.suggestion, None);
 }
@@ -263,7 +274,13 @@ fn img_003_fails_on_alt_text_longer_than_250_characters() {
     let f = the_failing_finding(RuleId::Img003);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.paragraph_index, Some(2));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some(""),
+        Some("Test guide"),
+    );
     assert!(f.message.contains("251"), "{}", f.message);
 }
 
@@ -304,7 +321,13 @@ fn img_004_fails_on_a_floating_picture() {
     let f = the_failing_finding(RuleId::Img004);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Auto(FixId::MakeImageInline));
-    assert_eq!(f.location.paragraph_index, Some(2));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some(""),
+        Some("Test guide"),
+    );
 }
 
 #[test]
@@ -413,7 +436,13 @@ fn img_005_fails_when_the_alt_text_is_the_caption() {
     let f = the_failing_finding(RuleId::Img005);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.paragraph_index, Some(2));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some(""),
+        Some("Test guide"),
+    );
     assert!(f.message.contains("Figure 1: the printer"), "{}", f.message);
 }
 
@@ -473,7 +502,13 @@ fn img_006_fails_on_an_equation() {
     let f = the_failing_finding(RuleId::Img006);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.paragraph_index, Some(2));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some("The area is"),
+        Some("Test guide"),
+    );
     assert!(f.message.contains("1 equation"), "{}", f.message);
 }
 
@@ -545,13 +580,14 @@ fn img_007_fails_on_a_screenshot_with_shapes_drawn_on_it() {
     let f = the_failing_finding(RuleId::Img007);
     assert_eq!(f.severity, Severity::Error);
     assert_eq!(f.fix, FixKind::Ask(FixId::MarkAnnotationsDecorative));
-    assert_eq!(f.location.part, "word/document.xml");
-    assert_eq!(
-        f.location.paragraph_index,
+    // The finding is at the picture's paragraph, which holds no text.
+    assert_location(
+        &f,
+        "word/document.xml",
         Some(2),
-        "the picture's paragraph"
+        Some(""),
+        Some("Test guide"),
     );
-    assert_eq!(f.location.heading.as_deref(), Some("Test guide"));
     assert!(
         f.message
             .starts_with("This screenshot has 3 arrows or boxes drawn on it in Word."),
@@ -777,4 +813,69 @@ fn img_007_a_shape_with_text_is_left_to_txb_001() {
     let builder = annotated(&[Image::shape().floating().text("Click here")]);
     assert_eq!(count(&builder, RuleId::Img007), 0);
     assert_eq!(count(&builder, RuleId::Txb001), 1);
+}
+
+#[test]
+fn img_007_a_shape_in_alternate_content_is_counted_once() {
+    // Word writes a shape as DrawingML in `mc:Choice` and a VML copy in
+    // `mc:Fallback`. The model reads only the Choice copy.
+    let xml = arrow().xml();
+    assert!(xml.contains("<mc:AlternateContent>"), "{xml}");
+    assert!(xml.contains("<mc:Fallback><w:pict "), "{xml}");
+    assert!(xml.contains("position:absolute"), "the copy floats too");
+
+    // On its own, one arrow is one drawing for IMG-001 and IMG-004.
+    let alone = clean().paragraph(paragraph_of(&[&arrow()]));
+    assert_eq!(count(&alone, RuleId::Img001), 1);
+    assert_eq!(count(&alone, RuleId::Img004), 1);
+    assert_eq!(count(&alone, RuleId::Img007), 0);
+
+    // Drawn on a screenshot, one arrow is one unresolved shape for IMG-007,
+    // which replaces IMG-001 and IMG-004.
+    let on_screenshot = annotated(&[arrow()]);
+    let found = rule_findings(&on_screenshot, RuleId::Img007);
+    assert_eq!(found.len(), 1);
+    assert!(
+        found[0]
+            .message
+            .starts_with("This screenshot has 1 arrow or box drawn"),
+        "{}",
+        found[0].message
+    );
+    assert_eq!(fired(&on_screenshot), ["IMG-007"]);
+
+    // Groups and canvases are written the same way and are also counted once.
+    for image in [Image::group(), Image::canvas()] {
+        let builder = clean().paragraph(paragraph_of(&[&image.floating()]));
+        assert_eq!(count(&builder, RuleId::Img001), 1);
+        assert_eq!(count(&builder, RuleId::Img004), 1);
+    }
+}
+
+#[test]
+fn img_007_the_owner_is_the_same_paragraph_then_before_then_after() {
+    let picture = || Para::empty().raw_run(&screenshot().xml());
+    let owner_of_one_arrow = |builder: &DocxBuilder| {
+        let found = rule_findings(builder, RuleId::Img007);
+        assert_eq!(found.len(), 1, "one screenshot owns the arrow");
+        found[0].location.paragraph_index.unwrap()
+    };
+    // Pictures in the paragraphs before (2), of (3) and after (4) the arrow.
+    // The paragraph of the arrow comes first.
+    let same = clean()
+        .paragraph(picture())
+        .paragraph(picture().raw_run(&arrow().xml()))
+        .paragraph(picture());
+    assert_eq!(owner_of_one_arrow(&same), 3);
+    // With no picture in its own paragraph, the one before wins.
+    let before = clean()
+        .paragraph(picture())
+        .paragraph(Para::empty().raw_run(&arrow().xml()))
+        .paragraph(picture());
+    assert_eq!(owner_of_one_arrow(&before), 2);
+    // Then the one after.
+    let after = clean()
+        .paragraph(Para::empty().raw_run(&arrow().xml()))
+        .paragraph(picture());
+    assert_eq!(owner_of_one_arrow(&after), 3);
 }

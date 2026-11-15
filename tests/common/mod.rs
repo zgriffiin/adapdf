@@ -40,3 +40,23 @@ pub fn the_failing_finding(rule: RuleId) -> Finding {
     assert_eq!(found.len(), 1, "{rule}: {found:#?}");
     found.remove(0)
 }
+
+/// Checks the whole location of a finding: part, paragraph index (counting from
+/// 0), snippet and nearest heading above. `None` means the field is not set.
+pub fn assert_location(
+    f: &Finding,
+    part: &str,
+    paragraph_index: Option<usize>,
+    snippet: Option<&str>,
+    heading: Option<&str>,
+) {
+    let l = &f.location;
+    assert_eq!(l.part, part, "part of {}", f.rule_id);
+    assert_eq!(
+        l.paragraph_index, paragraph_index,
+        "paragraph of {}",
+        f.rule_id
+    );
+    assert_eq!(l.snippet.as_deref(), snippet, "snippet of {}", f.rule_id);
+    assert_eq!(l.heading.as_deref(), heading, "heading of {}", f.rule_id);
+}

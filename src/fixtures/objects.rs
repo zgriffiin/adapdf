@@ -5,6 +5,12 @@
 //! objects have no parts behind them, so these documents are for the checker
 //! only. The fixture files on disk use only pictures, shapes, a text box, an
 //! equation and tables.
+//!
+//! DrawingML shapes, groups and canvases are written the way Word writes them:
+//! the DrawingML in `mc:Choice` and a VML copy in `mc:Fallback`. The model
+//! reads only the `mc:Choice` copy. The `wp:docPr` ids written here are all
+//! `0`; `DocxBuilder::build` numbers them so that each is unique, as Word
+//! requires.
 
 use super::{DocxBuilder, Para, Run, clean, esc};
 use crate::findings::RuleId;
@@ -153,7 +159,7 @@ impl Image {
             ImageKind::Group => (
                 GROUP_URI,
                 format!(
-                    r#"<wpg:wgp xmlns:wpg="{GROUP_URI}"><wpg:cNvGrpSpPr/><wpg:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/><a:chOff x="0" y="0"/><a:chExt cx="914400" cy="914400"/></a:xfrm></wpg:grpSpPr>{}{}</wpg:wgp>"#,
+                    r#"<wpg:wgp><wpg:cNvGrpSpPr/><wpg:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/><a:chOff x="0" y="0"/><a:chExt cx="914400" cy="914400"/></a:xfrm></wpg:grpSpPr>{}{}</wpg:wgp>"#,
                     PICTURE_XML,
                     wps_shape(self.text.as_deref())
                 ),
@@ -161,14 +167,14 @@ impl Image {
             ImageKind::Canvas => (
                 CANVAS_URI,
                 format!(
-                    r#"<wpc:wpc xmlns:wpc="{CANVAS_URI}"><wpc:bg/><wpc:whole/>{}{}</wpc:wpc>"#,
+                    r#"<wpc:wpc><wpc:bg/><wpc:whole/>{}{}</wpc:wpc>"#,
                     wps_shape(self.text.as_deref()),
                     wps_shape(None)
                 ),
             ),
             _ => (SHAPE_URI, wps_shape(self.text.as_deref())),
         };
-        let mut doc_pr = r#"<wp:docPr id="1" name="Object 1""#.to_string();
+        let mut doc_pr = r#"<wp:docPr id="0" name="Object 1""#.to_string();
         if let Some(alt) = &self.alt {
             doc_pr += &format!(r#" descr="{}""#, esc(alt));
         }
@@ -180,13 +186,31 @@ impl Image {
             doc_pr += r#"<a:extLst><a:ext uri="{C183D7F6-B498-43B3-948B-1728B52AA6E4}"><adec:decorative xmlns:adec="http://schemas.microsoft.com/office/drawing/2017/decorative" val="1"/></a:ext></a:extLst>"#;
         }
         doc_pr += "</wp:docPr>";
+        let drawing = drawing(self.floating, &doc_pr, uri, &graphic);
+        // Word writes shapes, groups and canvases with a VML copy for older
+        // readers. Pictures, charts and SmartArt have none.
+        let (requires, uri, fallback) = match self.kind {
+            ImageKind::Shape => ("wps", SHAPE_URI, ImageKind::VmlShape),
+            ImageKind::Group => ("wpg", GROUP_URI, ImageKind::VmlGroup),
+            ImageKind::Canvas => ("wpc", CANVAS_URI, ImageKind::VmlGroup),
+            _ => return format!("<w:r>{drawing}</w:r>"),
+        };
+        let fallback = Image {
+            kind: fallback,
+            ..self.clone()
+        }
+        .vml_pict();
         format!(
-            "<w:r>{}</w:r>",
-            drawing(self.floating, &doc_pr, uri, &graphic)
+            r#"<w:r><mc:AlternateContent><mc:Choice Requires="{requires}" xmlns:{requires}="{uri}">{drawing}</mc:Choice><mc:Fallback>{fallback}</mc:Fallback></mc:AlternateContent></w:r>"#
         )
     }
 
     fn vml(&self) -> String {
+        format!("<w:r>{}</w:r>", self.vml_pict())
+    }
+
+    /// The `w:pict` element.
+    fn vml_pict(&self) -> String {
         let position = if self.floating {
             ";position:absolute"
         } else {
@@ -221,7 +245,7 @@ impl Image {
             _ if self.text.is_some() => format!(r#"<v:rect {attrs}{title}>{text_box}</v:rect>"#),
             _ => format!(r#"<v:rect {attrs}{title}/>"#),
         };
-        format!(r#"<w:r><w:pict xmlns:o="{OFFICE_NS}">{shape}</w:pict></w:r>"#)
+        format!(r#"<w:pict xmlns:o="{OFFICE_NS}">{shape}</w:pict>"#)
     }
 }
 
@@ -269,7 +293,7 @@ pub fn text_box(text: &str) -> String {
     );
     let drawing = drawing(
         true,
-        r#"<wp:docPr id="2" name="Text Box 2"/>"#,
+        r#"<wp:docPr id="0" name="Text Box 2"/>"#,
         SHAPE_URI,
         &shape,
     );

@@ -5,7 +5,7 @@ mod common;
 use adapdf::findings::{FixId, FixKind, RuleId, Severity};
 use adapdf::fixtures::{DocxBuilder, Para, Run, clean, words};
 use adapdf::rules::headings::{FAKE_HEADING_MAX_WORDS, PAGE_WORD_LIMIT};
-use common::{fixture_findings, of, rule_findings, the_failing_finding};
+use common::{assert_location, fixture_findings, of, rule_findings, the_failing_finding};
 
 // ---- HDG-001 -------------------------------------------------------------
 
@@ -14,8 +14,7 @@ fn hdg_001_fails_on_a_long_document_without_headings() {
     let f = the_failing_finding(RuleId::Hdg001);
     assert_eq!(f.severity, Severity::Error);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.part, "word/document.xml");
-    assert_eq!(f.location.paragraph_index, None);
+    assert_location(&f, "word/document.xml", None, None, None);
     assert!(f.message.contains("401 words"), "{}", f.message);
 }
 
@@ -58,9 +57,7 @@ fn hdg_002_fails_when_a_level_is_skipped() {
     let f = the_failing_finding(RuleId::Hdg002);
     assert_eq!(f.severity, Severity::Error);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.paragraph_index, Some(1));
-    assert_eq!(f.location.snippet.as_deref(), Some("Three"));
-    assert_eq!(f.location.heading.as_deref(), Some("One"));
+    assert_location(&f, "word/document.xml", Some(1), Some("Three"), Some("One"));
     assert!(f.message.contains("Heading 3"), "{}", f.message);
     assert!(f.message.contains("Heading 2 is missing"), "{}", f.message);
 }
@@ -124,12 +121,13 @@ fn hdg_003_fails_on_a_bold_line_without_a_heading_style() {
     let f = the_failing_finding(RuleId::Hdg003);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Auto(FixId::ApplyHeadingStyle));
-    assert_eq!(f.location.paragraph_index, Some(2));
-    assert_eq!(
-        f.location.snippet.as_deref(),
-        Some("Setting up the printer")
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some("Setting up the printer"),
+        Some("Test guide"),
     );
-    assert_eq!(f.location.heading.as_deref(), Some("Test guide"));
     assert_eq!(
         f.suggestion.as_deref(),
         Some("Heading 2"),
@@ -203,6 +201,31 @@ fn hdg_003_skips_headings_tables_lists_and_special_styles() {
 }
 
 #[test]
+fn hdg_003_skips_the_subtitle_caption_and_toc_styles() {
+    // (style id, style name as Word writes it)
+    let styles = [
+        ("Subtitle", "Subtitle"),
+        ("Caption", "caption"),
+        ("TOC1", "toc 1"),
+        ("TOC2", "toc 2"),
+    ];
+    for (id, name) in styles {
+        let builder = DocxBuilder::new()
+            .custom_style(id, name, None)
+            .paragraph(Para::new("Short bold line").bold().style(id));
+        assert!(
+            rule_findings(&builder, RuleId::Hdg003).is_empty(),
+            "{name} is exempt"
+        );
+    }
+    // The same line in a style that is not exempt is reported.
+    let builder = DocxBuilder::new()
+        .custom_style("Callout", "Callout", None)
+        .paragraph(Para::new("Short bold line").bold().style("Callout"));
+    assert_eq!(rule_findings(&builder, RuleId::Hdg003).len(), 1);
+}
+
+#[test]
 fn hdg_003_suggests_a_level_below_the_heading_above() {
     let suggestion = |builder: DocxBuilder| {
         rule_findings(&builder, RuleId::Hdg003)[0]
@@ -245,9 +268,13 @@ fn hdg_004_fails_on_an_empty_heading() {
     let f = the_failing_finding(RuleId::Hdg004);
     assert_eq!(f.severity, Severity::Error);
     assert_eq!(f.fix, FixKind::Auto(FixId::DeleteEmptyHeading));
-    assert_eq!(f.location.paragraph_index, Some(2));
-    assert_eq!(f.location.snippet.as_deref(), Some(""));
-    assert_eq!(f.location.heading.as_deref(), Some("Test guide"));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some(""),
+        Some("Test guide"),
+    );
 }
 
 #[test]
@@ -282,11 +309,14 @@ fn hdg_006_fails_on_a_custom_style_with_an_outline_level() {
     let f = the_failing_finding(RuleId::Hdg006);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.part, "word/styles.xml");
-    assert_eq!(
-        f.location.paragraph_index,
+    // The style is defined in styles.xml; the location is the first paragraph
+    // that uses it.
+    assert_location(
+        &f,
+        "word/styles.xml",
         Some(2),
-        "the first paragraph that uses the style"
+        Some("Look here."),
+        Some("Test guide"),
     );
     assert!(f.message.contains("\"Callout\""), "{}", f.message);
     assert!(f.message.contains("outline level 2"), "{}", f.message);

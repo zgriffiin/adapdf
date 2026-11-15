@@ -6,7 +6,7 @@ use adapdf::findings::{FixId, FixKind, RuleId, Severity};
 use adapdf::fixtures::{DocxBuilder, Para, Run, clean};
 use adapdf::fonts::{FontLookup, FontStatus};
 use adapdf::rules::document::{MIN_FOREIGN_SCRIPT_LETTERS, TEMPLATE_FILE_NAME};
-use common::{fixture_findings, of, rule_findings, the_failing_finding};
+use common::{assert_location, fixture_findings, of, rule_findings, the_failing_finding};
 
 // ---- DOC-001 -------------------------------------------------------------
 
@@ -14,8 +14,7 @@ use common::{fixture_findings, of, rule_findings, the_failing_finding};
 fn doc_001_fails_on_an_empty_title() {
     let f = the_failing_finding(RuleId::Doc001);
     assert_eq!(f.severity, Severity::Error);
-    assert_eq!(f.location.part, "docProps/core.xml");
-    assert_eq!(f.location.paragraph_index, None);
+    assert_location(&f, "docProps/core.xml", None, None, None);
     assert_eq!(f.fix, FixKind::Ask(FixId::SetTitle));
     assert_eq!(
         f.suggestion.as_deref(),
@@ -68,7 +67,7 @@ fn doc_001_has_no_suggestion_without_a_title_or_heading_1() {
 fn doc_002_fails_without_a_default_language() {
     let f = the_failing_finding(RuleId::Doc002);
     assert_eq!(f.severity, Severity::Error);
-    assert_eq!(f.location.part, "word/styles.xml");
+    assert_location(&f, "word/styles.xml", None, None, None);
     assert_eq!(f.fix, FixKind::Auto(FixId::SetDefaultLanguage));
 }
 
@@ -90,9 +89,13 @@ fn doc_003_fails_on_unmarked_text_in_another_script() {
     let f = the_failing_finding(RuleId::Doc003);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.paragraph_index, Some(2));
-    assert_eq!(f.location.snippet.as_deref(), Some("Привет мир"));
-    assert_eq!(f.location.heading.as_deref(), Some("Test guide"));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some("Привет мир"),
+        Some("Test guide"),
+    );
 }
 
 #[test]
@@ -173,7 +176,7 @@ fn doc_004_fails_without_the_template() {
     let f = the_failing_finding(RuleId::Doc004);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.part, "word/settings.xml");
+    assert_location(&f, "word/settings.xml", None, None, None);
 }
 
 #[test]
@@ -208,7 +211,8 @@ fn doc_005_fails_on_tracked_changes() {
     let f = the_failing_finding(RuleId::Doc005);
     assert_eq!(f.severity, Severity::Error);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.part, "word/document.xml");
+    // A problem with the document as a whole: no paragraph, no snippet.
+    assert_location(&f, "word/document.xml", None, None, None);
     assert!(f.message.contains("tracked changes"), "{}", f.message);
     assert!(!f.message.contains("comments"), "{}", f.message);
 }
@@ -264,8 +268,13 @@ fn doc_006_fails_on_a_font_that_cannot_be_embedded() {
     let f = the_failing_finding(RuleId::Doc006);
     assert_eq!(f.severity, Severity::Error);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.paragraph_index, Some(2));
-    assert_eq!(f.location.part, "word/document.xml");
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some("Text in a locked font."),
+        Some("Test guide"),
+    );
     assert!(f.message.contains("Restricted Test Font"), "{}", f.message);
     assert!(
         f.message.contains("does not allow embedding"),

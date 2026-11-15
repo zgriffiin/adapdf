@@ -4,7 +4,7 @@ mod common;
 
 use adapdf::findings::{FixId, FixKind, RuleId, Severity};
 use adapdf::fixtures::{DocxBuilder, Para};
-use common::{fixture_findings, of, rule_findings};
+use common::{assert_location, fixture_findings, of, rule_findings};
 
 fn step(text: &str) -> Para {
     Para::new(text).style("ListNumber")
@@ -23,10 +23,20 @@ fn lst_001_fails_on_typed_numbers() {
     assert_eq!(f.len(), 2, "one finding for each typed paragraph");
     assert_eq!(f[0].severity, Severity::Error);
     assert_eq!(f[0].fix, FixKind::Auto(FixId::ApplyListStyle));
-    assert_eq!(f[0].location.paragraph_index, Some(2));
-    assert_eq!(f[1].location.paragraph_index, Some(3));
-    assert_eq!(f[0].location.snippet.as_deref(), Some("1. Open the file."));
-    assert_eq!(f[0].location.heading.as_deref(), Some("Test guide"));
+    assert_location(
+        f[0],
+        "word/document.xml",
+        Some(2),
+        Some("1. Open the file."),
+        Some("Test guide"),
+    );
+    assert_location(
+        f[1],
+        "word/document.xml",
+        Some(3),
+        Some("2. Save the file."),
+        Some("Test guide"),
+    );
     assert!(
         f[0].message.contains("typed number (\"1.\")"),
         "{}",
@@ -115,12 +125,14 @@ fn lst_002_fails_when_a_list_mixes_typed_and_automatic_numbers() {
     assert_eq!(f.len(), 1);
     assert_eq!(f[0].severity, Severity::Warning);
     assert_eq!(f[0].fix, FixKind::Manual);
-    assert_eq!(
-        f[0].location.paragraph_index,
+    // At the typed number.
+    assert_location(
+        f[0],
+        "word/document.xml",
         Some(4),
-        "at the typed number"
+        Some("3. Close the file."),
+        Some("Test guide"),
     );
-    assert_eq!(f[0].location.snippet.as_deref(), Some("3. Close the file."));
 }
 
 #[test]

@@ -27,6 +27,28 @@ pub use objects::{
 
 const W: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
+/// Gives every `wp:docPr` a different `id`, counting from 1 in document order.
+/// Word needs the ids of the drawings in a document to be unique, so the
+/// builders write a placeholder and this numbers them.
+fn number_drawing_ids(xml: &str) -> String {
+    const OPEN: &str = r#"<wp:docPr id=""#;
+    let mut numbered = String::with_capacity(xml.len());
+    let mut rest = xml;
+    let mut next_id = 1;
+    while let Some(at) = rest.find(OPEN) {
+        let value_start = at + OPEN.len();
+        let value_len = rest[value_start..]
+            .find('"')
+            .expect("a wp:docPr id has a closing quote");
+        numbered.push_str(&rest[..value_start]);
+        numbered.push_str(&next_id.to_string());
+        rest = &rest[value_start + value_len..];
+        next_id += 1;
+    }
+    numbered.push_str(rest);
+    numbered
+}
+
 /// Escapes text for XML content and attribute values.
 fn esc(text: &str) -> String {
     text.replace('&', "&amp;")
@@ -522,6 +544,7 @@ impl DocxBuilder {
         {
             body += "<w:p/>"; // a table cannot be the last thing in a body
         }
+        let body = number_drawing_ids(&body);
         let header_ref = if self.header_text.is_some() {
             r#"<w:headerReference w:type="default" r:id="rIdHeader1"/>"#
         } else {

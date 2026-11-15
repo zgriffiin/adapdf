@@ -8,7 +8,7 @@ use adapdf::fixtures::{
     simple_field_xml, text_paragraph_xml,
 };
 use adapdf::rules::text::{HEADER_FOOTER_FIELDS, MIN_BODY_SIZE_HALF_POINTS};
-use common::{fixture_findings, of, rule_findings, the_failing_finding};
+use common::{assert_location, fixture_findings, of, rule_findings, the_failing_finding};
 
 fn raw(body: &str, styles: &str, rule: RuleId) -> Vec<Finding> {
     adapdf::check_bytes(&raw_docx(body, styles, false), &FixtureFonts)
@@ -25,12 +25,12 @@ fn txt_001_fails_for_small_body_text() {
     let f = the_failing_finding(RuleId::Txt001);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.part, "word/document.xml");
-    assert_eq!(f.location.paragraph_index, Some(2));
-    assert_eq!(f.location.heading.as_deref(), Some("Test guide"));
-    assert_eq!(
-        f.location.snippet.as_deref(),
-        Some("Small print at 9.5 pt.")
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some("Small print at 9.5 pt."),
+        Some("Test guide"),
     );
     assert!(f.message.contains("9.5 pt"), "{}", f.message);
 }
@@ -126,11 +126,12 @@ fn txt_002_fails_for_a_justified_paragraph() {
     let f = the_failing_finding(RuleId::Txt002);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Auto(FixId::AlignLeft));
-    assert_eq!(f.location.paragraph_index, Some(2));
-    assert_eq!(f.location.heading.as_deref(), Some("Test guide"));
-    assert_eq!(
-        f.location.snippet.as_deref(),
-        Some("Text that is justified.")
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some("Text that is justified."),
+        Some("Test guide"),
     );
 }
 
@@ -217,11 +218,13 @@ fn txt_003_fails_for_other_text_in_a_header() {
     let f = the_failing_finding(RuleId::Txt003);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Manual);
-    assert_eq!(f.location.part, "word/header1.xml");
-    assert_eq!(f.location.paragraph_index, None);
-    assert_eq!(
-        f.location.snippet.as_deref(),
-        Some("parks and recreation department")
+    // A header or footer has no body paragraph. The snippet is the extra words.
+    assert_location(
+        &f,
+        "word/header1.xml",
+        None,
+        Some("parks and recreation department"),
+        None,
     );
     assert!(f.message.contains("header"), "{}", f.message);
 }
@@ -396,8 +399,8 @@ fn txt_004_fails_when_a_heading_was_renamed() {
     let f = the_failing_finding(RuleId::Txt004);
     assert_eq!(f.severity, Severity::Warning);
     assert_eq!(f.fix, FixKind::Auto(FixId::UpdateFields));
-    assert_eq!(f.location.part, "word/document.xml");
-    assert_eq!(f.location.paragraph_index, Some(0));
+    // The first paragraph of the table of contents; no heading above it.
+    assert_location(&f, "word/document.xml", Some(0), Some("Test guide 1"), None);
     assert!(f.message.contains("entry 2"), "{}", f.message);
     assert!(f.message.contains("\"Installation\""), "{}", f.message);
 }

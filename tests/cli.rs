@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use adapdf::findings::RuleId;
 use adapdf::fixtures::{DocxBuilder, catalogue, clean, zip_stored};
@@ -17,12 +18,16 @@ fn write(name: &str, bytes: &[u8]) -> PathBuf {
     path
 }
 
+/// Writes a fixture to a file that no other call uses. Tests run in parallel,
+/// so two tests must never write the same path.
 fn fixture(rule: RuleId, fails: bool) -> PathBuf {
+    static CALLS: AtomicUsize = AtomicUsize::new(0);
     let f = catalogue()
         .into_iter()
         .find(|f| f.rule == rule && f.fails == fails)
         .unwrap();
-    write(&f.file_name(), &f.bytes)
+    let call = CALLS.fetch_add(1, Ordering::Relaxed);
+    write(&format!("{call}-{}", f.file_name()), &f.bytes)
 }
 
 fn run(args: &[&str]) -> Output {
@@ -82,7 +87,24 @@ fn exit_code_1_when_there_are_errors() {
     assert!(text.contains("ERRORS (1"), "{text}");
     assert!(text.contains("[HDG-002]"), "{text}");
     assert!(text.contains("How to fix:"), "{text}");
-    assert!(text.contains("Where: paragraph 2 \"Three\""), "{text}");
+    assert!(
+        text.contains("Where: paragraph 2 \"Three\", after the heading \"One\""),
+        "{text}"
+    );
+}
+
+#[test]
+fn a_finding_for_the_whole_document_has_no_heading_in_its_location() {
+    let path = fixture(RuleId::Doc001, true);
+    let text = stdout(&check(&path, &[]));
+    assert!(
+        text.contains(
+            "Where: the document (docProps/core.xml)
+"
+        ),
+        "{text}"
+    );
+    assert!(!text.contains("after the heading"), "{text}");
 }
 
 #[test]
