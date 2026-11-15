@@ -110,8 +110,8 @@ Details are in [02-pipeline](02-pipeline.md). Pre-check rules are in
 | PDF export | Word through COM (the `windows` crate), `Document.ExportAsFixedFormat` | Most accurate tags for Word content. Already installed. |
 | PDF metadata fixes | `lopdf`, written as an incremental update | Free. Adds the metadata change at the end of the file and leaves the content and tags as they are. |
 | Automated check | veraPDF command line, with a bundled Java runtime (Eclipse Temurin) | Free. No separate Java install for users. |
-| UI | `egui` / `eframe`, with AccessKit | One native window for a file picker and an issue list. AccessKit lets screen readers use the app itself. |
-| Packaging | Inno Setup installer, per user | Installs to `%LOCALAPPDATA%` with no admin rights. |
+| UI | Tauri 2 with IBM Carbon (`@carbon/react`), in WebView2 | The Rust pipeline runs behind a web UI. Carbon components are built for WCAG AA. Fonts (IBM Plex) and styles are bundled, so the app makes no network calls. WebView2 is part of Windows 11. |
+| Packaging | Tauri NSIS installer, per user (`installMode: currentUser`) | Installs to `%LOCALAPPDATA%` with no admin rights. Adds a Start menu entry and an uninstaller. |
 
 Alternative considered: a Word ribbon add-in (C#/VSTO). It would be nicer to
 use inside Word, but it needs IT to deploy and is harder to test. Reconsider
@@ -129,7 +129,7 @@ code is built to the assumptions in these specs, and Phase 0 may change them.
 | **2 — Pre-check (command line)** | All error-level rules in [03](03-precheck-rules.md), with tests based on sample .docx files. |
 | **3 — Export and check** | Word export, PDF metadata fixes, veraPDF run, report. |
 | **4 — Fixes** | Automatic fixes with backup and confirmation. |
-| **5 — App and packaging** | egui UI, Inno Setup installer, install guide for the 3 users. |
+| **5 — App and packaging** | Tauri and Carbon UI, Tauri per-user installer, install guide for the 3 users. |
 
 ## Open questions
 

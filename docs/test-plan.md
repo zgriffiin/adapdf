@@ -427,7 +427,7 @@ All rows are manual, on a clean Windows 11 machine with a standard user.
 | # | Requirement | Planned test name | Level | Fixture or input | Pass condition |
 |---|---|---|---|---|---|
 | I-01 | No admin rights | `installer_asks_for_no_admin_rights` | manual | Run the installer as a standard user | No UAC prompt. Files are in `%LOCALAPPDATA%`. Nothing is written under `C:\Program Files` or to `HKLM`. |
-| I-02 | The script asks for the lowest privileges | `installer_script_privileges` | unit | The Inno Setup script text | It has `PrivilegesRequired=lowest` and an install folder under `{localappdata}`. |
+| I-02 | The installer is set to install for the current user only | `installer_config_is_per_user` | unit | `tauri.conf.json` | `bundle.windows.nsis.installMode` is `currentUser`, so the install folder is under `%LOCALAPPDATA%` and no admin prompt is shown. |
 | I-03 | Start menu entry | `installer_adds_a_start_menu_entry` | manual | After install | An entry for the current user exists and starts the app. |
 | I-04 | Uninstall removes the files | `installer_uninstall_removes_files` | manual | Uninstall from Settings | The install folder and the Start menu entry are gone. Reports and backups next to the user's documents are not touched. |
 | I-05 | The bundled veraPDF and Java run on a machine with no Java | `installer_runs_verapdf_without_java` | manual | `where java` finds nothing and `JAVA_HOME` is unset; then an `export` of a pass fixture | The export runs veraPDF from the bundle. A second run with another Java first on the PATH still uses the bundled one. |

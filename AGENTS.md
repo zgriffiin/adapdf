@@ -22,8 +22,8 @@ pick one.
 Rust (stable, edition 2024). `zip` and `roxmltree` read the .docx; fixes are
 byte-range splices on the original XML. `lopdf` writes PDF metadata as an
 incremental update. Word runs through COM with the `windows` crate. veraPDF
-ships with a bundled Temurin Java runtime. The UI is `egui` / `eframe` with
-AccessKit. Inno Setup builds a per-user installer (no admin rights). Tests that
+ships with a bundled Temurin Java runtime. The UI is Tauri 2 with IBM Carbon (`@carbon/react`; front-end packages with
+pnpm). Tauri builds a per-user NSIS installer (no admin rights). Tests that
 need Word sit behind the cargo feature `windows_word`.
 
 ## Checks before you finish
