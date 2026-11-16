@@ -36,6 +36,7 @@ milestone numbers are the plan at the time of writing.
 | CLI | `adapdf check`: exit codes 0, 1 and 2, text output, JSON shape | `tests/cli.rs` | implemented |
 | Word integration (`windows_word`) | Word opens every fixture. Later: Word exports a tagged PDF; fixes leave a file that Word opens. | `tests/`, behind the cargo feature `windows_word` | feature defined; no tests yet (planned M3, M4) |
 | veraPDF integration | A PDF exported from a fixture has 0 veraPDF PDF/UA-1 failures | behind `windows_word`, because it needs Word to export | planned (M4) |
+| Front-end | The Carbon views in the web UI: each screen, axe-core checks for WCAG 2.1 A and AA, and the focus order (TypeScript) | front-end folder, with Vitest and axe-core | planned (M5) |
 | Installer | The per-user installer installs without admin rights, runs, and removes cleanly on a clean Windows 11 machine | manual checklist | planned (M5) |
 | Manual: Phase 0 and PAC | Real guides exported from Word, checked with veraPDF and PAC. A person confirms PAC reports 0 errors. | manual, with files in `samples/` | planned. Phase 0 is postponed until real guides are in `samples/`. |
 
@@ -48,6 +49,7 @@ milestone numbers are the plan at the time of writing.
 | CLI | The `adapdf` binary builds. | Exit codes 0, 1 and 2 are tested for each command. On exit 2 nothing is written to stdout. Output for `--json` parses. |
 | `windows_word` | A Windows machine with desktop Word 16.0 (Microsoft 365). The tests start their own Word instances; no Word window of a person needs to be closed. The Word build number is noted. | `cargo test --features windows_word` passes. After the run the number of `WINWORD.EXE` processes is the same as before. No file the tests made is left in the temp folder. |
 | veraPDF | The bundled veraPDF and Java runtime are in place. For tests on Word exports, the `windows_word` entry applies too. | The exit criterion in "Stage 5" below holds for the named fixtures. |
+| Front-end (M5) | The web UI builds (its front-end and the Tauri shell). No Word or Java is needed. | `pnpm test` passes with 0 failed. axe-core reports 0 violations for WCAG 2.1 A and AA on each screen. The build passes N-05. |
 | Installer (manual) | A clean Windows 11 machine or snapshot with a standard (non-admin) user, no Java and no earlier install. | Every row of the installer table is signed with a date, the installer version and the machine used. |
 | Phase 0 and PAC (manual) | At least 5 real guides in `samples/` (git ignores them), PAC installed (version noted), the Word build noted. | Every row of the Phase 0 tables has a result. Changes to specs 02 and 03 that the results ask for are made. |
 
@@ -63,6 +65,7 @@ milestone numbers are the plan at the time of writing.
 | CLI tests | `cargo test --test cli` |
 | Write the fixtures again after a change | `cargo run --example gen-fixtures` |
 | Word tests (none yet) | `cargo test --features windows_word` |
+| Front-end tests (none yet) | `pnpm test` in the front-end folder |
 | Format, lint | `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` |
 
 veraPDF, installer and manual tests will get their steps here when they exist.
@@ -94,7 +97,7 @@ veraPDF, installer and manual tests will get their steps here when they exist.
 - **Rule tests check** the rule ID, severity, fix kind, and the whole
   location (part, paragraph index, snippet, heading above) of the failing
   fixture. The shared helper `assert_location` in `tests/common/mod.rs` checks
-  all four fields, so a test cannot check only the paragraph index. The snippet
+  all four fields. All 39 failing-fixture tests use it. The snippet
   is the first 60 characters of the paragraph, so a paragraph that holds only a
   drawing has the snippet `""` (IMG-001 to IMG-005, IMG-007). TXB-001 uses the
   text in the box instead. Problems with the document as a whole (DOC-001,
@@ -118,10 +121,8 @@ veraPDF, installer and manual tests will get their steps here when they exist.
 
 ## Counts at the time of writing
 
-Measured on commit `194731b` plus the working-tree changes of the review that
-added the planned tests (the orchestrator commits them, so the hash will
-change). Command: `cargo test`, with the counts taken from its "test result"
-lines.
+Measured on commit `efb63e1` (`c5591eb` changes only documentation). Command:
+`cargo test`, with the counts taken from its "test result" lines.
 
 `cargo test` runs 458 tests: 126 unit, 14 CLI, 8 fixture, 31 DOC rule tests, 28
 HDG rule tests, 17 LST rule tests, 61 IMG rule tests, 35 TXB rule tests, 29 TBL
@@ -186,8 +187,9 @@ CLR and TXT in M2b (links, colour and text). IMG-007 came after M2.
 themselves are not built (planned M3). Severities and fix kinds are checked
 against spec 03 in `findings::tests::severities_and_fixes_match_spec_03` (DOC,
 HDG, IMG, TXB, LST and TBL) and `severities_and_fixes_match_spec_03` in
-`tests/rules_links.rs` (LNK, CLR and TXT). The fixes `AlignLeft` (TXT-002) and
-`UpdateFields` (TXT-004) are not built (planned M3).
+`tests/rules_links.rs` (LNK, CLR and TXT). The fix `AlignLeft` (TXT-002) is not built
+(planned M3). The fix `UpdateFields` (TXT-004) is done at export (M4; decided
+point 1).
 
 The model parts for IMG, TXB and TBL are tested in `model::drawings::tests::*`
 (including groups, canvases and VML groups) and `model::tables::tests::*`.
@@ -207,10 +209,10 @@ The model parts for IMG, TXB and TBL are tested in `model::drawings::tests::*`
 | Stage 5: veraPDF run and message table | S5-01 to S5-11 | planned (M4) |
 | Stage 6: HTML and JSON report, and its own accessibility | S6-01 to S6-11 | planned (M4) |
 | Interface `adapdf export` | C-05 to C-08 | planned (M4) |
-| App (file picker, findings list, export, report) | A-01 to A-06 | planned (M5) |
-| Installer | I-01 to I-07 | planned (M5) |
+| App (file picker, findings list, export, report) | A-01 to A-07 | planned (M5) |
+| Installer | I-01 to I-09 | planned (M5) |
 | Word template and acceptance (spec 04) | T-01 to T-10 | planned (phase 1, template) |
-| No network (spec 01) | N-01 to N-04 | planned |
+| No network (spec 01) | N-01 to N-05 | planned |
 | Phase 0 and PAC | The Phase 0 tables and P0-01 to P0-09 | planned (postponed) |
 
 ## Planned tests (not built)
@@ -219,7 +221,8 @@ Nothing in this section is built. Each row says what a test must show, so that
 the person who builds the stage knows when it is done. Test names are
 proposals. Levels: **unit** (no Word, Java or network), **CLI** (runs the
 `adapdf` binary), **windows_word** (needs Word, feature-gated), **veraPDF**
-(runs the bundled veraPDF) and **manual** (a person, with a record). The
+(runs the bundled veraPDF), **front-end** (TypeScript, Vitest and
+axe-core) and **manual** (a person, with a record). The
 columns are: requirement (with the spec it comes from), planned test name,
 level, fixture or input, and the pass condition.
 
@@ -233,7 +236,7 @@ caller.
 ### Decided points
 
 The plan found these points while it was written. They are now decided. The
-rows say "(open point N)" where they depend on one. Points 6 to 8 are also in
+rows say "(decided point N)" where they depend on one. Points 6 to 8 are also in
 spec 02.
 
 1. **`UpdateFields` (TXT-004) is done at export.** Only Word can rebuild a
@@ -256,6 +259,15 @@ spec 02.
    lists the errors. No PDF is written.
 8. **A PDF with no tags** (`/MarkInfo` or `/StructTreeRoot` missing) **is
    exit 1**. It is an error finding about the document, not a tool failure.
+9. **`AlignLeft` (TXT-002) sets a direct setting.** The fix sets
+   `w:jc w:val="left"` in the paragraph's own `w:pPr`. It does not change the
+   style, so no other paragraph changes.
+
+### Fixture realism (stage 1)
+
+| # | Requirement | Planned test name | Level | Fixture or input | Pass condition |
+|---|---|---|---|---|---|
+| W-01 | Word opens every fixture (spec 02, "Testing") | `word_opens_every_fixture` | windows_word | Every `tests/fixtures/*.docx`. The IMG fixtures need an image part in the builder first (see "Known gaps in M2a"). | Each file opens read-only in the test's own hidden Word, with no repair prompt or error. The number of `WINWORD.EXE` processes after the test equals the number before. |
 
 ### Stage 2: fixes (spec 02, stage 2)
 
@@ -268,7 +280,7 @@ Fix IDs in `src/findings.rs`: 11 auto (`SetDefaultLanguage`,
 | # | Requirement | Planned test name | Level | Fixture or input | Pass condition |
 |---|---|---|---|---|---|
 | S2-01 | Check for the `~$` lock file before any write (spec 02, stage 2) | `fix_refuses_when_a_lock_file_exists` | unit | A copy of `DOC-002-fail.docx` in a temp folder, with a lock file that the test makes next to it, for file names of 5, 8, 9 and 20 characters and one with spaces | Exit 2. The message names the file and says to close it in Word. The file bytes are unchanged. No backup is written. |
-| S2-02 | The lock-file name is the one Word writes (open point 5) | `fix_detects_the_lock_file_word_writes` | windows_word | The test starts its own hidden Word, opens a copy of a fixture (same five file names) and leaves it open | The tool sees every lock file Word made. The observed names are copied into this plan. |
+| S2-02 | The lock-file name is the one Word writes (decided point 5) | `fix_detects_the_lock_file_word_writes` | windows_word | The test starts its own hidden Word, opens a copy of a fixture (same five file names) and leaves it open | The tool sees every lock file Word made. The observed names are copied into this plan. |
 | S2-03 | Try to open the file for writing before any write | `fix_refuses_when_the_file_cannot_be_opened_for_writing` | unit | A copy of `DOC-002-fail.docx` held open by the test with no sharing; a second copy with the read-only attribute | Exit 2 for both. Bytes unchanged. No backup. |
 | S2-04 | Never write while Word has the file open (AGENTS.md; spec 02) | `fix_never_writes_while_word_has_the_file_open` | windows_word | A copy of a fixture open in the test's own Word, first read and write, then read-only | Exit 2. SHA-256 of the file is the same. No backup and no temp file in the folder. The same copy with Word open on a different file: the fix runs. |
 | S2-05 | The backup is written before any write to the target (AGENTS.md; spec 02) | `fix_writes_the_backup_before_the_first_write` | unit | Any fix on a fixture copy, with the writer recording every call | The first recorded write is the backup. It was closed and read back equal before the first write to the target. |
@@ -276,7 +288,7 @@ Fix IDs in `src/findings.rs`: 11 auto (`SetDefaultLanguage`,
 | S2-07 | Backup name `Guide.backup-<yyyymmdd-hhmmss>.docx`, bytes equal to the original (spec 02, "Inputs and outputs") | `fix_backup_name_and_bytes` | unit | `DOC-002-fail.docx` as `Guide.docx`, clock fixed at 2026-03-05 10:15:30 | `Guide.backup-20260305-101530.docx` is next to the source. Its bytes equal the original. A second run in the same second does not overwrite it. |
 | S2-08 | Only the target XML bytes change; all other parts and all bytes outside the splices are identical (spec 02 stage 2; spec 01) | `fix_changes_only_the_spliced_bytes` | unit | The failing fixture of every fix ID in the rows below | Every part but the target has equal bytes after unzip, and the entries have the same names and order. In the target part, the result equals the original with the fix's splice list applied by hand (the test applies it itself), so the bytes before, between and after the splices are equal. |
 | S2-09 | The written file is a valid .docx | `fix_result_is_a_valid_docx` | unit | Same | The zip opens, the target part parses as XML, and `Document::from_bytes` reads it. |
-| S2-10 | Stage 1 runs again after the fixes and shows the new results (spec 02) | `fix_reruns_stage_1_and_the_fixed_finding_is_gone` | unit | Each failing fixture in the rows below, then one document with every auto problem | The finding of the rule is gone. No new finding appears, except those the rows list. After all auto fixes the document has no auto finding left (open point 1 aside); the manual findings are the same rules and counts as before. |
+| S2-10 | Stage 1 runs again after the fixes and shows the new results (spec 02) | `fix_reruns_stage_1_and_the_fixed_finding_is_gone` | unit | Each failing fixture in the rows below, then one document with every auto problem | The finding of the rule is gone. No new finding appears, except those the rows list. After all auto fixes the document has no auto finding left (decided point 1 aside); the manual findings are the same rules and counts as before. |
 | S2-11 | The user picks which fixes to apply (spec 02) | `fix_applies_only_the_fixes_the_user_picked` | unit | A document with 3 auto problems; the user picks 1 | Only that rule's finding is gone. The other two remain. Bytes outside that splice are equal. |
 | S2-12 | Ask fixes never write content the user did not type (AGENTS.md; spec 02) | `ask_fix_without_text_writes_nothing` | unit | Each ask fix ID with empty input and with spaces only; `DOC-001-fail.docx` shows the suggestion "Test guide" but the user types nothing | No write, no backup. The finding remains. The suggestion is never used as input. |
 | S2-13 | The typed text is what is written | `ask_fix_writes_exactly_the_typed_text` | unit | Text `A & B <C> "D" é 日本` for the title and for alt text | The XML is escaped. Reading the file back gives the same text. Nothing else is added. |
@@ -284,20 +296,20 @@ Fix IDs in `src/findings.rs`: 11 auto (`SetDefaultLanguage`,
 | S2-15 | Word still opens the fixed file (spec 02, "Testing") | `fix_result_opens_in_word` | windows_word | Every fixture, fixed with every fix that applies to it | The test's hidden Word opens it read-only, with repair off and alerts off, and does not fail. The paragraph count equals the model's count. |
 | S2-16 | `SetTitle` (DOC-001, ask) | `ask_set_title_writes_dc_title` | unit | `DOC-001-fail.docx` (empty `dc:title`); a copy with no `dc:title` element | The typed title is in `docProps/core.xml` only. DOC-001 is gone. Spaces only is refused. |
 | S2-17 | `SetDefaultLanguage` (DOC-002, auto) | `fix_set_default_language` | unit | `DOC-002-fail.docx`; a copy with an empty `w:lang`; a copy with other `rPr` children in the defaults | `w:lang` has the language of the setting (default en-US) in the document defaults of `word/styles.xml`. DOC-002 is gone. A setting of en-GB writes en-GB. |
-| S2-18 | `ApplyHeadingStyle` (HDG-003, auto; the user confirms each paragraph) | `fix_apply_heading_style_at_the_suggested_level` | unit | `HDG-003-fail.docx`; a copy where the style is not defined in `styles.xml` (open point 4); one with no heading above | The paragraph has the suggested style (Heading 2 in the fixture). The text is the same. HDG-003 is gone. No HDG-002 appears. An undefined Heading style is added from Word's built-in definition, then applied. |
+| S2-18 | `ApplyHeadingStyle` (HDG-003, auto; the user confirms each paragraph) | `fix_apply_heading_style_at_the_suggested_level` | unit | `HDG-003-fail.docx`; a copy where the style is not defined in `styles.xml` (decided point 4); one with no heading above | The paragraph has the suggested style (Heading 2 in the fixture). The text is the same. HDG-003 is gone. No HDG-002 appears. An undefined Heading style is added from Word's built-in definition, then applied. |
 | S2-19 | `DeleteEmptyHeading` (HDG-004, auto) | `fix_delete_empty_heading` | unit | `HDG-004-fail.docx`; a copy where the empty heading holds a section break; one where it holds a bookmark | The empty paragraph is removed and HDG-004 is gone. The neighbours are byte-equal. A paragraph with a section break or a bookmark is not deleted, and the user is told why. |
 | S2-20 | `ApplyListStyle` (LST-001, auto) | `fix_apply_list_style` | unit | `LST-001-fail.docx`; a typed-bullet copy; a marker split across two runs; a tab after the marker | The marker and its separator are gone and the text after them is the same. The List Number or List Bullet style is set. LST-001 is gone. LST-002 does not appear. |
-| S2-21 | `SetAltText` (IMG-001 and IMG-002, ask), with the "Mark as decorative" choice | `ask_set_alt_text_writes_descr_or_alt` | unit | `IMG-001-fail.docx`, `IMG-002-fail.docx`; copies with a chart, a shape, a group, a VML picture, and a shape in `mc:AlternateContent` (open point 2) | The text is in `descr` (DrawingML) and, when there is a VML copy, in its `alt` too, so both copies agree. "Decorative" writes the decorative extension instead. IMG-001 is gone. IMG-002 is gone unless the typed text is itself a placeholder. |
+| S2-21 | `SetAltText` (IMG-001 and IMG-002, ask), with the "Mark as decorative" choice | `ask_set_alt_text_writes_descr_or_alt` | unit | `IMG-001-fail.docx`, `IMG-002-fail.docx`; copies with a chart, a shape, a group, a VML picture, and a shape in `mc:AlternateContent` (decided point 2) | The text is in `descr` (DrawingML) and, when there is a VML copy, in its `alt` too, so both copies agree. "Decorative" writes the decorative extension instead. IMG-001 is gone. IMG-002 is gone unless the typed text is itself a placeholder. |
 | S2-22 | `MakeImageInline` (IMG-004, auto) | `fix_make_inline_for_pictures_charts_and_smart_art` | unit | `IMG-004-fail.docx`; in-memory floating chart and SmartArt | `wp:anchor` becomes `wp:inline` and keeps the extent, `wp:docPr` and graphic. IMG-004 is gone. |
 | S2-23 | IMG-004 caveat: groups, canvases and shapes (see "How M2a reads the rules") | `fix_make_inline_for_groups_canvases_and_shapes` | windows_word, then manual | In-memory `Image::group()`, `canvas()` and `shape()` with `.floating()`, made inline by the fix and opened in Word | A person looks at the result in Word for each object and records whether the layout inside is kept. Until then, the fix is not offered for these three objects and the finding says to do it in Word. After that, the branch that was chosen is tested. |
 | S2-24 | `MarkAnnotationsDecorative` (IMG-007, ask) | `ask_mark_annotations_decorative` | unit | `IMG-007-fail.docx` (three shapes in `mc:AlternateContent`) | After the user confirms that the picture's alt text describes the arrows, each unresolved shape's `wp:docPr` gets the decorative extension (the empty element is expanded and the namespace is declared). IMG-007 is gone. The picture's alt text is unchanged. With no confirmation, nothing is written. If the picture has no alt text, the fix waits for IMG-001. |
 | S2-25 | IMG-007 caveat: VML shapes cannot be marked decorative | `ask_mark_annotations_for_vml_shapes` | unit | A picture with two `Image::vml_shape().floating()` | The tool does not claim to mark them. It asks for alt text for each, or tells the user to convert the file. IMG-007 is gone only after one of these. |
-| S2-26 | `DeleteEmptyParagraphs` (TXB-004, auto; open point 3) | `fix_delete_empty_paragraphs` | unit | `TXB-004-fail.docx` (2 in a row); a row of 4; two rows in one document | All but one of each row is deleted. TXB-004 is gone. A paragraph that holds a drawing, break, field or section break is not deleted. |
+| S2-26 | `DeleteEmptyParagraphs` (TXB-004, auto; decided point 3) | `fix_delete_empty_paragraphs` | unit | `TXB-004-fail.docx` (2 in a row); a row of 4; two rows in one document | All but one of each row is deleted. TXB-004 is gone. A paragraph that holds a drawing, break, field or section break is not deleted. |
 | S2-27 | `MarkHeaderRow` (TBL-001, auto; the user confirms the first row is the header) | `fix_mark_header_row` | unit | `TBL-001-fail.docx`; a copy whose first row has `w:trPr` without `w:tblHeader`; a copy with no `w:trPr`; a nested table | `<w:tblHeader/>` is in the first row's `w:trPr` of the right table only. `w:cantSplit` stays. TBL-001 is gone. Without confirmation nothing is written. |
 | S2-28 | `DeleteEmptyRow` (TBL-005, auto) | `fix_delete_empty_row` | unit | `TBL-005-fail.docx` (row 3 empty); two empty rows; the empty row last | The empty rows are gone and TBL-005 is gone. Other rows are byte-equal. If one row is left, the re-run may show TBL-004 and the test expects it. |
 | S2-29 | `DisallowRowBreak` (TBL-006, auto) | `fix_disallow_row_break` | unit | `TBL-006-fail.docx`; a copy with `w:trPr` but no `w:cantSplit`; a copy with `w:cantSplit w:val="0"` | Every row has `<w:cantSplit/>`. The header flag stays. TBL-006 is gone. |
-| S2-30 | `AlignLeft` (TXT-002, auto) | `fix_align_left` | unit | `TXT-002-fail.docx` (direct `jc both`); a copy where the style is justified | The paragraph is left aligned and TXT-002 is gone. For a style, the style is changed and the user is told it affects all its paragraphs, or a direct `left` is added. M3 chooses; the test checks the choice. |
-| S2-31 | `UpdateFields` (TXT-004, auto; open point 1) | `fix_update_fields_is_done_at_export` | unit | `TXT-004-fail.docx` | The fix writes nothing to the .docx and no backup is made. The finding is listed as "done at export". The proof is `export_updates_fields_before_exporting` in stage 3. |
+| S2-30 | `AlignLeft` (TXT-002, auto) | `fix_align_left` | unit | `TXT-002-fail.docx` (direct `jc both`); a copy where the style is justified | The paragraph has `w:jc w:val="left"` in its own `w:pPr`. Its effective alignment is left, the style is unchanged, and TXT-002 is gone (decided point 9). |
+| S2-31 | `UpdateFields` (TXT-004, auto; decided point 1) | `fix_update_fields_is_done_at_export` | unit | `TXT-004-fail.docx` | The fix writes nothing to the .docx and no backup is made. The finding is listed as "done at export". The proof is `export_updates_fields_before_exporting` in stage 3. |
 
 ### Stage 3: Word export (spec 02, stage 3)
 
@@ -315,13 +327,13 @@ Fix IDs in `src/findings.rs`: 11 auto (`SetDefaultLanguage`,
 | S3-10 | The parameters have the effect the spec says | `export_makes_a_tagged_pdf_with_bookmarks_and_properties` | windows_word | A pass fixture with a Heading 1 and a Heading 2 | The PDF has `/MarkInfo` with `/Marked true`, a `/StructTreeRoot`, `/Outlines` for the headings, an Info `/Title`, and no `pdfaid` in the XMP (PDF/A off). |
 | S3-11 | Fields are updated before the export (spec 02) | `export_updates_fields_before_exporting` | unit, then windows_word | Unit: a fake that records the order. windows_word: `TXT-004-fail.docx` (a heading renamed after the table of contents was made) | Unit: the field update call comes before `ExportAsFixedFormat`. Word: the PDF text has the new heading in the table of contents and not the old one. The .docx on disk is unchanged. This also proves S2-31. |
 | S3-12 | Export is refused when DOC-005 fires (spec 02) | `export_is_refused_when_doc_005_fires` | unit | `DOC-005-fail.docx` (tracked change); a copy with only a comment | Exit 1. The fake Word is never called. No PDF. The message names tracked changes or comments. |
-| S3-13 | The PDF is written only when stage 1 has no errors (spec 02, "Inputs and outputs") | `export_writes_no_pdf_when_stage_1_has_errors` | CLI | Each of the 15 `*-fail.docx` fixtures whose rule is an error (DOC-001, 002, 005, 006; HDG-001, 002, 004; IMG-001, 007; TXB-001; LST-001; TBL-001, 002; LNK-003; CLR-001) | Exit 1. No `.pdf` next to the file. Word is not started. |
+| S3-13 | The PDF is written only when stage 1 has no errors (spec 02, "Inputs and outputs") | `export_writes_no_pdf_when_stage_1_has_errors` | CLI | Each of the 15 `*-fail.docx` fixtures whose rule is an error (DOC-001, 002, 005, 006; HDG-001, 002, 004; IMG-001, 007; TXB-001; LST-001; TBL-001, 002; LNK-003; CLR-001) | Exit 1. No `.pdf` next to the file. Word is not started. `Guide.accessibility.html` exists, its summary says Fail, and it lists the errors (decided point 7). |
 | S3-14 | Warnings do not block the export | `export_runs_when_only_warnings_exist` | windows_word | `HDG-006-fail.docx` and `TXT-002-fail.docx` | A PDF is written. The report lists the warnings. |
 | S3-15 | The source .docx is not changed by the export | `export_leaves_the_docx_unchanged` | windows_word | Every exportable pass fixture (see stage 5) | Bytes and modified time are the same before and after. |
 | S3-16 | Word is not installed | `export_reports_missing_word` | unit | A fake factory that fails with "class not registered" | Exit 2. The message says Microsoft Word is not installed. No panic. |
 | S3-17 | A document Word cannot open (for example a password) | `export_reports_a_password_protected_document` | windows_word | A copy that the test saves with a password through Word | Exit 2 with a clear message. The process list equals the list before. |
 | S3-18 | Awkward paths | `export_handles_awkward_paths` | windows_word | A folder and file name with spaces and a non-ASCII letter; a long path | The PDF is written next to the file. |
-| S3-19 | Existing or locked `Guide.pdf` (open point 6) | `export_replaces_or_reports_a_locked_pdf` | windows_word | A `Guide.pdf` from an earlier run; another with an exclusive handle held | The first is replaced. The second gives exit 2 with a clear message. |
+| S3-19 | Existing or locked `Guide.pdf` (decided point 6) | `export_replaces_or_reports_a_locked_pdf` | windows_word | A `Guide.pdf` from an earlier run; another with an exclusive handle held | The first is replaced. The second gives exit 2 with a clear message. |
 
 ### Stage 4: PDF metadata fixes (spec 02, stage 4)
 
@@ -339,7 +351,7 @@ matters, a cross-reference stream.
 | S4-03 | XMP `dc:title` and Info `Title` from the .docx title | `pdfmeta_copies_the_title` | unit | `missing-title` with the .docx title "Adapdf test guide"; a copy missing only one of the two | Both are set to the .docx title; only the missing one is added when one is present. An empty .docx title: nothing is invented and an error is reported. |
 | S4-04 | `/ViewerPreferences /DisplayDocTitle true` | `pdfmeta_sets_display_doc_title` | unit | `missing-displaydoctitle`; a copy with a `ViewerPreferences` that has other keys; a copy with it true | Set to true. Other keys are kept. Already true: no change. |
 | S4-05 | Catalog `/Lang` from the .docx default language | `pdfmeta_copies_the_language` | unit | `missing-lang` with default language en-US; a copy that has `/Lang` | `/Lang (en-US)` is added. An existing value is not changed. |
-| S4-06 | `/MarkInfo /Marked true` and `/StructTreeRoot` are not fixed; the error is reported (spec 02) | `pdfmeta_reports_missing_markinfo_and_structtreeroot` | unit | `no-markinfo`, `no-structtreeroot` | No `/MarkInfo` or `/StructTreeRoot` object is in the appended bytes. An error finding says the export failed (open point 8). |
+| S4-06 | `/MarkInfo /Marked true` and `/StructTreeRoot` are not fixed; the error is reported (spec 02) | `pdfmeta_reports_missing_markinfo_and_structtreeroot` | unit | `no-markinfo`, `no-structtreeroot` | No `/MarkInfo` or `/StructTreeRoot` object is in the appended bytes. An error finding says the export failed (decided point 8). |
 | S4-07 | The content and the tags are never changed (AGENTS.md; spec 01) | `pdfmeta_does_not_touch_content_or_tags` | unit | `all-missing` | The objects in the appended tail are only the catalog, the Info dictionary and the metadata stream (and `ViewerPreferences` if it is an indirect object). No page, content stream, font or structure element is redefined. The catalog's `/StructTreeRoot` and `/Pages` references are the same as before. |
 | S4-08 | Nothing missing means no change | `pdfmeta_no_change_when_nothing_is_missing` | unit | `tagged-complete` | The output bytes equal the input. The report says there were no changes. |
 | S4-09 | Each change is listed in the report | `pdfmeta_changes_are_listed` | unit | Each fixture above | The list of changes (what, before, after) matches the differences found by comparing the two files. |
@@ -383,7 +395,7 @@ the test needs a parser, which needs a decision.
 | S6-06 | The HTML report is itself accessible: headings, real tables with `th` and `scope`, `lang`, title, contrast | `report_html_is_accessible` | unit | A report with findings | `html` has `lang`. `title` is not empty. One `h1`, and no skipped level. Every data table has `th` with `scope`, and a caption. No table is used for layout. Every form control has a label. Every colour pair in the style sheet has a contrast of at least 4.5:1, checked with `contrast_ratio`. Pass or fail is never shown by colour alone. No link text is one of the vague phrases of LNK-001. |
 | S6-07 | Document text cannot break the report | `report_escapes_text_from_the_document` | unit | A finding whose snippet is `<script>alert(1)</script> & "x"` | The HTML shows the text; there is no `script` element. The JSON has the text unchanged. |
 | S6-08 | The JSON has the same results as the HTML | `report_json_matches_html` | unit | The same fixed results | The same findings (rule ID, message, location), counts, fixes, metadata changes, veraPDF failures and backup name appear in both. |
-| S6-09 | The files are `Guide.accessibility.html` and `Guide.accessibility.json`, next to the PDF | `report_files_are_written_next_to_the_pdf` | CLI | `export` on a pass fixture; `export` on an error fixture (open point 7) | Both files exist with these names. |
+| S6-09 | The files are `Guide.accessibility.html` and `Guide.accessibility.json`, next to the PDF | `report_files_are_written_next_to_the_pdf` | CLI | `export` on a pass fixture; `export` on an error fixture (decided point 7) | Both files exist with these names. |
 | S6-10 | No outside resources | `report_loads_nothing_from_the_network` | unit | A report | No `src`, `href` to a network address, or `@import`; the style sheet is inside the file. |
 | S6-11 | The report works with a screen reader | `report_read_with_a_screen_reader` | manual | A report from a failing fixture with several findings, opened in a browser | With NVDA and with Narrator: the seven sections can be reached from the headings list; each table is read with its column headers; the checklist and the sign-off fields can be used with the keyboard only; the pass or fail result is read. Done once for each release, with the screen reader and browser versions noted. |
 
@@ -396,7 +408,7 @@ the test needs a parser, which needs a decision.
 | C-03 | `fix`: 2 for a tool failure | `cli_fix_exit_2_on_tool_failure` | CLI | A locked file; a file that is not a .docx; a missing file; a backup that cannot be written; wrong arguments | Exit 2. stderr says why. stdout is empty. The file is unchanged. |
 | C-04 | `fix` asks before each fix | `cli_fix_confirms_each_fix` | CLI | A document with 3 auto problems, with answers piped in: yes, no, yes | The first and the third are applied. The second is not. |
 | C-05 | `export`: 0 on a pass | `cli_export_exit_0_on_a_pass` | windows_word | `DOC-001-pass.docx` | Exit 0. `Guide.pdf` and the two report files exist. |
-| C-06 | `export`: 1 for stage 1 errors, veraPDF failures or a PDF with no tags | `cli_export_exit_1_on_errors` | CLI | `HDG-002-fail.docx` (no PDF); a stage 5 fake that reports 1 failure | Exit 1 in both. |
+| C-06 | `export`: 1 for stage 1 errors, veraPDF failures or a PDF with no tags | `cli_export_exit_1_on_errors` | CLI | `HDG-002-fail.docx` (no PDF); a stage 5 fake that reports 1 failure; the stage 4 input `no-structtreeroot`, an untagged PDF (decided point 8) | Exit 1 in all three. |
 | C-07 | `export`: 2 for a tool failure (Word missing, timeout, veraPDF or Java missing) | `cli_export_exit_2_on_tool_failure` | CLI | The fakes of S3-16, S3-06 and S5-06 | Exit 2. stdout is empty. |
 | C-08 | The current test that `export` is not in this version | `exit_code_2_for_wrong_usage` in `tests/cli.rs` | CLI | `adapdf export a.docx` | This test must be changed when `export` is built. |
 
@@ -406,23 +418,29 @@ the test needs a parser, which needs a decision.
 |---|---|---|---|---|---|
 | N-01 | The shipped program has no HTTP client | `no_http_client_in_the_dependency_graph` | unit | `Cargo.lock` (read as text) and the `windows` crate features in `Cargo.toml` | None of `reqwest`, `hyper`, `ureq`, `curl`, `attohttpc`, `isahc`, `surf`, `h2`, `native-tls`, `rustls`, `openssl` is a package. No `windows` feature for networking (`Win32_Networking`, `Win32_NetworkManagement`). Equivalent check with `cargo tree -e normal`. |
 | N-02 | A full run works with the network off | `export_runs_with_the_network_disabled` | manual | A pass fixture, on a machine with the network adapters disabled | The same PDF and the same veraPDF result as with the network on. |
-| N-03 | The tool and the bundled Java make no connection | `no_connection_attempts_in_a_full_run` | manual | A Windows Firewall rule that blocks outbound traffic for `adapdf.exe` and the bundled `java.exe`, with logging on, and a full `export` | The run succeeds and the firewall log has no entry for those two programs. |
+| N-03 | The tool, the bundled Java and WebView2 make no connection | `no_connection_attempts_in_a_full_run` | manual | A Windows Firewall rule that blocks outbound traffic for `adapdf.exe`, the bundled `java.exe` and `msedgewebview2.exe`, with logging on, and a full `export` | The run succeeds and the firewall log has no entry for those three programs. |
 | N-04 | Only made-up documents are in git (AGENTS.md) | `repo_has_only_made_up_documents` | unit | `git ls-files` | The tracked `.docx` and `.pdf` files are the catalogue, the PDF fixtures and the template files, and nothing else. |
+| N-05 | The web UI loads nothing from the network (spec 01, constraints) | `frontend_bundle_has_no_remote_urls` | unit or CLI, after the front-end build | The built front-end assets, and `tauri.conf.json` | 0 matches for `http://` and `https://` in `src`, `href`, `url()` and `@import`, except Tauri's own IPC origin (`http://ipc.localhost`, a local address inside WebView2) and XML namespace strings, which the test lists by name. In the CSP, `default-src`, `connect-src`, `font-src` and `img-src` allow only `'self'` and Tauri's IPC scheme. |
+
+Carbon's Sass loads IBM Plex from a CDN by default. The build must point the
+font path at the bundled files, or N-05 fails.
 
 ### App (spec 02, "Interfaces"; spec 01, technology)
 
 | # | Requirement | Planned test name | Level | Fixture or input | Pass condition |
 |---|---|---|---|---|---|
-| A-01 | Findings are grouped by severity | `app_groups_findings_by_severity` | unit | The view model for `LST-002-fail.docx` | Errors first, then warnings, with counts. |
-| A-02 | Fix and export buttons follow the state | `app_buttons_follow_the_state` | unit | The view model with no fix picked; with errors; with none | "Apply fixes" is off when nothing is picked. "Export" is off while errors remain. |
-| A-03 | The tool never fills in alt text or a title (AGENTS.md) | `app_never_prefills_typed_text` | unit | `DOC-001-fail.docx` and `IMG-001-fail.docx` | The input field is empty. The suggestion is shown as a separate hint. |
-| A-04 | The app is usable with a screen reader (spec 01: AccessKit) | `app_widgets_have_names_and_roles` | unit | The accessibility tree of each screen | Every interactive widget has a role and a name. The focus order follows the reading order. |
+| A-01 | Findings are grouped by severity | `app_groups_findings_by_severity` | front-end (TypeScript) | The view model for `LST-002-fail.docx` | Errors first, then warnings, with counts. |
+| A-02 | Fix and export buttons follow the state | `app_buttons_follow_the_state` | front-end (TypeScript) | The view model with no fix picked; with errors; with none | "Apply fixes" is off when nothing is picked. "Export" is off while errors remain. |
+| A-03 | The tool never fills in alt text or a title (AGENTS.md) | `app_never_prefills_typed_text` | front-end (TypeScript) | `DOC-001-fail.docx` and `IMG-001-fail.docx` | The input field is empty. The suggestion is shown as a separate hint. |
+| A-04 | The app is usable with a screen reader (spec 01: Carbon in WebView2) | `app_widgets_have_names_and_roles` | front-end (TypeScript) | Each screen, tested with Vitest and axe-core (`pnpm test`) | axe-core reports 0 violations for WCAG 2.1 A and AA on each screen. The keyboard focus order follows the reading order. |
 | A-05 | Keyboard, screen reader and display settings | `app_manual_walkthrough` | manual | The app on Windows 11 | The whole flow (choose a file, see findings, apply a fix, export, open the report) works with the keyboard alone; Narrator and NVDA read each step; the app is usable at 200% scaling and in a high-contrast theme; dragging a file onto the window works. |
 | A-06 | The report opens from the app | `app_opens_the_report` | manual | After an export | The report opens from a local file path in the default browser. |
+| A-07 | The Tauri commands call the same pipeline as the CLI | `app_commands_match_the_cli` | unit (Rust); the `export` case is windows_word | `check`, `fix` and `export` commands on `LST-002-fail.docx`, `TXB-004-fail.docx` and a pass fixture | Each command returns the same findings, fix results and exit status as the matching CLI command on the same input. |
 
 ### Installer (spec 01, constraints and technology)
 
-All rows are manual, on a clean Windows 11 machine with a standard user.
+Most rows are manual, on a clean Windows 11 machine with a standard user. I-02
+and I-08 are unit tests of `tauri.conf.json`.
 
 | # | Requirement | Planned test name | Level | Fixture or input | Pass condition |
 |---|---|---|---|---|---|
@@ -433,6 +451,8 @@ All rows are manual, on a clean Windows 11 machine with a standard user.
 | I-05 | The bundled veraPDF and Java run on a machine with no Java | `installer_runs_verapdf_without_java` | manual | `where java` finds nothing and `JAVA_HOME` is unset; then an `export` of a pass fixture | The export runs veraPDF from the bundle. A second run with another Java first on the PATH still uses the bundled one. |
 | I-06 | Awkward user names | `installer_with_awkward_user_name` | manual | A user name with a space and a non-ASCII letter | Install, run and uninstall work. |
 | I-07 | Word is missing | `app_without_word` | manual | A machine with no Word | `check` works. `export` gives exit 2 with a clear message. |
+| I-08 | The installer does not download WebView2 (Windows 11 has it; spec 01, technology) | `installer_skips_webview2_download` | unit | `tauri.conf.json` | `bundle.windows.webviewInstallMode` is `{ "type": "skip" }`. Any other mode can download WebView2, which is a network call. |
+| I-09 | The install guide works for a new user (spec 01, phase 5) | `installer_guide_followed_without_help` | manual | The install guide, on a clean Windows 11 user account with no admin rights. A person who did not build the app follows it. | The person installs, runs a check and uninstalls without help. Any help given is a fail. |
 
 ### Template acceptance (spec 04, "Acceptance")
 
@@ -670,8 +690,8 @@ Decisions for the IMG, TXB and TBL rules where spec 03 leaves room.
 
 - **Fixtures have no media parts.** The pictures in the IMG fixtures have no
   image data, and charts, SmartArt and embedded objects exist only in memory
-  tests. Word may show the pictures as missing. The planned `windows_word`
-  test that opens every fixture will need a small image part in the builder.
+  tests. Word may show the pictures as missing. The planned W-01 test
+  (`word_opens_every_fixture`) will need a small image part in the builder.
 - **Fixtures are still not the same as Word files.** Shapes, groups and
   canvases are now written with `mc:AlternateContent`, and every `wp:docPr` id
   is unique. Still different: the VML copy is simplified and every VML shape id
@@ -847,7 +867,8 @@ together if the spec changes.
 ## Known gaps in M1
 
 - **Word is not used in any test.** No test checks that Word opens the
-  generated fixtures. This is planned under `windows_word`. Until then the
+  generated fixtures. This is planned as W-01 (`word_opens_every_fixture`,
+  under `windows_word`). Until then the
   fixtures are only known to be valid for this tool's reader.
 - **DOC-004 detection is not checked against a document that Word made from
   the template.** The template does not exist yet. The fixture writes the
