@@ -41,7 +41,9 @@ const WD_DO_NOT_SAVE_CHANGES: i32 = 0;
 /// `wdAlertsNone`.
 const WD_ALERTS_NONE: i32 = 0;
 /// How long [`WordSession`] waits for Word's process to end after `Quit`.
-const EXIT_WAIT: Duration = Duration::from_secs(10);
+/// Word took 3.1 to 4.9 seconds in 14 measured quits and 8.6 seconds in one
+/// more, so 10 seconds was too tight (test plan, "Known gaps in M3a").
+const EXIT_WAIT: Duration = Duration::from_secs(30);
 /// How often the process list is read while waiting.
 const EXIT_POLL: Duration = Duration::from_millis(50);
 /// Word asks for a password in a dialog when a document needs one and none is
@@ -98,18 +100,26 @@ pub type Result<T> = std::result::Result<T, WordError>;
 ///    COM gave the session a Word that was already running (the user's). The
 ///    session then does nothing to it except release its reference, and
 ///    [`start`](WordSession::start) fails with [`WordError::SharedInstance`].
-/// 3. Otherwise the session adds one hidden, empty document to its new Word,
-///    asks that document's window for its handle, and asks Windows which
-///    process owns the handle. It closes the document again. That process is
-///    the pid, and it must be one of the new processes from step 2, or
-///    `start` fails with [`WordError::SharedInstance`]. (A new process alone
-///    would not prove which Word the object lives in: two tools that start
-///    Word at the same moment would each see the other's process.)
+/// 3. A new process alone does not show that the object is its Word: COM could
+///    have given the user's Word while an unrelated Word started at the same
+///    moment. So the session reads two properties, and only a fresh automation
+///    Word passes: `Visible` is false and `Documents.Count` is 0. The user's
+///    Word is visible or has documents. Otherwise `start` fails with
+///    [`WordError::SharedInstance`], before any document is added, and the
+///    session does nothing to that Word. (The decision is `fresh_processes`.)
+/// 4. Then the session adds one hidden, empty document to its new Word, asks
+///    that document's window for its handle, and asks Windows which process
+///    owns the handle. It closes the document again. That process is the pid,
+///    and it must be one of the new processes from step 2, or `start` fails
+///    with [`WordError::SharedInstance`]. (A new process alone would not prove
+///    which Word the object lives in: two tools that start Word at the same
+///    moment would each see the other's process. The decision is
+///    `owner_of_window`.)
 ///
 /// So the pid belongs to the Word that this session's own object lives in, and
-/// that process did not exist before the session started. Visibility, alerts
-/// and `Quit` are only used after this check. Only that process is ever quit
-/// or (by the export, later) ended.
+/// that process did not exist before the session started. Alerts and `Quit`
+/// are only used after these checks. Only that process is ever quit or (by the
+/// export, later) ended.
 pub struct WordSession {
     /// `None` only while `drop` has taken it to release it.
     app: Option<Dispatch>,
@@ -130,12 +140,15 @@ impl WordSession {
                 WordError::Start(e)
             }
         })?;
-        let pid = match own_process_id(&app, &before) {
+        // Not shown to be the tool's own Word yet: on any error here the object
+        // is let go without touching it. (A Word that this leaves running is a
+        // cost; quitting the user's Word would be worse.)
+        let started = fresh_instance(&app, &before)?;
+        let pid = match probe_process_id(&app, &started) {
             Ok(pid) => pid,
-            // Not a new Word: let it go without touching it.
             Err(error @ WordError::SharedInstance) => return Err(error),
-            // A new process did start and could not be asked more. It is
-            // almost certainly this object's, so end it rather than leak it.
+            // The object is a fresh Word (step 3) and could not be asked more,
+            // so end it rather than leak it.
             Err(error) => {
                 quit(&app);
                 return Err(error);
@@ -217,17 +230,42 @@ impl WordSession {
     }
 }
 
-/// The process that the new Word object lives in. Fails with
-/// [`WordError::SharedInstance`] when it is not a process that started after
-/// `running_before` was read. See "The process id" on [`WordSession`].
-fn own_process_id(app: &Dispatch, running_before: &[u32]) -> Result<u32> {
-    let started: Vec<u32> = com::process_ids(WORD_EXE)?
-        .into_iter()
+/// The Word processes that started after `running_before` was read, when the
+/// object is a fresh automation Word (steps 2 and 3 of "The process id" on
+/// [`WordSession`]). Nothing is added to the Word.
+fn fresh_instance(app: &Dispatch, running_before: &[u32]) -> Result<Vec<u32>> {
+    let running_now = com::process_ids(WORD_EXE)?;
+    let visible = app.get_i32("Visible")? != 0;
+    let documents = app.get_object("Documents")?.get_i32("Count")?;
+    fresh_processes(running_before, &running_now, visible, documents)
+}
+
+/// The decision of steps 2 and 3: the processes in `running_now` and not in
+/// `running_before`, or [`WordError::SharedInstance`] when there is none (COM
+/// gave a Word that was running) or when the object is not a fresh automation
+/// Word: it is visible, or it has a document (it is the user's, and an
+/// unrelated Word started at the same moment).
+fn fresh_processes(
+    running_before: &[u32],
+    running_now: &[u32],
+    visible: bool,
+    documents: i32,
+) -> Result<Vec<u32>> {
+    let started: Vec<u32> = running_now
+        .iter()
+        .copied()
         .filter(|pid| !running_before.contains(pid))
         .collect();
-    if started.is_empty() {
+    if started.is_empty() || visible || documents != 0 {
         return Err(WordError::SharedInstance);
     }
+    Ok(started)
+}
+
+/// The process that the new Word object lives in (step 4), found with a probe
+/// document. Fails with [`WordError::SharedInstance`] when it is not one of the
+/// `started` processes.
+fn probe_process_id(app: &Dispatch, started: &[u32]) -> Result<u32> {
     let probe = app
         .get_object("Documents")?
         .call_object("Add", vec![("Visible", false.into())])?;
@@ -236,7 +274,14 @@ fn own_process_id(app: &Dispatch, running_before: &[u32]) -> Result<u32> {
     let closed = close_without_saving(&probe);
     let window = window?;
     closed?;
-    let pid = com::window_process_id(window).ok_or_else(|| {
+    owner_of_window(started, com::window_process_id(window), window)
+}
+
+/// The decision of step 4: the process that owns the probe's window must be
+/// one of the `started` processes. No owner is [`WordError::UnknownProcess`];
+/// another process is [`WordError::SharedInstance`].
+fn owner_of_window(started: &[u32], owner: Option<u32>, window: i32) -> Result<u32> {
+    let pid = owner.ok_or_else(|| {
         WordError::UnknownProcess(format!("Word's window ({window}) has no process"))
     })?;
     if started.contains(&pid) {
@@ -254,7 +299,7 @@ fn quit(app: &Dispatch) {
 
 impl Drop for WordSession {
     /// Quits Word without saving, releases it, and waits for its process to
-    /// end (for at most ten seconds). Errors cannot be reported from here; a
+    /// end (for at most [`EXIT_WAIT`], 30 seconds). Errors cannot be reported from here; a
     /// Word that is already gone is the usual cause.
     fn drop(&mut self) {
         if let Some(app) = self.app.take() {
@@ -463,4 +508,59 @@ fn close_without_saving(document: &Dispatch) -> std::result::Result<(), ComError
             vec![("SaveChanges", WD_DO_NOT_SAVE_CHANGES.into())],
         )
         .map(drop)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn is_shared<T: std::fmt::Debug>(result: Result<T>) -> bool {
+        matches!(result, Err(WordError::SharedInstance))
+    }
+
+    #[test]
+    fn a_new_fresh_word_is_accepted() {
+        // The user's Word (10) was running; the new Word is 20.
+        assert_eq!(fresh_processes(&[10], &[10, 20], false, 0).unwrap(), [20]);
+        assert_eq!(fresh_processes(&[], &[20], false, 0).unwrap(), [20]);
+    }
+
+    #[test]
+    fn no_new_process_is_a_shared_instance() {
+        // COM gave the Word that was already running.
+        assert!(is_shared(fresh_processes(&[10], &[10], false, 0)));
+        assert!(is_shared(fresh_processes(&[10, 11], &[11], false, 0)));
+    }
+
+    #[test]
+    fn a_visible_word_or_a_word_with_a_document_is_a_shared_instance() {
+        // An unrelated Word (20) started at the same time as COM gave the
+        // user's Word (10): a new process exists, but the object is not fresh.
+        assert!(is_shared(fresh_processes(&[10], &[10, 20], true, 0)));
+        assert!(is_shared(fresh_processes(&[10], &[10, 20], false, 1)));
+        assert!(is_shared(fresh_processes(&[10], &[10, 20], true, 3)));
+    }
+
+    #[test]
+    fn several_new_processes_are_all_kept() {
+        assert_eq!(
+            fresh_processes(&[10], &[10, 20, 30], false, 0).unwrap(),
+            [20, 30]
+        );
+    }
+
+    #[test]
+    fn the_window_owner_must_be_a_new_process() {
+        assert_eq!(owner_of_window(&[20], Some(20), 5).unwrap(), 20);
+        // Several new processes, and the owner is one of them.
+        assert_eq!(owner_of_window(&[20, 30], Some(30), 5).unwrap(), 30);
+        // The owner is a process that was running before (the user's Word).
+        assert!(is_shared(owner_of_window(&[20], Some(10), 5)));
+        assert!(is_shared(owner_of_window(&[20, 30], Some(10), 5)));
+        // The window has no process.
+        assert!(matches!(
+            owner_of_window(&[20], None, 5),
+            Err(WordError::UnknownProcess(_))
+        ));
+    }
 }

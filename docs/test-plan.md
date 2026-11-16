@@ -85,7 +85,7 @@ colours. The milestone numbers are the plan at the time of writing.
 | Stage 2 (fix) tests | `cargo test --test fix_safety`, `--test fix_engine`, `--test fix_fixes` and `--test cli_fix`; unit tests: `cargo test --lib fix::` |
 | Tests for one fix | `cargo test fix_` or `cargo test ask_` (the names in the stage 2 table) |
 | Write the fixtures again after a change | `cargo run --example gen-fixtures` |
-| Word tests (need desktop Word; they start their own hidden Word; about 4 minutes) | `cargo test --features windows_word` (also runs everything above). One file: `cargo test --features windows_word --test word`, `--test word_table_styles` or `--test fix_word` |
+| Word tests (need desktop Word; they start their own hidden Word; about 3 minutes) | `cargo test --features windows_word` (also runs everything above). One file: `cargo test --features windows_word --test word`, `--test word_table_styles` or `--test fix_word` |
 | Front-end tests (none yet) | `pnpm test` in the front-end folder |
 | Format, lint | `cargo fmt --check` and `cargo clippy --all-targets --all-features -- -D warnings` |
 
@@ -118,11 +118,16 @@ veraPDF, installer and manual tests will get their steps here when they exist.
   `tests/cli.rs` adds a counter to the file name, so tests that run in
   parallel never write the same path.
 - **Fix tests** (M3b) run the fix on the bytes of a fixture, or of a small
-  document made by the builder, and compare. `assert_only_the_splices_changed`
-  in `tests/fix_support/mod.rs` is the check of S2-08: the entries have the
-  same names and order, every part with no splice has the same bytes, and every
-  changed part equals the original with the splice list of the fix applied by
-  hand (the test applies it itself). Tests that write files use a folder of their
+  document made by the builder, and compare. Two helpers in
+  `tests/fix_support/mod.rs` check S2-08. `assert_exactly_these_edits` is the
+  check that can find a part that was rewritten: the test has a table, written
+  by hand from the fixture, of the exact original text and the exact new text of
+  each change; the entries must have the same names and order, every part but
+  the target must have the same bytes, and the target must equal the original
+  with those edits and no other change. It does not use the splice list of the
+  engine. `assert_only_the_splices_changed` only checks that the engine is
+  consistent with itself: it applies the engine's own splice list by hand, and so
+  it cannot see a splice that is too wide. Tests that write files use a folder of their
   own under `target/tmp/fix/` (`TempDir`), which is removed at the end. The
   clock and the file calls are injected, so no test depends on the time of day.
 - **Rule tests check** the rule ID, severity, fix kind, and the whole
@@ -164,20 +169,23 @@ veraPDF, installer and manual tests will get their steps here when they exist.
 
 ## Counts at the time of writing
 
-Measured on the merge of M3a and M3b, with the stage 2 Word tests and the local
-time of the backup name (on top of `d9c27fc`). Commands: `cargo test` and
+Measured on 2026-11-16 on the tree of base commit `81766a3` (the merge of M3a
+and M3b) plus the changes of review round 1 (not yet committed: the
+independent check of S2-08, the new Word tests, the process choice and its unit
+tests, and the backup read-back). Commands: `cargo test` and
 `cargo test --features windows_word`, with the counts taken from their "test
 result" lines. Two tests of M3b run on Windows only (the held file handle in
 S2-03, and the folder with the name of the backup in S2-06), and so does
 `the_production_clock_is_local_time` (S2-07); the counts include them.
 
-`cargo test` runs 582 tests: 164 unit (150 before M3b; 14 new in `src/fix/`), 14
-CLI, 13 CLI for `fix`, 14 fix engine, 38 fix (one test for each fix, and more), 11
+`cargo test` runs 588 tests: 169 unit (150 before M3b; 14 new in `src/fix/`; 5 new
+in `src/word/` for the process choice), 14
+CLI, 13 CLI for `fix`, 14 fix engine, 38 fix (one test for each fix, and more), 12
 fix safety, 8 fixture, 31 DOC rule tests, 28 HDG rule tests, 17 LST rule tests,
 61 IMG rule tests, 35 TXB rule tests, 29 TBL rule tests, 23 LNK rule tests, 50
 CLR rule tests and 46 TXT rule tests. `cargo test --features windows_word` runs
-those 582 and 10 more: 5 in `tests/word.rs`, 1 in `tests/word_table_styles.rs`
-and 4 in `tests/fix_word.rs`, so 592. The run takes about 4 minutes. The count
+those 588 and 10 more: 5 in `tests/word.rs`, 1 in `tests/word_table_styles.rs`
+and 4 in `tests/fix_word.rs`, so 598. The run took 2 minutes 45 seconds. The count
 changes as tests are added. `cargo test -- --list` gives the current list.
 
 ## Traceability: pre-check rules
@@ -327,8 +335,8 @@ spec 02.
 |---|---|---|---|---|---|
 | W-01 | Word opens every fixture (spec 02, "Testing") | `word_opens_every_fixture` (`tests/word.rs`) | windows_word | Every `tests/fixtures/*.docx` (78 files). The pictures point to a real PNG part. | Each file opens read-only in the test's own hidden Word (one session, all open at once), with no repair and no error, and Word counts at least one paragraph in it. The `WINWORD.EXE` processes after the test are the same processes as before. **Implemented (M3a).** Result on 2026-11-16, Word 16.0.20527: all 78 open; the person's own Word (PID 49988) was running and was not touched. Word also opened the fixtures before the image part was added (a picture with no image data is shown as missing, not rejected), so no fixture builder had to be fixed for Word. |
 | W-02 | Word rejects a damaged file with an error and without a dialog (spec 02: a file Word cannot open is an error) | `a_damaged_docx_gives_an_error_and_not_a_hang` | windows_word | Half of a .docx; a plain text file named .docx; a zip with `word/document.xml` that is not valid XML | `WordSession::open_read_only` gives `WordError::Open` with Word's message for each, within 90 seconds. **Implemented (M3a).** A file with 0 bytes is not an error: Word opens it as an empty document (stage 1 refuses it first). |
-| W-03 | The session quits its Word after a panic and after an error | `the_session_quits_word_after_a_panic`, `the_session_quits_word_after_an_error` | windows_word | A panic inside `catch_unwind` while the session is alive; an error from `open_read_only` | The `WINWORD.EXE` processes are the same as before within 20 seconds. **Implemented (M3a).** |
-| W-04 | The model's table style colours are what Word shows (CLR-001 and CLR-002 depend on them) | `table_style_colours_match_word` (`tests/word_table_styles.rs`) | windows_word | 29 test tables in 2 documents: every conditional format with its own colour and fill; `tblLook` in both forms; band sizes; header rows; merged cells; `basedOn`; a fill set in the cell; a paragraph style over the table style | For every cell, the fill and the text colour that Word reports (`Cell.Shading.BackgroundPatternColor`, `Range.Font.Color`) equal the model's. **Implemented (M3a).** Result on 2026-11-16, Word 16.0.20527: 453 of 453 cells equal. |
+| W-03 | The session quits its Word after a panic and after an error | `the_session_quits_word_after_a_panic`, `the_session_quits_word_after_an_error` | windows_word | A panic inside `catch_unwind` while the session is alive; `open_read_only` on a file that does not exist | The `WINWORD.EXE` processes are the same as before within 20 seconds. **Implemented (M3a).** The "error" case uses `WordError::FileNotFound`, which the session finds itself without asking Word. An error that Word reports is in W-02, which also compares the process list after it. |
+| W-04 | The model's table style colours are what Word shows (CLR-001 and CLR-002 depend on them) | `table_style_colours_match_word` (`tests/word_table_styles.rs`) | windows_word | 29 test tables in 2 documents: every conditional format with its own colour and fill; `tblLook` in both forms; band sizes; header rows; merged cells; `basedOn`; a fill set in the cell; a paragraph style over the table style | For every cell, the fill and the text colour that Word reports (`Cell.Shading.BackgroundPatternColor`, `Range.Font.Color`) equal the model's. **Implemented (M3a).** Result on 2026-11-16, Word 16.0.20527: 453 of 453 cells equal. The test follows the other Word tests: it takes `exclusive()`, records the `WINWORD.EXE` ids before, runs under `within` (300 seconds), compares the ids again with `wait_for_word_pids`, and keeps its files in a `word_support::TempDir`, which is removed also when the test fails. |
 
 ### Stage 2: fixes (spec 02, stage 2)
 
@@ -346,14 +354,14 @@ Fix IDs in `src/findings.rs`: 11 auto (`SetDefaultLanguage`,
 
 | # | Requirement | Test name (planned name if not built) | Level | Fixture or input | Pass condition | Status |
 |---|---|---|---|---|---|---|
-| S2-01 | Check for the `~$` lock file before any write (spec 02, stage 2) | `fix_refuses_when_a_lock_file_exists` | unit | A copy of `DOC-002-fail.docx` in a temp folder, with a lock file that the test makes next to it, for file names of 5, 8, 9 and 20 characters and one with spaces | Exit 2. The message names the file and says to close it in Word. The file bytes are unchanged. No backup is written. | implemented: `fix_refuses_when_a_lock_file_exists` in `tests/fix_safety.rs`. Both forms of the lock file name are tried for each file name (see "How M3b reads stage 2"). The message is at library level; exit 2 is in C-03. |
+| S2-01 | Check for the `~$` lock file before any write (spec 02, stage 2) | `fix_refuses_when_a_lock_file_exists` | unit | A copy of `DOC-002-fail.docx` in a temp folder, with a lock file that the test makes next to it, for file names of 5, 8, 9 and 20 characters and one with spaces | Exit 2. The message names the file and says to close it in Word. The file bytes are unchanged. No backup is written. | implemented: `fix_refuses_when_a_lock_file_exists` in `tests/fix_safety.rs`. The lock file is the one name that `lock_file_names` gives for each file name (the rule of S2-02; see "How M3b reads stage 2"). The message is at library level; exit 2 is in C-03. |
 | S2-02 | The lock-file name is the one Word writes (decided point 5) | `fix_detects_the_lock_file_word_writes` (`tests/fix_word.rs`) | windows_word | The test starts its own hidden Word and opens copies of `DOC-002-fail.docx` for editing (`WordSession::open_for_editing`, never saved), one at a time, in a folder of its own under the temp folder. File names: base names of 1 to 12, 20 and 35 characters; `My Guide.docx`; `Guía de uso.docx`; `Guide.DOCX` | For each file, the `~$` files in the folder are exactly the ones `fix::lock_file_names` gives; `fix_file` stops with `FixError::LockFile` and the file bytes are the same; after Word closes the document no `~$` file is left. The observed names are copied below. | **Implemented.** Result on 2026-11-16, Word 16.0.20527: 17 of 17 names equal the rule. Word replaces the start of a long name with `~$`: **base name (before the extension) of 6 characters or fewer: `~$` + the whole name** (`a.docx` gives `~$a.docx`, `abcdef.docx` gives `~$abcdef.docx`); **7 characters: `~$` + the name without its first character** (`abcdefg.docx` gives `~$bcdefg.docx`); **8 characters or more: `~$` + the name without its first 2 characters** (`abcdefgh.docx` gives `~$cdefgh.docx`; 12 characters give `~$cdefghijkl.docx`; 35 characters give `~$cdefghijklmnopqrstuvwxyz012345678.docx`). `My Guide.docx` gives `~$ Guide.docx`, `Guía de uso.docx` gives `~$ía de uso.docx`, `Guide.DOCX` gives `~$Guide.DOCX`. `lock_file_names` was a guess that checked two forms; it now gives only this name. Not tried: names with a character outside the Basic Multilingual Plane, a name with more than one dot, and an extension other than `.docx`. |
 | S2-03 | Try to open the file for writing before any write | `fix_refuses_when_the_file_cannot_be_opened_for_writing` | unit | A copy of `DOC-002-fail.docx` held open by the test with no sharing; a second copy with the read-only attribute | Exit 2 for both. Bytes unchanged. No backup. | implemented: `fix_refuses_when_the_file_cannot_be_opened_for_writing` in `tests/fix_safety.rs`. The held handle part runs on Windows only (it uses `share_mode(0)`); the read-only part runs everywhere. |
-| S2-04 | Never write while Word has the file open (AGENTS.md; spec 02) | `fix_never_writes_while_word_has_the_file_open` (`tests/fix_word.rs`) | windows_word | A copy of `DOC-002-fail.docx` as `Guide.docx`, open in the test's own Word: first for editing, then read-only; then `Other.docx` open for editing while `Guide.docx` is fixed | Exit 2 (the library gives an error and `adapdf fix` exits 2 with nothing on stdout and the file name on stderr). The bytes of the file are the same (compared byte for byte, which is stronger than SHA-256). No backup and no temporary file in the folder. With Word open on a different file, the fix runs and writes a backup. | **Implemented.** Result on 2026-11-16, Word 16.0.20527: open for editing, Word writes `~$Guide.docx` and the fix stops with `FixError::LockFile`. Open read-only, Word writes **no** `~$` file, but it holds the file, so the exclusive open fails and the fix stops with `FixError::CannotWrite`. Both exit 2. With Word open on `Other.docx` the fix runs. |
-| S2-05 | The backup is written before any write to the target (AGENTS.md; spec 02) | `fix_writes_the_backup_before_the_first_write` | unit | Any fix on a fixture copy, with the writer recording every call | The first recorded write is the backup. It was closed and read back equal before the first write to the target. | implemented: `fix_writes_the_backup_before_the_first_write` in `tests/fix_safety.rs`. The recorded calls are: open the file, write the backup, read the backup back, write the temporary file, move it over the file. |
+| S2-04 | Never write while Word has the file open (AGENTS.md; spec 02) | `fix_never_writes_while_word_has_the_file_open` (`tests/fix_word.rs`) | windows_word | A copy of `DOC-002-fail.docx` as `Guide.docx`, open in the test's own Word: first for editing, then read-only, then for editing again with a file system whose `exists` says no to every `~$` name; then `Other.docx` open for editing while `Guide.docx` is fixed | Exit 2 (the library gives an error and `adapdf fix` exits 2 with nothing on stdout and the file name on stderr). The bytes of the file are the same after each refused attempt (`bytes_unchanged`: the file is read again and compared byte for byte with the original, which is stronger than SHA-256). No backup and no temporary file in the folder. With the owner file hidden from the check, the exclusive open alone stops the fix with `FixError::CannotWrite`. With Word open on a different file, the fix runs and writes a backup. | **Implemented.** Result on 2026-11-16, Word 16.0.20527: open for editing, Word writes `~$Guide.docx` and the fix stops with `FixError::LockFile`. Open read-only, Word writes **no** `~$` file, but it holds the file, so the exclusive open fails and the fix stops with `FixError::CannotWrite`. Both exit 2. With Word open for editing and the `~$` file hidden from the check (`BlindToLockFiles`, so that the owner file check cannot fire), the exclusive open of the file fails and the fix stops with `FixError::CannotWrite`: the safeguard works on its own. In all three refused cases the bytes are unchanged and no backup or temporary file is made. With Word open on `Other.docx` the fix runs. |
+| S2-05 | The backup is written before any write to the target (AGENTS.md; spec 02) | `fix_writes_the_backup_before_the_first_write` | unit | Any fix on a fixture copy, with the writer recording every call | The first recorded write is the backup. It was closed and read back equal before the first write to the target. | implemented: `fix_writes_the_backup_before_the_first_write` in `tests/fix_safety.rs`. The recorded calls are: open the file, write the backup, read the backup back, write the temporary file, move it over the file. The read-back is tested in `fix_stops_when_the_backup_does_not_read_back_the_same`: a file system whose `read` gives other bytes, and one whose `read` fails, each give `FixError::Backup`, the target bytes are unchanged, the bad copy is deleted (a read error used to leave it; that was fixed) and no temporary file is written. |
 | S2-06 | No backup, no write | `fix_stops_when_the_backup_cannot_be_written` | unit | A directory that has the backup's name, so the backup cannot be made | Exit 2. Target bytes unchanged. | implemented: `fix_stops_when_the_backup_cannot_be_written` in `tests/fix_safety.rs` (the writer fails, also after half of the bytes), and, on Windows, `a_folder_with_the_name_of_the_backup_stops_the_fix` (a folder with the name of the backup: Windows says "access denied", and the tool stops). On Windows only a file with the name, not a folder, gets the next name (S2-07). |
 | S2-07 | Backup name `Guide.backup-<yyyymmdd-hhmmss>.docx`, bytes equal to the original (spec 02, "Inputs and outputs") | `fix_backup_name_and_bytes` | unit | `DOC-002-fail.docx` as `Guide.docx`, clock fixed at 2026-03-05 10:15:30 | `Guide.backup-20260305-101530.docx` is next to the source. Its bytes equal the original. A second run in the same second does not overwrite it. | implemented: `fix_backup_name_and_bytes` in `tests/fix_safety.rs`. The second backup in the same second is `Guide.backup-20260305-101530-1.docx`. The time on the real clock is local time: `the_production_clock_is_local_time` (Windows) compares `Timestamp::now()` with the local time that PowerShell (`Get-Date`) gives, within 2 seconds. The test machine is 7 hours behind UTC, so UTC would fail it. The clock is `Environment.now`, so every other test still sets a fixed time. |
-| S2-08 | Only the target XML bytes change; all other parts and all bytes outside the splices are identical (spec 02 stage 2; spec 01) | `fix_changes_only_the_spliced_bytes` | unit | The failing fixture of every fix ID in the rows below | Every part but the target has equal bytes after unzip, and the entries have the same names and order. In the target part, the result equals the original with the fix's splice list applied by hand (the test applies it itself), so the bytes before, between and after the splices are equal. | implemented: `fix_changes_only_the_spliced_bytes` and `fix_changes_only_the_target_part` in `tests/fix_engine.rs`, with the helper `assert_only_the_splices_changed`. It runs for every fix that writes (14 rules). `untouched_entries_are_copied_raw` checks that untouched entries keep their compressed bytes, method and CRC. `a_byte_order_mark_is_kept` checks a part with a byte order mark. |
+| S2-08 | Only the target XML bytes change; all other parts and all bytes outside the changes are identical (spec 02 stage 2; spec 01) | `fix_changes_only_the_spliced_bytes` | unit | The failing fixture of every fix ID in the rows below; the busy Word-like case of `new_properties_go_in_schema_order_in_a_busy_paragraph_and_row` | Every part but the target has equal bytes after unzip, and the entries have the same names and order. The target part equals the original with a table of exact edits and has no other change. For each edit the table has the exact original text that goes and the exact new text; it is written by hand for each fix from its fixture, and it is not the engine's splice list, so a fix that writes a whole paragraph again (or widens its splice) fails. The splice list of the engine must also agree with the result and must not overlap. | implemented: `fix_changes_only_the_spliced_bytes` and `fix_changes_only_the_target_part` in `tests/fix_engine.rs`. The first uses `assert_exactly_these_edits` with the table `expected_edits()` (14 fixes, 24 edits, for example HDG-004 removes one whole `<w:p>...</w:p>` and TXT-002 changes `both` to `left` and nothing else), and also `assert_only_the_splices_changed`, which only checks the engine against its own splice list. The busy case in `tests/fix_fixes.rs` goes through `assert_exactly_these_edits` too (4 edits; its styles define Heading 1, so the style part does not change; an undefined Heading style that is added is S2-18). **Mutation check, 2026-11-16:** a temporary change made the `AlignLeft` fix write its paragraph again with `xml:space="preserve"` removed. The new check failed for TXT-002 ("word/document.xml is the original with these edits and no other change"), and `fix_reruns_stage_1_with_every_auto_problem_in_one_document`, which uses only the splice-list check, still passed. A second temporary change wrote the `w:pStyle` element again with an added space, and the busy case failed. Both changes were removed. It runs for every fix that writes (14 rules). `untouched_entries_are_copied_raw` checks that untouched entries keep their compressed bytes, method and CRC. `a_byte_order_mark_is_kept` checks a part with a byte order mark. |
 | S2-09 | The written file is a valid .docx | `fix_result_is_a_valid_docx` | unit | Same | The zip opens, the target part parses as XML, and `Document::from_bytes` reads it. | implemented: `fix_result_is_a_valid_docx` in `tests/fix_engine.rs`. |
 | S2-10 | Stage 1 runs again after the fixes and shows the new results (spec 02) | `fix_reruns_stage_1_and_the_fixed_finding_is_gone` | unit | Each failing fixture in the rows below, then one document with every auto problem | The finding of the rule is gone. No new finding appears, except those the rows list. After all auto fixes the document has no auto finding left (decided point 1 aside); the manual findings are the same rules and counts as before. | implemented: `fix_reruns_stage_1_and_the_fixed_finding_is_gone` and `fix_reruns_stage_1_with_every_auto_problem_in_one_document` in `tests/fix_engine.rs`. The extra findings that the plan allows (TBL-004 after S2-28) are tested in the test of that fix. |
 | S2-11 | The user picks which fixes to apply (spec 02) | `fix_applies_only_the_fixes_the_user_picked` | unit | A document with 3 auto problems; the user picks 1 | Only that rule's finding is gone. The other two remain. Bytes outside that splice are equal. | implemented: `fix_applies_only_the_fixes_the_user_picked` in `tests/fix_engine.rs`. `the_same_text_cannot_be_changed_by_two_different_fixes`, `two_fixes_on_the_same_drawing_do_not_overlap` and the tests for one `w:pPr` and one `w:trPr` check fixes that meet in one place. |
@@ -384,7 +392,7 @@ Fix IDs in `src/findings.rs`: 11 auto (`SetDefaultLanguage`,
 |---|---|---|---|---|---|
 | S3-01 | One hidden Word started by the tool | `export_starts_its_own_hidden_word` | windows_word | `DOC-001-pass.docx` | While the export runs, a `WINWORD.EXE` process exists that was not in the list taken before. Its `Visible` is false and its alerts are off. |
 | S3-02 | The user's Word windows are not used or closed (AGENTS.md; spec 02) | `export_leaves_the_users_word_alone` | windows_word | The test first starts a visible "user" Word with fixture B open and an unsaved edit. It notes the process ID, the number of documents, the text, `Saved` (false) and the file bytes. Then it exports fixture A. | After the export, the user's process is alive, has the same number of documents and text, `Saved` is still false, the file bytes are the same, and its window still exists. A variant exports the same file the user has open. |
-| S3-03 | The instance is closed after success | `export_closes_word_after_success` | windows_word | `DOC-001-pass.docx` | The list of `WINWORD.EXE` process IDs equals the list before, within 5 seconds. No `~$` file remains. The .docx bytes are unchanged (it was opened read-only). |
+| S3-03 | The instance is closed after success | `export_closes_word_after_success` | windows_word | `DOC-001-pass.docx` | The list of `WINWORD.EXE` process IDs equals the list before, within 30 seconds. No `~$` file remains. The .docx bytes are unchanged (it was opened read-only). The bound was 5 seconds in the first plan; it is too tight. Measured on 2026-11-16 (Word 16.0.20527): Word needed 3.1 to 4.9 seconds to end after `Quit` in 14 quits (3.7 seconds with 78 documents open, in W-01), and 8.6 seconds in one more (W-04, a session that had opened and closed 2 documents). A reviewer saw a process that stayed longer than 10 seconds. So the session waits up to 30 seconds, and this row uses the same bound. |
 | S3-04 | The instance is closed after an error | `export_closes_word_after_an_error` | windows_word | An output folder that does not exist; a read-only output folder; a file that is a valid zip with a damaged `word/document.xml` (stage 1 skipped by a test hook) | Exit 2 each time. The process list equals the list before. No partial PDF remains. |
 | S3-05 | Closed also when the code panics | `export_closes_the_instance_when_the_code_panics` | unit | A fake Word that panics inside the export call | The fake records `Quit`. |
 | S3-06 | Timeout: close the instance the tool started and report the failure (spec 02) | `export_times_out_and_closes_only_its_own_word` | unit | A fake whose export blocks for 2 seconds, with the timeout set to 100 ms; a second fake "user" instance | The result is a timeout error and exit 2. `Quit` or terminate is called on the tool's instance only. No PDF file. |
@@ -760,17 +768,31 @@ Decisions for the IMG, TXB and TBL rules where spec 03 leaves room.
   16.0.20527 (Microsoft 365), on one machine, with the person's own Word open.
   Another build may differ, most likely in table style details (W-04).
 - **No timeout in `WordSession` itself.** Dropping the session quits Word and
-  waits at most 10 seconds for the process to end. It does not end a Word that
-  is stuck. The 5 minute timeout and the end of the tool's own process are
+  waits at most 30 seconds for the process to end. It does not end a Word that
+  is stuck. How long Word needs to end was measured with a temporary line of
+  code (not kept) that printed the wait, with the bound set to 120 seconds:
+  3.1 to 4.9 seconds in 14 quits (3.7 to 4.1 seconds for sessions with no
+  document open, and 3.7 seconds for the session of W-01 with 78 documents open), and 8.6 seconds once (the first
+  run of W-04 after a build). The bound was 10 seconds, which a slow quit can
+  pass; it is now 30 seconds. The time that Word needs does not depend clearly
+  on the number of documents. The 5 minute timeout and the end of the tool's own process are
   stage 3 (S3-06 to S3-08). The session gives the process id for that
   (`WordSession::pid`); the tests use it only to end a hung test's own Word.
 - **The process id comes from a probe document.** Word has no process id
   property, so the session adds one hidden empty document to its new Word, finds
   the process that owns its window, and closes it (see the doc comment of
-  `WordSession`). This is tested only in the way that matters on a machine where
-  Word is open: the new process is never one that was running before. The case
-  where COM gives the person's own Word (`WordError::SharedInstance`) did not
-  occur and is not tested.
+  `WordSession`). Before it adds the probe, it checks that the object is a
+  fresh automation Word (`Visible` is false and `Documents.Count` is 0), so a
+  Word of the person that COM gave while an unrelated Word started at the same
+  moment is not touched. The decisions are pure functions with unit tests
+  (`word::tests::*`, 5 tests): a new process and a fresh Word is accepted; no
+  new process, a visible Word, or a Word with a document is
+  `WordError::SharedInstance`; several new processes are all kept; the window
+  owner must be one of them (`SharedInstance` if not, `UnknownProcess` if the
+  window has no process). The real case where COM gives the person's own Word
+  did not occur and is not tested with Word; the checks that Word itself
+  answers (`Visible`, `Documents.Count`, the window owner) run in every Word
+  test, with the person's own Word open, and always pass for the new Word.
 - **Password-protected files** are not tested (S3-17). `open_read_only` passes a
   fixed wrong password so that Word reports an error and does not ask in a
   dialog. Whether that works for every kind of protection is not checked.
@@ -1012,7 +1034,7 @@ the code and the tests together if the spec changes.
   has no local time). An existing file with the name makes the tool use
   `...-1.docx`, `...-2.docx` and so on. On Windows a folder with the name is an
   "access denied" error, not "already exists", and the tool stops (S2-06). The
-  backup stays when a later step fails; it is a whole copy.
+  backup stays when a later step fails; it is a whole copy. A backup that cannot be read back, or reads back different, is deleted and the tool stops.
 - **Nothing to write.** When no fix changes the file (all declined, all refused,
   or only `UpdateFields`), there is no backup and the file is not touched.
 - **`SetTitle`.** The text goes in `dc:title`. A `dc:title` that is empty,

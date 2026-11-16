@@ -280,7 +280,10 @@ fn write_backup(
                     "the copy is not the same as the file",
                 )));
             }
-            Err(e) => return Err(failed(e)),
+            Err(e) => {
+                let _ = fs.remove_file(&backup);
+                return Err(failed(e));
+            }
         }
     }
     Err(FixError::Backup {

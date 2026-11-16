@@ -8,11 +8,15 @@
 #![cfg(all(windows, feature = "windows_word"))]
 
 use std::fs;
+use std::time::Duration;
 
 use adapdf::docx::Package;
 use adapdf::fixtures::{DocxBuilder, Table, zip_stored};
 use adapdf::model::Document;
 use adapdf::word::WordSession;
+
+mod word_support;
+use word_support::{TempDir, exclusive, wait_for_word_pids, within, word_pids};
 
 fn shd(fill: &str) -> String {
     format!(r#"<w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="{fill}"/></w:tcPr>"#)
@@ -306,16 +310,24 @@ fn mismatches(
 
 #[test]
 fn table_style_colours_match_word() {
-    let dir = std::env::temp_dir().join(format!("adapdf-word-tables-{}", std::process::id()));
-    fs::create_dir_all(&dir).unwrap();
-    let session = WordSession::start().expect("start Word");
-    println!("Word build {}", session.build().unwrap());
-    let mut found = Vec::new();
-    for (bytes, cases) in [the_tables(), paragraph_styles()] {
-        found.extend(mismatches(&session, &bytes, &cases, &dir));
-    }
-    drop(session);
-    let _ = fs::remove_dir_all(&dir);
+    let _lock = exclusive();
+    let before = word_pids();
+    // Removed when the test ends, also when it panics.
+    let dir = TempDir::new("tables");
+    let folder = dir.path().to_path_buf();
+    let found = within(Duration::from_secs(300), move |session: &WordSession| {
+        println!("Word build {}", session.build().unwrap());
+        let mut found = Vec::new();
+        for (bytes, cases) in [the_tables(), paragraph_styles()] {
+            found.extend(mismatches(session, &bytes, &cases, &folder));
+        }
+        found
+    });
+    assert_eq!(
+        wait_for_word_pids(&before),
+        before,
+        "the session's Word ended"
+    );
     assert!(
         found.is_empty(),
         "{} cells differ:\n{}",

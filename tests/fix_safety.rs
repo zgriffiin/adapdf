@@ -180,6 +180,16 @@ fn fix_writes_the_backup_before_the_first_write() {
     assert_eq!(fs::read(dir.path().join(backup)).unwrap(), bytes);
 }
 
+/// What `read` does in [`Failing`]. The tool reads the backup back with it.
+#[derive(Clone, Copy)]
+enum Read {
+    Works,
+    /// Gives bytes that are not the bytes of the file.
+    OtherBytes,
+    /// Gives an error.
+    Fails,
+}
+
 /// A file system that fails some calls.
 struct Failing {
     /// A `write_new` for a path that contains this fails.
@@ -187,6 +197,7 @@ struct Failing {
     /// Write half of the bytes before the failure.
     half: bool,
     fail_rename: bool,
+    read: Read,
 }
 
 impl FileSystem for Failing {
@@ -197,7 +208,15 @@ impl FileSystem for Failing {
         RealFs.open_exclusive(path)
     }
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
-        RealFs.read(path)
+        let mut bytes = RealFs.read(path)?;
+        match self.read {
+            Read::Works => Ok(bytes),
+            Read::OtherBytes => {
+                bytes.pop();
+                Ok(bytes)
+            }
+            Read::Fails => Err(io::Error::other("the disk cannot be read")),
+        }
     }
     fn write_new(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
         let name = path.file_name().unwrap().to_string_lossy();
@@ -230,6 +249,7 @@ fn fix_stops_when_the_backup_cannot_be_written() {
             fail_write: Some(".backup-"),
             half,
             fail_rename: false,
+            read: Read::Works,
         };
         let error = fix_file_with(&failing, &path, &requests).expect_err("no backup, no write");
         assert!(matches!(error, FixError::Backup { .. }), "{error}");
@@ -238,6 +258,32 @@ fn fix_stops_when_the_backup_cannot_be_written() {
             dir.names(),
             ["Guide.docx"],
             "no partial backup and no temp file"
+        );
+    }
+}
+
+/// S2-05: the backup is read back and compared before the first write to the
+/// target. A copy that reads back different (or cannot be read) is no backup:
+/// the tool stops, deletes that copy, and the target is not touched.
+#[test]
+fn fix_stops_when_the_backup_does_not_read_back_the_same() {
+    let (bytes, requests) = doc_002();
+    for read in [Read::OtherBytes, Read::Fails] {
+        let dir = TempDir::new("bad-backup");
+        let path = dir.write("Guide.docx", &bytes);
+        let failing = Failing {
+            fail_write: None,
+            half: false,
+            fail_rename: false,
+            read,
+        };
+        let error = fix_file_with(&failing, &path, &requests).expect_err("a bad backup stops");
+        assert!(matches!(error, FixError::Backup { .. }), "{error}");
+        assert_eq!(fs::read(&path).unwrap(), bytes, "target bytes");
+        assert_eq!(
+            dir.names(),
+            ["Guide.docx"],
+            "the bad backup is deleted and no temp file was written"
         );
     }
 }
@@ -345,6 +391,7 @@ fn fix_write_is_atomic() {
         fail_write: Some(".tmp"),
         half: true,
         fail_rename: false,
+        read: Read::Works,
     };
     let error = fix_file_with(&failing, &path, &requests).expect_err("the write fails");
     assert!(matches!(error, FixError::Write { .. }), "{error}");
@@ -362,6 +409,7 @@ fn fix_write_is_atomic() {
         fail_write: None,
         half: false,
         fail_rename: true,
+        read: Read::Works,
     };
     let error = fix_file_with(&failing, &path, &requests).expect_err("the move fails");
     assert!(matches!(error, FixError::Write { .. }), "{error}");

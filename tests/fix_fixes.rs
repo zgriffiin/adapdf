@@ -1535,7 +1535,12 @@ fn new_properties_go_in_schema_order_in_a_busy_paragraph_and_row() {
         r#"<w:tr><w:trPr><w:trHeight w:val="300"/><w:ins w:id="1" w:author="A" w:date="2020-01-01T00:00:00Z"/></w:trPr>"#,
         r#"<w:tc><w:p><w:r><w:t>Paper</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p/>"#,
     );
-    let styles = r#"<w:style w:type="paragraph" w:styleId="Just"><w:name w:val="Just"/><w:basedOn w:val="Normal"/><w:pPr><w:jc w:val="both"/></w:pPr></w:style>"#;
+    // Heading 1 is defined, so the style part stays as it is (adding an undefined
+    // style is S2-18).
+    let styles = concat!(
+        r#"<w:style w:type="paragraph" w:styleId="Just"><w:name w:val="Just"/><w:basedOn w:val="Normal"/><w:pPr><w:jc w:val="both"/></w:pPr></w:style>"#,
+        r#"<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/></w:style>"#,
+    );
     let original = replace_part(&raw_docx(body, styles, false), DOCUMENT, |t| {
         t.replace(
             "<w:pPr><w:keepNext/>",
@@ -1551,6 +1556,32 @@ fn new_properties_go_in_schema_order_in_a_busy_paragraph_and_row() {
     let applied = apply(&original, &requests);
     assert!(applied.refused.is_empty(), "{:?}", applied.refused);
     assert_only_the_splices_changed(&original, &applied);
+    // Written by hand, not from the splice list: the style is replaced, `jc` is
+    // added after `ind`, the first row gets a new `trPr`, the second row gets
+    // `cantSplit` first. Nothing else in the part changes.
+    assert_exactly_these_edits(
+        &original,
+        fixed(&applied),
+        DOCUMENT,
+        &[
+            edit(
+                r#"<w:pStyle w:val="Just"/>"#,
+                r#"<w:pStyle w:val="Heading1"/>"#,
+            ),
+            edit(
+                r#"<w:ind w:left="720"/>"#,
+                r#"<w:ind w:left="720"/><w:jc w:val="left"/>"#,
+            ),
+            edit(
+                "</w:tblPrEx><w:tc>",
+                "</w:tblPrEx><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr><w:tc>",
+            ),
+            edit(
+                r#"<w:trPr><w:trHeight w:val="300"/>"#,
+                r#"<w:trPr><w:cantSplit/><w:trHeight w:val="300"/>"#,
+            ),
+        ],
+    );
     let xml = part(fixed(&applied), DOCUMENT);
     // jc after ind, before rPr; pStyle was already there and is replaced.
     assert!(

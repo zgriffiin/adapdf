@@ -218,6 +218,79 @@ pub fn assert_only_the_splices_changed(original: &[u8], applied: &Applied) {
     }
 }
 
+/// One change to a part, written by hand: the original text `old` (it is in the
+/// part exactly once) becomes `new`. For an insertion, `old` is the text next to
+/// it that stays, and `new` is that text with the insertion in it.
+pub struct Edit {
+    pub old: String,
+    pub new: String,
+}
+
+pub fn edit(old: &str, new: &str) -> Edit {
+    Edit {
+        old: old.to_string(),
+        new: new.to_string(),
+    }
+}
+
+/// Spec 02, stage 2, checked without the splice list of the engine: the new file
+/// has the same entries in the same order, every part but `part_name` has the
+/// same bytes, and `part_name` is the original with exactly the listed edits and
+/// no other change (a part that was written again whole fails). The expected text
+/// is made from the original and the hand-written edits only, not from what the
+/// engine says it did.
+pub fn assert_exactly_these_edits(original: &[u8], new: &[u8], part_name: &str, edits: &[Edit]) {
+    let before = parts(original);
+    let after = parts(new);
+    let names = |p: &[(String, Vec<u8>)]| p.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>();
+    assert_eq!(names(&before), names(&after), "entries and their order");
+    assert!(
+        before.iter().any(|(n, _)| n == part_name),
+        "no part {part_name}"
+    );
+    for ((name, old), (_, now)) in before.iter().zip(&after) {
+        if name != part_name {
+            assert!(old == now, "{name} must be byte-identical");
+            continue;
+        }
+        let old_text = std::str::from_utf8(without_bom(old)).unwrap();
+        let mut found: Vec<(usize, usize, &str)> = edits
+            .iter()
+            .map(|e| {
+                assert_eq!(
+                    old_text.matches(e.old.as_str()).count(),
+                    1,
+                    "the text to change must be in {name} once: {}",
+                    e.old
+                );
+                let start = old_text.find(e.old.as_str()).unwrap();
+                (start, start + e.old.len(), e.new.as_str())
+            })
+            .collect();
+        found.sort();
+        let mut expected = String::new();
+        let mut done = 0;
+        for (start, end, text) in found {
+            assert!(done <= start, "two edits of {name} overlap");
+            expected.push_str(&old_text[done..start]);
+            expected.push_str(text);
+            done = end;
+        }
+        expected.push_str(&old_text[done..]);
+        assert_eq!(
+            std::str::from_utf8(without_bom(now)).unwrap(),
+            expected,
+            "{name} is the original with these edits and no other change"
+        );
+        assert_eq!(
+            old.starts_with(BOM),
+            now.starts_with(BOM),
+            "the byte order mark of {name}"
+        );
+        assert_ne!(old, now, "{name} changed");
+    }
+}
+
 /// A folder for one test. It is removed when the value is dropped.
 pub struct TempDir(PathBuf);
 

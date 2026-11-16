@@ -32,13 +32,178 @@ const FIXED_RULES: &[RuleId] = &[
     RuleId::Txt002,
 ];
 
+const DOCUMENT: &str = "word/document.xml";
+
+const DECORATIVE: &str = r#"<a:extLst><a:ext uri="{C183D7F6-B498-43B3-948B-1728B52AA6E4}"><adec:decorative xmlns:adec="http://schemas.microsoft.com/office/drawing/2017/decorative" val="1"/></a:ext></a:extLst>"#;
+
+/// For each fix, the part that changes and every change in it, written by hand
+/// from the failing fixture: the exact original text and the exact new text.
+/// `fix_rule` types "Typed text" where a fix takes text. These do not come from
+/// the splice list of the engine, so they can tell a fix that writes more than
+/// it says.
+fn expected_edits() -> Vec<(RuleId, &'static str, Vec<Edit>)> {
+    let decorative = |id: u32| {
+        let open = format!(r#"<wp:docPr id="{id}" name="Object 1">"#);
+        edit(
+            &format!("{open}</wp:docPr>"),
+            &format!("{open}{DECORATIVE}</wp:docPr>"),
+        )
+    };
+    let list_style = |before: &str, after: &str, text: &str| {
+        edit(
+            &format!(r#"<w:p><w:r><w:t xml:space="preserve">{before}{text}</w:t>"#),
+            &format!(
+                r#"<w:p><w:pPr><w:pStyle w:val="ListNumber"/></w:pPr><w:r><w:t xml:space="preserve">{after}{text}</w:t>"#
+            ),
+        )
+    };
+    vec![
+        (
+            RuleId::Doc001,
+            "docProps/core.xml",
+            vec![edit(
+                "<dc:title></dc:title>",
+                "<dc:title>Typed text</dc:title>",
+            )],
+        ),
+        (
+            RuleId::Doc002,
+            "word/styles.xml",
+            vec![edit(
+                r#"<w:sz w:val="22"/></w:rPr></w:rPrDefault>"#,
+                r#"<w:sz w:val="22"/><w:lang w:val="en-US"/></w:rPr></w:rPrDefault>"#,
+            )],
+        ),
+        (
+            RuleId::Hdg003,
+            DOCUMENT,
+            vec![edit(
+                r#"body text.</w:t></w:r></w:p><w:p><w:r><w:rPr><w:b/>"#,
+                r#"body text.</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:rPr><w:b/>"#,
+            )],
+        ),
+        (
+            RuleId::Hdg004,
+            DOCUMENT,
+            vec![edit(
+                r#"<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t xml:space="preserve"></w:t></w:r></w:p>"#,
+                "",
+            )],
+        ),
+        (
+            RuleId::Lst001,
+            DOCUMENT,
+            vec![
+                list_style("1. ", "", "Open the file."),
+                list_style("2. ", "", "Save the file."),
+            ],
+        ),
+        (
+            RuleId::Img001,
+            DOCUMENT,
+            vec![edit(
+                r#"name="Object 1"></wp:docPr>"#,
+                r#"name="Object 1" descr="Typed text"></wp:docPr>"#,
+            )],
+        ),
+        (
+            RuleId::Img002,
+            DOCUMENT,
+            vec![edit(r#"descr="IMG_1234.jpg""#, r#"descr="Typed text""#)],
+        ),
+        (
+            RuleId::Img004,
+            DOCUMENT,
+            vec![
+                edit(
+                    r#"<wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="1" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">"#,
+                    r#"<wp:inline distT="0" distB="0" distL="0" distR="0">"#,
+                ),
+                edit(r#"<wp:simplePos x="0" y="0"/>"#, ""),
+                edit(
+                    r#"<wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH>"#,
+                    "",
+                ),
+                edit(
+                    r#"<wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>"#,
+                    "",
+                ),
+                edit(r#"<wp:wrapSquare wrapText="bothSides"/>"#, ""),
+                edit("</wp:anchor>", "</wp:inline>"),
+            ],
+        ),
+        (
+            RuleId::Img007,
+            DOCUMENT,
+            vec![decorative(2), decorative(3), decorative(4)],
+        ),
+        (
+            RuleId::Txb004,
+            DOCUMENT,
+            vec![edit(
+                "First paragraph.</w:t></w:r></w:p><w:p></w:p>",
+                "First paragraph.</w:t></w:r></w:p>",
+            )],
+        ),
+        (
+            RuleId::Tbl001,
+            DOCUMENT,
+            vec![edit(
+                "</w:tblGrid><w:tr><w:trPr><w:cantSplit/>",
+                "</w:tblGrid><w:tr><w:trPr><w:cantSplit/><w:tblHeader/>",
+            )],
+        ),
+        (
+            RuleId::Tbl005,
+            DOCUMENT,
+            vec![edit(
+                concat!(
+                    r#"A4</w:t></w:r></w:p></w:tc></w:tr>"#,
+                    r#"<w:tr><w:trPr><w:cantSplit/></w:trPr><w:tc><w:tcPr><w:tcW w:w="4680" w:type="dxa"/></w:tcPr><w:p/></w:tc>"#,
+                    r#"<w:tc><w:tcPr><w:tcW w:w="4680" w:type="dxa"/></w:tcPr><w:p/></w:tc></w:tr>"#
+                ),
+                "A4</w:t></w:r></w:p></w:tc></w:tr>",
+            )],
+        ),
+        (
+            RuleId::Tbl006,
+            DOCUMENT,
+            vec![
+                edit(
+                    "</w:tblGrid><w:tr><w:trPr><w:tblHeader/>",
+                    "</w:tblGrid><w:tr><w:trPr><w:cantSplit/><w:tblHeader/>",
+                ),
+                edit(
+                    "Value</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc>",
+                    "Value</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:trPr><w:cantSplit/></w:trPr><w:tc>",
+                ),
+                edit(
+                    "A4</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc>",
+                    "A4</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:trPr><w:cantSplit/></w:trPr><w:tc>",
+                ),
+            ],
+        ),
+        (
+            RuleId::Txt002,
+            DOCUMENT,
+            vec![edit(r#"<w:jc w:val="both"/>"#, r#"<w:jc w:val="left"/>"#)],
+        ),
+    ]
+}
+
 #[test]
 fn fix_changes_only_the_spliced_bytes() {
-    for &rule in FIXED_RULES {
-        let original = fixture(rule, true);
-        let applied = fix_rule(&original, rule);
+    let table = expected_edits();
+    let table_rules: Vec<RuleId> = table.iter().map(|(rule, ..)| *rule).collect();
+    assert_eq!(table_rules, FIXED_RULES, "one row of edits for every fix");
+    for (rule, part_name, edits) in &table {
+        let original = fixture(*rule, true);
+        let applied = fix_rule(&original, *rule);
         assert!(applied.refused.is_empty(), "{rule}: {:?}", applied.refused);
         assert!(!applied.applied.is_empty(), "{rule}");
+        // The new part is the original with exactly the hand-written edits.
+        assert_exactly_these_edits(&original, fixed(&applied), part_name, edits);
+        // The splices the engine reports agree with that.
         assert_only_the_splices_changed(&original, &applied);
     }
 }

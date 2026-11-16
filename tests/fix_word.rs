@@ -11,17 +11,21 @@
 mod fix_support;
 mod word_support;
 
+use std::any::Any;
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use adapdf::findings::{FixKind, RuleId};
-use adapdf::fix::{self, FixError, FixRequest, lock_file_names};
+use adapdf::fix::{self, FileSystem, FixError, FixRequest, RealFs, lock_file_names};
 use adapdf::fixtures::{Image, Para, catalogue, clean};
 use adapdf::model::Document;
 use adapdf::word::{WordDocument, WordSession};
-use fix_support::{confirm_one, findings, fix_file, fixture, of, replace_part, requests_for};
+use fix_support::{
+    confirm_one, findings, fix_file, fix_file_with, fixture, of, replace_part, requests_for,
+};
 use word_support::{TempDir, exclusive, wait_for_word_pids, within, word_pids};
 
 /// The names of the files in a folder, sorted.
@@ -142,12 +146,54 @@ struct Attempt {
     stdout_empty: bool,
     stderr: String,
     names: Vec<String>,
+    /// The file has the same bytes as `original` after the attempt.
+    bytes_unchanged: bool,
+}
+
+/// A file system that does not see `~$` files, so the check for Word's owner
+/// file cannot stop the fix. Only the exclusive open of the file is left to
+/// notice that Word has the file open.
+struct BlindToLockFiles;
+
+impl FileSystem for BlindToLockFiles {
+    fn exists(&self, path: &Path) -> bool {
+        let lock = path
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().starts_with("~$"));
+        !lock && RealFs.exists(path)
+    }
+    fn open_exclusive(&self, path: &Path) -> io::Result<(Box<dyn Any>, Vec<u8>)> {
+        RealFs.open_exclusive(path)
+    }
+    fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
+        RealFs.read(path)
+    }
+    fn write_new(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
+        RealFs.write_new(path, bytes)
+    }
+    fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
+        RealFs.rename(from, to)
+    }
+    fn remove_file(&self, path: &Path) -> io::Result<()> {
+        RealFs.remove_file(path)
+    }
 }
 
 /// Runs the fix with the library and, when the library refuses it, with the
 /// command too (the command would ask questions and write if it were let in).
-fn attempt(path: &Path, requests: &[FixRequest]) -> Attempt {
-    let library = fix_file(path, requests);
+fn attempt(path: &Path, requests: &[FixRequest], original: &[u8]) -> Attempt {
+    attempt_with(&RealFs, path, requests, original)
+}
+
+/// The same with the file calls of `files` for the library. The command always
+/// uses the real file system.
+fn attempt_with(
+    files: &dyn FileSystem,
+    path: &Path,
+    requests: &[FixRequest],
+    original: &[u8],
+) -> Attempt {
+    let library = fix_file_with(files, path, requests);
     let (exit_code, stdout_empty, stderr) = if library.is_err() {
         let out = Command::new(env!("CARGO_BIN_EXE_adapdf"))
             .arg("fix")
@@ -169,6 +215,7 @@ fn attempt(path: &Path, requests: &[FixRequest]) -> Attempt {
         stdout_empty,
         stderr,
         names: names(path.parent().unwrap()),
+        bytes_unchanged: fs::read(path).unwrap() == original,
     }
 }
 
@@ -183,21 +230,27 @@ fn fix_never_writes_while_word_has_the_file_open() {
     let other = dir.write("Other.docx", &bytes);
     let (guide_in_thread, other_in_thread) = (guide.clone(), other.clone());
 
-    let (open_for_editing, open_read_only, other_open) =
+    let original = bytes.clone();
+    let (open_for_editing, open_read_only, blind_to_lock, other_open) =
         within(Duration::from_secs(180), move |session: &WordSession| {
             let guide = guide_in_thread;
             let editing = session.open_for_editing(&guide).expect("Word opens Guide");
-            let first = attempt(&guide, &requests);
+            let first = attempt(&guide, &requests, &original);
             editing.close().expect("close");
             let read_only = session.open_read_only(&guide).expect("Word opens Guide");
-            let second = attempt(&guide, &requests);
+            let second = attempt(&guide, &requests, &original);
             read_only.close().expect("close");
+            // Open for editing again, but the check for the owner file cannot
+            // see it: the exclusive open must stop the fix on its own.
+            let editing = session.open_for_editing(&guide).expect("Word opens Guide");
+            let blind = attempt_with(&BlindToLockFiles, &guide, &requests, &original);
+            editing.close().expect("close");
             let elsewhere = session
                 .open_for_editing(&other_in_thread)
                 .expect("Word opens Other");
-            let third = attempt(&guide, &requests);
+            let third = attempt(&guide, &requests, &original);
             elsewhere.close().expect("close");
-            (first, second, third)
+            (first, second, blind, third)
         });
 
     // Open for reading and writing: the owner file is there, and the fix stops.
@@ -213,12 +266,24 @@ fn fix_never_writes_while_word_has_the_file_open() {
         "{:?}",
         open_read_only.library.as_ref().err()
     );
+    // The exclusive open alone stops the fix when Word has the file open for
+    // editing and the owner file is not seen (no backup, no temporary file).
+    assert!(
+        matches!(blind_to_lock.library, Err(FixError::CannotWrite { .. })),
+        "{:?}",
+        blind_to_lock.library.as_ref().err()
+    );
+    assert_eq!(
+        blind_to_lock.names,
+        ["Guide.docx", "Other.docx", "~$Guide.docx"]
+    );
     for (what, attempt) in [
         ("open for editing", &open_for_editing),
         ("open read-only", &open_read_only),
     ] {
         assert_eq!(attempt.exit_code, Some(2), "{what}: {}", attempt.stderr);
         assert!(attempt.stdout_empty, "{what}");
+        assert!(attempt.bytes_unchanged, "{what}: the bytes changed");
         assert!(
             attempt.stderr.contains("Guide.docx"),
             "{what}: {}",
@@ -231,6 +296,10 @@ fn fix_never_writes_while_word_has_the_file_open() {
         ["Guide.docx", "Other.docx", "~$Guide.docx"]
     );
     assert_eq!(open_read_only.names, ["Guide.docx", "Other.docx"]);
+    assert!(
+        blind_to_lock.bytes_unchanged,
+        "the bytes changed (owner file hidden)"
+    );
 
     // Word has a different file open: the fix runs, with a backup.
     let outcome = other_open.library.expect("the fix runs");
