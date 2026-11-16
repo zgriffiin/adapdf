@@ -85,7 +85,7 @@ fn drawings(doc: &Document) -> impl Iterator<Item = (&Paragraph, &Drawing)> {
 
 /// Where a drawing is: the paragraph index and its place in
 /// [`Paragraph::drawings`].
-type Slot = (usize, usize);
+pub(crate) type Slot = (usize, usize);
 
 /// A picture with the floating shapes drawn on it. See the module notes.
 pub(crate) struct Screenshot<'a> {
@@ -177,10 +177,12 @@ fn slotted_drawings(doc: &Document) -> impl Iterator<Item = (&Paragraph, Slot, &
     })
 }
 
-/// IMG-001: a picture, chart, shape, group, canvas or SmartArt has no alt text
-/// and is not marked decorative. A shape drawn on a screenshot is reported by
-/// IMG-007 instead.
-pub fn img_001(doc: &Document) -> Vec<Finding> {
+/// A drawing that a rule reports: its paragraph, its place and the drawing.
+pub(crate) type Hit<'a> = (&'a Paragraph, Slot, &'a Drawing);
+
+/// The drawings IMG-001 reports, in document order. The fix for IMG-001 uses
+/// this list to find the drawing of a finding.
+pub(crate) fn img_001_hits(doc: &Document) -> Vec<Hit<'_>> {
     let annotations = unresolved_annotations(doc);
     slotted_drawings(doc)
         .filter(|(_, slot, d)| {
@@ -189,6 +191,15 @@ pub fn img_001(doc: &Document) -> Vec<Finding> {
                 && d.alt_text().is_none()
                 && !annotations.contains(slot)
         })
+        .collect()
+}
+
+/// IMG-001: a picture, chart, shape, group, canvas or SmartArt has no alt text
+/// and is not marked decorative. A shape drawn on a screenshot is reported by
+/// IMG-007 instead.
+pub fn img_001(doc: &Document) -> Vec<Finding> {
+    img_001_hits(doc)
+        .into_iter()
         .map(|(p, _, d)| {
             Finding::new(
                 RuleId::Img001,
@@ -226,12 +237,20 @@ pub(crate) fn is_placeholder_alt(alt: &str) -> bool {
         })
 }
 
+/// The drawings IMG-002 reports, in document order.
+pub(crate) fn img_002_hits(doc: &Document) -> Vec<Hit<'_>> {
+    slotted_drawings(doc)
+        .filter(|(_, _, d)| d.alt_text().is_some_and(is_placeholder_alt))
+        .collect()
+}
+
 /// IMG-002: the alt text looks like a file name, or is only a word such as
 /// "image".
 pub fn img_002(doc: &Document) -> Vec<Finding> {
-    drawings(doc)
-        .filter_map(|(p, d)| Some((p, d.alt_text().filter(|alt| is_placeholder_alt(alt))?)))
-        .map(|(p, alt)| {
+    img_002_hits(doc)
+        .into_iter()
+        .map(|(p, _, d)| {
+            let alt = d.alt_text().unwrap_or_default();
             Finding::new(
                 RuleId::Img002,
                 format!(
@@ -265,12 +284,8 @@ pub fn img_003(doc: &Document) -> Vec<Finding> {
         .collect()
 }
 
-/// IMG-004: a floating object (not "In line with text") needs a place in the
-/// reading order: a picture, chart, SmartArt, group, canvas or shape. Not
-/// reported: a decorative object (an artifact has no reading order), a text
-/// box with text (TXB-001 reports it) and a shape drawn on a screenshot that
-/// IMG-007 reports.
-pub fn img_004(doc: &Document) -> Vec<Finding> {
+/// The drawings IMG-004 reports, in document order.
+pub(crate) fn img_004_hits(doc: &Document) -> Vec<Hit<'_>> {
     let annotations = unresolved_annotations(doc);
     slotted_drawings(doc)
         .filter(|(_, slot, d)| {
@@ -280,6 +295,17 @@ pub fn img_004(doc: &Document) -> Vec<Finding> {
                 && !d.is_text_box_with_text()
                 && !annotations.contains(slot)
         })
+        .collect()
+}
+
+/// IMG-004: a floating object (not "In line with text") needs a place in the
+/// reading order: a picture, chart, SmartArt, group, canvas or shape. Not
+/// reported: a decorative object (an artifact has no reading order), a text
+/// box with text (TXB-001 reports it) and a shape drawn on a screenshot that
+/// IMG-007 reports.
+pub fn img_004(doc: &Document) -> Vec<Finding> {
+    img_004_hits(doc)
+        .into_iter()
         .map(|(p, _, d)| {
             let label = label(d.object);
             Finding::new(

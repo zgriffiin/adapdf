@@ -190,6 +190,19 @@ impl Dispatch {
             .ok_or_else(|| not_an_object(name))
     }
 
+    /// Reads a property that takes arguments (an indexed property, such as the
+    /// `Item` of Office's document properties) and gives an object.
+    pub fn get_object_with(
+        &self,
+        name: &str,
+        args: Vec<(&str, VARIANT)>,
+    ) -> Result<Dispatch, ComError> {
+        let value = self.invoke(name, DISPATCH_PROPERTYGET, args)?;
+        variant_dispatch(&value)
+            .map(Dispatch)
+            .ok_or_else(|| not_an_object(name))
+    }
+
     fn invoke(
         &self,
         name: &str,

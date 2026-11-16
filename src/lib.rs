@@ -4,7 +4,8 @@
 //! ([`model::Document`]), and run the pre-check rules ([`rules`]) to get
 //! [`findings::Finding`] values.
 
-// Unsafe code is only for Windows COM, in `word`, which allows it for itself.
+// Unsafe code is only for Windows COM, in `word`, and for the local time in
+// `fix::local_time`. Each allows it for itself.
 #![deny(unsafe_code)]
 
 use std::path::Path;
@@ -12,6 +13,7 @@ use std::path::Path;
 pub mod docx;
 pub mod error;
 pub mod findings;
+pub mod fix;
 pub mod fixtures;
 pub mod fonts;
 pub mod model;

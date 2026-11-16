@@ -6,114 +6,20 @@
 //! that another test started.
 #![cfg(all(windows, feature = "windows_word"))]
 
-use std::collections::BTreeSet;
 use std::fs;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, mpsc};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use adapdf::fixtures::{DocxBuilder, zip_stored};
 use adapdf::word::{WordError, WordSession};
 
-/// One Word test at a time.
-static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
-
-fn exclusive() -> MutexGuard<'static, ()> {
-    // A test that panicked on purpose must not stop the others.
-    ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner())
-}
+mod word_support;
+use word_support::{TempDir, exclusive, kill, wait_for_word_pids, within, word_pids};
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
-}
-
-/// The ids of the `WINWORD.EXE` processes, read with `tasklist` and not with
-/// the code under test.
-fn word_pids() -> BTreeSet<u32> {
-    let out = Command::new("tasklist")
-        .args(["/FI", "IMAGENAME eq WINWORD.EXE", "/FO", "CSV", "/NH"])
-        .output()
-        .expect("run tasklist");
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .filter(|line| line.to_ascii_uppercase().starts_with("\"WINWORD.EXE\""))
-        .filter_map(|line| line.split("\",\"").nth(1)?.parse().ok())
-        .collect()
-}
-
-/// Waits (for at most 20 seconds) until the Word processes are the same as
-/// `expected`, and returns the ones that are there at the end.
-fn wait_for_word_pids(expected: &BTreeSet<u32>) -> BTreeSet<u32> {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    loop {
-        let now = word_pids();
-        if now == *expected || Instant::now() >= deadline {
-            return now;
-        }
-        thread::sleep(Duration::from_millis(100));
-    }
-}
-
-fn kill(pid: u32) {
-    let _ = Command::new("taskkill")
-        .args(["/PID", &pid.to_string(), "/F"])
-        .output();
-}
-
-/// A folder for files that a test makes, removed when the value is dropped.
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(name: &str) -> TempDir {
-        let dir = std::env::temp_dir().join(format!("adapdf-word-{name}-{}", std::process::id()));
-        fs::create_dir_all(&dir).expect("make the temp folder");
-        TempDir(dir)
-    }
-
-    fn write(&self, name: &str, bytes: &[u8]) -> PathBuf {
-        let path = self.0.join(name);
-        fs::write(&path, bytes).expect("write the test file");
-        path
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
-/// Starts a session on a new thread, runs `work`, drops the session, and gives
-/// the result. When Word does not answer within `limit`, the test fails and the
-/// Word that the test started is ended, so a hang cannot go on.
-fn within<T: Send + 'static>(
-    limit: Duration,
-    work: impl FnOnce(&WordSession) -> T + Send + 'static,
-) -> T {
-    let pid = Arc::new(AtomicU32::new(0));
-    let pid_seen = Arc::clone(&pid);
-    let (sender, receiver) = mpsc::channel();
-    thread::spawn(move || {
-        let session = WordSession::start().expect("start Word");
-        pid_seen.store(session.pid(), Ordering::SeqCst);
-        let result = work(&session);
-        drop(session);
-        let _ = sender.send(result);
-    });
-    match receiver.recv_timeout(limit) {
-        Ok(result) => result,
-        Err(error) => {
-            let started = pid.load(Ordering::SeqCst);
-            if started != 0 {
-                kill(started);
-            }
-            panic!("Word did not finish within {limit:?} ({error})");
-        }
-    }
 }
 
 /// W-01: Word opens every fixture.

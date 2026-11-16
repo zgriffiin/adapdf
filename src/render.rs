@@ -76,7 +76,9 @@ pub fn to_text(file: &str, findings: &[Finding]) -> String {
     out
 }
 
-fn write_finding(out: &mut String, f: &Finding) {
+/// One finding as text: the message, where it is, how to fix it, and the
+/// suggestion (marked "not applied").
+pub fn write_finding(out: &mut String, f: &Finding) {
     let _ = writeln!(out, "\n[{}] {}", f.rule_id, f.message);
     let loc = &f.location;
     let mut place = match (&loc.paragraph_index, &loc.snippet) {

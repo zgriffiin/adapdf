@@ -3,8 +3,8 @@
 //! This is the base that the export builds on. It has two safe types:
 //!
 //! - [`WordSession`] starts the tool's own hidden Word and always quits it.
-//! - [`WordDocument`] is a document that the session opened read-only, and
-//!   closes it without saving.
+//! - [`WordDocument`] is a document that the session opened (read-only, or for
+//!   editing in tests), and closes it without saving.
 //!
 //! Rules from AGENTS.md and spec 02 that this module keeps:
 //!
@@ -166,6 +166,19 @@ impl WordSession {
     /// files, no file conversion or repair is offered, and no dialog can wait
     /// for an answer. A file that Word cannot open is an [`WordError::Open`].
     pub fn open_read_only(&self, path: &Path) -> Result<WordDocument<'_>> {
+        self.open(path, true)
+    }
+
+    /// Opens a document for editing, hidden, in the same way as
+    /// [`open_read_only`](WordSession::open_read_only). Word then writes its
+    /// owner file (`~$...`) next to the document and holds the file. The tool
+    /// never saves: the document is closed with "do not save". This exists for
+    /// tests that need a document that Word has open the way a person has it.
+    pub fn open_for_editing(&self, path: &Path) -> Result<WordDocument<'_>> {
+        self.open(path, false)
+    }
+
+    fn open(&self, path: &Path, read_only: bool) -> Result<WordDocument<'_>> {
         if !path.is_file() {
             return Err(WordError::FileNotFound(path.to_path_buf()));
         }
@@ -175,7 +188,7 @@ impl WordSession {
         let args = vec![
             ("FileName", file_name.into()),
             ("ConfirmConversions", false.into()),
-            ("ReadOnly", true.into()),
+            ("ReadOnly", read_only.into()),
             ("AddToRecentFiles", false.into()),
             ("PasswordDocument", NO_PASSWORD.into()),
             ("WritePasswordDocument", NO_PASSWORD.into()),
@@ -285,7 +298,7 @@ fn word_colour(value: i32) -> Option<Rgb> {
     })
 }
 
-/// A document that a [`WordSession`] opened read-only. It is closed without
+/// A document that a [`WordSession`] opened. It is closed without
 /// saving when [`close`](WordDocument::close) is called or when it is dropped.
 /// It cannot outlive its session.
 pub struct WordDocument<'session> {
@@ -330,6 +343,90 @@ impl WordDocument<'_> {
         })
     }
 
+    /// The title in the document's properties (File > Info > Title).
+    pub fn title(&self) -> Result<String> {
+        Ok(self
+            .document()
+            .get_object("BuiltInDocumentProperties")?
+            .get_object_with("Item", vec![("Index", BSTR::from("Title").into())])?
+            .get_string("Value")?)
+    }
+
+    /// The text of paragraph `n` of the main text, counting from 0, with the
+    /// paragraph mark. Word's own paragraph numbers (see
+    /// [`paragraph_count`](WordDocument::paragraph_count)).
+    pub fn paragraph_text(&self, n: usize) -> Result<String> {
+        Ok(self.paragraph(n)?.get_object("Range")?.get_string("Text")?)
+    }
+
+    /// The name of the style of paragraph `n` (for example `Heading 2`), in
+    /// Word's language.
+    pub fn paragraph_style(&self, n: usize) -> Result<String> {
+        Ok(self
+            .paragraph(n)?
+            .get_object("Style")?
+            .get_string("NameLocal")?)
+    }
+
+    /// The alignment of paragraph `n` (`WdParagraphAlignment`: 0 left, 1
+    /// centre, 2 right, 3 justified).
+    pub fn paragraph_alignment(&self, n: usize) -> Result<i32> {
+        Ok(self.paragraph(n)?.get_i32("Alignment")?)
+    }
+
+    /// How many pictures and other objects are in the text line (inline).
+    pub fn inline_shape_count(&self) -> Result<u32> {
+        self.count_of("InlineShapes")
+    }
+
+    /// How many floating shapes and pictures the document has.
+    pub fn floating_shape_count(&self) -> Result<u32> {
+        self.count_of("Shapes")
+    }
+
+    /// The alt text of inline object `n`, counting from 0. Word fails to give
+    /// the alt text (error 0x80004005) of a document that is not its active
+    /// one, so the document is made active first. The session is hidden, so
+    /// nothing shows.
+    pub fn inline_shape_alt_text(&self, n: usize) -> Result<String> {
+        self.document().call("Activate", Vec::new())?;
+        Ok(item(&self.document().get_object("InlineShapes")?, n)?.get_string("AlternativeText")?)
+    }
+
+    /// How many rows table `table` has (counting from 0).
+    pub fn row_count(&self, table: usize) -> Result<u32> {
+        let count = self.table(table)?.get_object("Rows")?.get_i32("Count")?;
+        Ok(u32::try_from(count).unwrap_or(0))
+    }
+
+    /// Whether row `row` of table `table` repeats at the top of each page (it
+    /// is a header row).
+    pub fn row_is_header(&self, table: usize, row: usize) -> Result<bool> {
+        Ok(self.row(table, row)?.get_i32("HeadingFormat")? != 0)
+    }
+
+    /// Whether Word may split row `row` of table `table` across two pages.
+    pub fn row_can_split(&self, table: usize, row: usize) -> Result<bool> {
+        Ok(self.row(table, row)?.get_i32("AllowBreakAcrossPages")? != 0)
+    }
+
+    fn count_of(&self, collection: &str) -> Result<u32> {
+        let count = self.document().get_object(collection)?.get_i32("Count")?;
+        Ok(u32::try_from(count).unwrap_or(0))
+    }
+
+    fn paragraph(&self, n: usize) -> std::result::Result<Dispatch, ComError> {
+        item(&self.document().get_object("Paragraphs")?, n)
+    }
+
+    fn table(&self, table: usize) -> std::result::Result<Dispatch, ComError> {
+        item(&self.document().get_object("Tables")?, table)
+    }
+
+    fn row(&self, table: usize, row: usize) -> std::result::Result<Dispatch, ComError> {
+        item(&self.table(table)?.get_object("Rows")?, row)
+    }
+
     /// Closes the document without saving.
     pub fn close(mut self) -> Result<()> {
         match self.document.take() {
@@ -351,6 +448,12 @@ impl Drop for WordDocument<'_> {
             let _ = close_without_saving(&document);
         }
     }
+}
+
+/// Item `n` of a Word collection. Word counts from 1; `n` counts from 0.
+fn item(collection: &Dispatch, n: usize) -> std::result::Result<Dispatch, ComError> {
+    let index = i32::try_from(n + 1).unwrap_or(i32::MAX);
+    collection.call_object("Item", vec![("Index", index.into())])
 }
 
 fn close_without_saving(document: &Dispatch) -> std::result::Result<(), ComError> {

@@ -31,13 +31,38 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Fix problems in a .docx file. Asks before each fix, and writes a
+    /// backup copy first.
+    Fix {
+        /// The .docx file to fix.
+        file: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
         Command::Check { file, json } => check(&file, json),
+        Command::Fix { file } => fix(&file),
     }
+}
+
+fn fix(file: &std::path::Path) -> ExitCode {
+    let fonts = SystemFonts::from_environment();
+    let env = adapdf::fix::Environment {
+        fs: &adapdf::fix::RealFs,
+        now: adapdf::fix::Timestamp::now(),
+        fonts: &fonts,
+    };
+    let stdin = std::io::stdin();
+    let code = adapdf::fix::interactive::run(
+        file,
+        &mut stdin.lock(),
+        &mut std::io::stdout().lock(),
+        &mut std::io::stderr().lock(),
+        &env,
+    );
+    ExitCode::from(code)
 }
 
 fn check(file: &std::path::Path, json: bool) -> ExitCode {
