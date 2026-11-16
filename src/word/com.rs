@@ -9,7 +9,7 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 
-use windows::Win32::Foundation::{CloseHandle, HWND, RPC_E_CHANGED_MODE};
+use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, RPC_E_CHANGED_MODE};
 use windows::Win32::System::Com::{
     CLSCTX_LOCAL_SERVER, CLSIDFromProgID, COINIT_APARTMENTTHREADED, CoCreateInstance,
     CoInitializeEx, CoUninitialize, DISPATCH_FLAGS, DISPATCH_METHOD, DISPATCH_PROPERTYGET,
@@ -18,11 +18,15 @@ use windows::Win32::System::Com::{
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
+use windows::Win32::System::Threading::{
+    OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+    QueryFullProcessImageNameW, TerminateProcess,
+};
 use windows::Win32::System::Variant::{
     VAR_CHANGE_FLAGS, VARENUM, VARIANT, VT_BSTR, VT_I4, VariantChangeType,
 };
 use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
-use windows::core::{BSTR, GUID, HRESULT, HSTRING, PCWSTR};
+use windows::core::{BSTR, GUID, HRESULT, HSTRING, PCWSTR, PWSTR};
 
 /// `DISP_E_EXCEPTION`: the called object raised an error, described in `EXCEPINFO`.
 const DISP_E_EXCEPTION: i32 = 0x8002_0009_u32 as i32;
@@ -176,6 +180,12 @@ impl Dispatch {
     /// arguments in between can be left out.
     pub fn call(&self, name: &str, args: Vec<(&str, VARIANT)>) -> Result<VARIANT, ComError> {
         self.invoke(name, DISPATCH_METHOD, args)
+    }
+
+    /// Calls a method that gives a number.
+    pub fn call_i32(&self, name: &str, args: Vec<(&str, VARIANT)>) -> Result<i32, ComError> {
+        let value = self.call(name, args)?;
+        variant_i32(&value).ok_or_else(|| not_a(name, "number"))
     }
 
     /// Calls a method that gives an object.
@@ -428,4 +438,61 @@ pub fn process_ids(exe_name: &str) -> Result<Vec<u32>, ComError> {
     // A failure to close cannot be handled, and the ids are already read.
     let _ = unsafe { CloseHandle(snapshot) };
     Ok(ids)
+}
+
+/// Ends the process `pid`, but only if its image is `exe_name` (compared
+/// without regard to case). The process is opened once, and the image name is
+/// read from that open handle, so the process that is checked is the process
+/// that is ended even if the id is reused at the same moment. Gives `Ok(false)`
+/// when there is no such process any more, and an error (and ends nothing)
+/// when the process is another program.
+pub fn end_process_named(pid: u32, exe_name: &str) -> Result<bool, ComError> {
+    let fail = |what: &str, e: windows::core::Error| ComError::new(what, &e);
+    // SAFETY: no pointer is passed. The handle is closed below.
+    let handle = match unsafe {
+        OpenProcess(
+            PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION,
+            false,
+            pid,
+        )
+    } {
+        Ok(handle) => handle,
+        // ERROR_INVALID_PARAMETER: there is no process with this id.
+        Err(e) if e.code() == HRESULT::from_win32(87) => return Ok(false),
+        Err(e) => return Err(fail("open the Word process", e)),
+    };
+    let result = end_if_named(handle, pid, exe_name);
+    // SAFETY: `handle` is a handle that this function opened and has not closed.
+    // A failure to close cannot be handled; the process is already ended or kept.
+    let _ = unsafe { CloseHandle(handle) };
+    result
+}
+
+fn end_if_named(handle: HANDLE, pid: u32, exe_name: &str) -> Result<bool, ComError> {
+    let mut buffer = vec![0_u16; 1024];
+    let mut length = u32::try_from(buffer.len()).expect("a small buffer");
+    // SAFETY: `buffer` is valid for `length` wide characters, and `length` is
+    // updated to the number written. `handle` is an open process handle.
+    unsafe {
+        QueryFullProcessImageNameW(
+            handle,
+            PROCESS_NAME_WIN32,
+            PWSTR(buffer.as_mut_ptr()),
+            &mut length,
+        )
+    }
+    .map_err(|e| ComError::new("read the name of the process", &e))?;
+    let image = String::from_utf16_lossy(&buffer[..length as usize]);
+    let file_name = image.rsplit(['\\', '/']).next().unwrap_or("");
+    if !file_name.eq_ignore_ascii_case(exe_name) {
+        return Err(ComError {
+            call: "end the Word process".to_string(),
+            code: 0,
+            message: format!("process {pid} is {file_name}, not {exe_name}, so it was not ended"),
+        });
+    }
+    // SAFETY: `handle` is an open process handle with the terminate right.
+    unsafe { TerminateProcess(handle, 1) }
+        .map(|()| true)
+        .map_err(|e| ComError::new("end the Word process", &e))
 }

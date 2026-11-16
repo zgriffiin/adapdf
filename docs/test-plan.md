@@ -3,8 +3,9 @@
 Status: M2 (all pre-check rules), plus groups, canvases and annotated
 screenshots (IMG-007), M3a (the Word automation layer, the first `windows_word`
 tests, and table styles in the colour rules) and M3b (stage 2: the fix engine and
-`adapdf fix`), including the stage 2 tests that need Word. This plan says what is
-tested now and what is only planned. A row marked "planned" has no test yet.
+`adapdf fix`), including the stage 2 tests that need Word, and M4a (stage 3: the
+Word export as a library, with its tests). This plan says what is tested now and
+what is only planned. A row marked "planned" has no test yet.
 
 ## Scope
 
@@ -31,9 +32,17 @@ on the Word module of M3a, in `tests/fix_word.rs`. They also gave the real name
 of Word's lock file (the rule in `fix::lock_file_names` was corrected), and the
 name of a backup now uses local time.
 
-Not built: Word export (only the base in `src/word` exists), PDF metadata
-fixes, veraPDF, the report, the app and the installer. "Planned tests (not
-built)" lists each of them, requirement by requirement.
+M4a built stage 3 ([02 pipeline](specs/02-pipeline.md#stage-3--word-export)) as
+the library `adapdf::export` (`export_pdf`): stage 1 first, then the tool's own
+hidden Word opens the document read-only, updates the fields and calls
+`ExportAsFixedFormat`; a timeout ends only the tool's own Word. It has no CLI
+command and no report yet. The S3 rows are built: see "Stage 3: Word export" and
+"How M4a reads stage 3". M4a also exports the 33 pass fixtures of S5-10 and
+checks that each PDF is tagged, so the veraPDF exit criterion has inputs.
+
+Not built: the `adapdf export` command, PDF metadata fixes, veraPDF, the report,
+the app and the installer. "Planned tests (not built)" lists each of them,
+requirement by requirement.
 
 **Milestones and phases.** The milestone numbers are not the phase numbers of
 [spec 01](specs/01-product.md#phases). M1 and M2 (with M2a and M2b) together
@@ -41,7 +50,9 @@ are phase 2 (pre-check). M3 (fixes) is phase 4. M4 (Word export, PDF metadata
 fixes, veraPDF and the report) is phase 3. M5 (app and installer) is phase 5.
 Phase 0 (test with real guides) and phase 1 (template) have no milestone. M3a is
 the first part of M3: the Word automation layer, test W-01 and the table style
-colours. The milestone numbers are the plan at the time of writing.
+colours. M4a is stage 3 (the Word export, as a library); stages 4 and 5 are M4b,
+and stage 6 with `adapdf export` is M4c. The milestone numbers are the plan at
+the time of writing.
 
 ## Test levels
 
@@ -52,8 +63,8 @@ colours. The milestone numbers are the plan at the time of writing.
 | Fixture | The files in `tests/fixtures/` match the generator byte for byte. Every rule has a passing and a failing fixture. | `tests/fixtures.rs` | implemented |
 | CLI | `adapdf check`: exit codes 0, 1 and 2, text output, JSON shape | `tests/cli.rs` | implemented |
 | Fix (stage 2) | The fix engine on fixtures and small built documents: only the spliced bytes change, the backup, the lock file, the atomic write, each fix and its refusals, and the stage 1 re-run. `adapdf fix`: the questions, the answers on stdin, and the exit codes. | `tests/fix_safety.rs`, `tests/fix_engine.rs`, `tests/fix_fixes.rs`, `tests/cli_fix.rs` (helpers in `tests/fix_support/`), and unit tests in `src/fix/` | implemented |
-| Word integration (`windows_word`) | Word opens every fixture (W-01). The session quits its Word after success, an error and a panic. The model's table style colours match what Word shows. Word's lock file name, and a file that Word has open is never written (S2-02, S2-04). Every fixed file opens in Word and Word reads the fix as the model does (S2-15). Later: Word exports a tagged PDF. | `tests/word.rs`, `tests/word_table_styles.rs` and `tests/fix_word.rs` (helpers in `tests/word_support/`), behind the cargo feature `windows_word` | implemented for W-01 to W-04 (M3a, 6 tests) and S2-02, S2-04, S2-15 and the Word part of S2-23 (4 tests); export tests planned (M4) |
-| veraPDF integration | A PDF exported from a fixture has 0 veraPDF PDF/UA-1 failures | behind `windows_word`, because it needs Word to export | planned (M4) |
+| Word integration (`windows_word`) | Word opens every fixture (W-01). The session quits its Word after success, an error and a panic. The model's table style colours match what Word shows. Word's lock file name, and a file that Word has open is never written (S2-02, S2-04). Every fixed file opens in Word and Word reads the fix as the model does (S2-15). Word exports a tagged PDF, in the tool's own hidden Word, with the fields updated, without touching a person's Word or the .docx; a timeout ends only the tool's own Word (S3). | `tests/word.rs`, `tests/word_table_styles.rs`, `tests/fix_word.rs`, `tests/export_word.rs` and `tests/export_fixtures.rs` (helpers in `tests/word_support/` and `tests/export_support/`), behind the cargo feature `windows_word` | implemented for W-01 to W-04 (M3a, 6 tests), S2-02, S2-04, S2-15 and the Word part of S2-23 (4 tests), and the Word rows of S3 (M4a, 15 tests) |
+| veraPDF integration | A PDF exported from a fixture has 0 veraPDF PDF/UA-1 failures | behind `windows_word`, because it needs Word to export | planned (M4b). The inputs exist: M4a exports the 33 pass fixtures of S5-10 and checks that each PDF is tagged (`export_makes_tagged_pdfs_of_the_pass_fixtures`); veraPDF is not run there. |
 | Front-end | The Carbon views in the web UI: each screen, axe-core checks for WCAG 2.1 A and AA, and the focus order (TypeScript) | front-end folder, with Vitest and axe-core | planned (M5) |
 | Installer | The per-user installer installs without admin rights, runs, and removes cleanly on a clean Windows 11 machine | manual checklist | planned (M5) |
 | Manual: Phase 0 and PAC | Real guides exported from Word, checked with veraPDF and PAC. A person confirms PAC reports 0 errors. | manual, with files in `samples/` | planned. Phase 0 is postponed until real guides are in `samples/`. |
@@ -85,7 +96,7 @@ colours. The milestone numbers are the plan at the time of writing.
 | Stage 2 (fix) tests | `cargo test --test fix_safety`, `--test fix_engine`, `--test fix_fixes` and `--test cli_fix`; unit tests: `cargo test --lib fix::` |
 | Tests for one fix | `cargo test fix_` or `cargo test ask_` (the names in the stage 2 table) |
 | Write the fixtures again after a change | `cargo run --example gen-fixtures` |
-| Word tests (need desktop Word; they start their own hidden Word; about 3 minutes) | `cargo test --features windows_word` (also runs everything above). One file: `cargo test --features windows_word --test word`, `--test word_table_styles` or `--test fix_word` |
+| Word tests (need desktop Word; they start their own hidden Word; about 10 minutes) | `cargo test --features windows_word` (also runs everything above). One file: `cargo test --features windows_word --test word`, `--test word_table_styles`, `--test fix_word`, `--test export_word` (S3, about 3 minutes) or `--test export_fixtures` (33 exports, about 4 minutes) |
 | Front-end tests (none yet) | `pnpm test` in the front-end folder |
 | Format, lint | `cargo fmt --check` and `cargo clippy --all-targets --all-features -- -D warnings` |
 
@@ -169,22 +180,27 @@ veraPDF, installer and manual tests will get their steps here when they exist.
 
 ## Counts at the time of writing
 
-Measured on 2026-11-16 on commit `0864900` (M3 with the changes of review
-round 1). Commands: `cargo test` and
+Measured on 2026-11-16 on the M4a commit (its parent is `dbda92c`, M3 after
+review round 2). Commands: `cargo test` and
 `cargo test --features windows_word`, with the counts taken from their "test
 result" lines. Two tests of M3b run on Windows only (the held file handle in
 S2-03, and the folder with the name of the backup in S2-06), and so does
-`the_production_clock_is_local_time` (S2-07); the counts include them.
+`the_production_clock_is_local_time` (S2-07); the counts include them. The
+`src/export` module is Windows only, so its 21 unit tests are Windows only too.
 
-`cargo test` runs 588 tests: 169 unit (150 before M3b; 14 new in `src/fix/`; 5 new
-in `src/word/` for the process choice), 14
+`cargo test` runs 609 tests: 190 unit (169 before M4a; 21 new in `src/export/`
+for stage 3, with a fake Word), 14
 CLI, 13 CLI for `fix`, 14 fix engine, 38 fix (one test for each fix, and more), 12
 fix safety, 8 fixture, 31 DOC rule tests, 28 HDG rule tests, 17 LST rule tests,
 61 IMG rule tests, 35 TXB rule tests, 29 TBL rule tests, 23 LNK rule tests, 50
 CLR rule tests and 46 TXT rule tests. `cargo test --features windows_word` runs
-those 588 and 10 more: 5 in `tests/word.rs`, 1 in `tests/word_table_styles.rs`
-and 4 in `tests/fix_word.rs`, so 598. The run took 2 minutes 45 seconds. The count
-changes as tests are added. `cargo test -- --list` gives the current list.
+those 609 and 25 more: 5 in `tests/word.rs`, 1 in `tests/word_table_styles.rs`,
+4 in `tests/fix_word.rs`, 14 in `tests/export_word.rs` and 1 in
+`tests/export_fixtures.rs` (33 exports), so 634. The run took 9 minutes 39
+seconds, including the build: `tests/export_fixtures.rs` alone takes about 4
+minutes (each export starts and quits its own Word, 5 to 7 seconds each) and
+`tests/export_word.rs` about 2 minutes 40 seconds. The count changes as tests are
+added. `cargo test -- --list` gives the current list.
 
 ## Traceability: pre-check rules
 
@@ -256,12 +272,12 @@ The model parts for IMG, TXB and TBL are tested in `model::drawings::tests::*`
 |---|---|---|
 | Stage 1: open the .docx as a zip and read the parts | `docx::tests::*`, `model::tests::*`; CLI tests for a file that is not a .docx, a zip with no `word/document.xml`, damaged XML, and a missing file | implemented |
 | Stage 1: finding fields and location | `findings::tests::*`, the location checks in the rule tests, `json_shape_of_a_finding` in `tests/cli.rs` | implemented |
-| Stage 1: errors block export | The exit code 1 on errors is tested (`exit_code_1_when_there_are_errors`). The export that is blocked does not exist yet. | partly implemented |
+| Stage 1: errors block export | The exit code 1 on errors is tested (`exit_code_1_when_there_are_errors`). The library export refuses on any error finding, Word is not started and no PDF is written (S3-12, S3-13: `export_is_refused_when_doc_005_fires`, `export_writes_no_pdf_when_stage_1_has_errors`). The command `adapdf export` and its Fail report do not exist yet. | partly implemented (library: M4a; command and report: M4c) |
 | Interface `adapdf check`, exit codes 0, 1, 2, `--json` | `tests/cli.rs` | implemented |
 | Stage 2: fix, backup, lock-file check | "Stage 2: fixes" below (S2-01 to S2-31): `tests/fix_safety.rs`, `tests/fix_engine.rs`, `tests/fix_fixes.rs`, `fix::*` unit tests | implemented (M3b). S2-02, S2-04 and S2-15 (`tests/fix_word.rs`, windows_word) are implemented. S2-23 is implemented for the part that Word can answer; its manual part is planned. |
 | Stage 2: the user picks the fixes, and ask fixes take typed text | S2-11 to S2-13; `adapdf fix` rows C-01 to C-04 | implemented (M3b) |
 | Interface `adapdf fix` | C-01 to C-04: `tests/cli_fix.rs` | implemented (M3b) |
-| Stage 3: Word export through COM | S3-01 to S3-19 | planned (M4) |
+| Stage 3: Word export through COM | S3-01 to S3-19: `src/export/tests.rs` (unit, fake Word), `tests/export_word.rs` and `tests/export_fixtures.rs` (windows_word) | implemented (M4a) as the library `adapdf::export`, except S3-17 (planned) and the CLI and report parts of S3-04, S3-06, S3-12, S3-13, S3-14 and S3-16 (M4c) |
 | Stage 4: PDF metadata fixes | S4-01 to S4-12 | planned (M4) |
 | Stage 5: veraPDF run and message table | S5-01 to S5-11 | planned (M4) |
 | Stage 6: HTML and JSON report, and its own accessibility | S6-01 to S6-11 | planned (M4) |
@@ -291,11 +307,13 @@ level, fixture or input, and the pass condition.
 Test seams the unit rows need. They are design requirements of the tests. The
 seam of stage 2 is built (M3b): the file system calls go through the trait
 `fix::FileSystem`, which a test can record or make fail, and the clock is a
-value in `fix::Environment`. The others are not in the code yet: the Word COM
-calls of stage 3 go
-through a small trait with a fake that records calls and can block, fail or
-panic; the Word timeout and the path of veraPDF can be set by the
-caller.
+value in `fix::Environment`. The seam of stage 3 is built (M4a): the Word calls
+go through two small traits (`WordApp` and `WordDoc` in `src/export/engine.rs`),
+with a fake in `src/export/tests.rs` that records calls and can block, fail or
+panic; the ending of a process is a third trait (`EndProcess`); the timeout is
+`ExportOptions::timeout`, and `ExportOptions::after_open` is a hook that runs on
+the Word thread, so that a test can hold Word at a known place. The path of
+veraPDF is not in the code yet; the caller will set it.
 
 ### Decided points
 
@@ -386,27 +404,38 @@ Fix IDs in `src/findings.rs`: 11 auto (`SetDefaultLanguage`,
 
 ### Stage 3: Word export (spec 02, stage 3)
 
-| # | Requirement | Planned test name | Level | Fixture or input | Pass condition |
-|---|---|---|---|---|---|
-| S3-01 | One hidden Word started by the tool | `export_starts_its_own_hidden_word` | windows_word | `DOC-001-pass.docx` | While the export runs, a `WINWORD.EXE` process exists that was not in the list taken before. Its `Visible` is false and its alerts are off. |
-| S3-02 | The user's Word windows are not used or closed (AGENTS.md; spec 02) | `export_leaves_the_users_word_alone` | windows_word | The test first starts a visible "user" Word with fixture B open and an unsaved edit. It notes the process ID, the number of documents, the text, `Saved` (false) and the file bytes. Then it exports fixture A. | After the export, the user's process is alive, has the same number of documents and text, `Saved` is still false, the file bytes are the same, and its window still exists. A variant exports the same file the user has open. |
-| S3-03 | The instance is closed after success | `export_closes_word_after_success` | windows_word | `DOC-001-pass.docx` | The list of `WINWORD.EXE` process IDs equals the list before, within 30 seconds. No `~$` file remains. The .docx bytes are unchanged (it was opened read-only). The bound was 5 seconds in the first plan; it is too tight. Measured on 2026-11-16 (Word 16.0.20527): Word needed 3.1 to 4.9 seconds to end after `Quit` in 14 quits (3.7 seconds with 78 documents open, in W-01), and 8.6 seconds in one more (W-04, a session that had opened and closed 2 documents). A reviewer saw a process that stayed longer than 10 seconds. So the session waits up to 30 seconds, and this row uses the same bound. |
-| S3-04 | The instance is closed after an error | `export_closes_word_after_an_error` | windows_word | An output folder that does not exist; a read-only output folder; a file that is a valid zip with a damaged `word/document.xml` (stage 1 skipped by a test hook) | Exit 2 each time. The process list equals the list before. No partial PDF remains. |
-| S3-05 | Closed also when the code panics | `export_closes_the_instance_when_the_code_panics` | unit | A fake Word that panics inside the export call | The fake records `Quit`. |
-| S3-06 | Timeout: close the instance the tool started and report the failure (spec 02) | `export_times_out_and_closes_only_its_own_word` | unit | A fake whose export blocks for 2 seconds, with the timeout set to 100 ms; a second fake "user" instance | The result is a timeout error and exit 2. `Quit` or terminate is called on the tool's instance only. No PDF file. |
-| S3-07 | The timeout is 5 minutes (spec 02) | `export_timeout_is_five_minutes_by_default` | unit | The default value | 300 seconds. |
-| S3-08 | Timeout with the real Word | `export_times_out_with_real_word` | windows_word | `DOC-001-pass.docx` with the timeout set to 1 ms | Exit 2. No `WINWORD.EXE` of the tool remains. No partial PDF. |
-| S3-09 | `ExportAsFixedFormat` parameters (spec 02, table) and a read-only open | `export_passes_the_spec_parameters` | unit | A fake that records the call | `OutputFileName` is the PDF path next to the .docx; `ExportFormat` 17; `OpenAfterExport` false; `OptimizeFor` 0; `Item` 0; `IncludeDocProps` true; `CreateBookmarks` 1; `DocStructureTags` true; `BitmapMissingFonts` true; `UseISO19005_1` false. The document is opened read-only, hidden, and not added to recent files. |
-| S3-10 | The parameters have the effect the spec says | `export_makes_a_tagged_pdf_with_bookmarks_and_properties` | windows_word | A pass fixture with a Heading 1 and a Heading 2 | The PDF has `/MarkInfo` with `/Marked true`, a `/StructTreeRoot`, `/Outlines` for the headings, an Info `/Title`, and no `pdfaid` in the XMP (PDF/A off). |
-| S3-11 | Fields are updated before the export (spec 02) | `export_updates_fields_before_exporting` | unit, then windows_word | Unit: a fake that records the order. windows_word: `TXT-004-fail.docx` (a heading renamed after the table of contents was made) | Unit: the field update call comes before `ExportAsFixedFormat`. Word: the PDF text has the new heading in the table of contents and not the old one. The .docx on disk is unchanged. This also proves S2-31. |
-| S3-12 | Export is refused when DOC-005 fires (spec 02) | `export_is_refused_when_doc_005_fires` | unit | `DOC-005-fail.docx` (tracked change); a copy with only a comment | Exit 1. The fake Word is never called. No PDF. The message names tracked changes or comments. |
-| S3-13 | The PDF is written only when stage 1 has no errors (spec 02, "Inputs and outputs") | `export_writes_no_pdf_when_stage_1_has_errors` | CLI | Each of the 15 `*-fail.docx` fixtures whose rule is an error (DOC-001, 002, 005, 006; HDG-001, 002, 004; IMG-001, 007; TXB-001; LST-001; TBL-001, 002; LNK-003; CLR-001) | Exit 1. No `.pdf` next to the file. Word is not started. `Guide.accessibility.html` exists, its summary says Fail, and it lists the errors (decided point 7). |
-| S3-14 | Warnings do not block the export | `export_runs_when_only_warnings_exist` | windows_word | `HDG-006-fail.docx` and `TXT-002-fail.docx` | A PDF is written. The report lists the warnings. |
-| S3-15 | The source .docx is not changed by the export | `export_leaves_the_docx_unchanged` | windows_word | Every exportable pass fixture (see stage 5) | Bytes and modified time are the same before and after. |
-| S3-16 | Word is not installed | `export_reports_missing_word` | unit | A fake factory that fails with "class not registered" | Exit 2. The message says Microsoft Word is not installed. No panic. |
-| S3-17 | A document Word cannot open (for example a password) | `export_reports_a_password_protected_document` | windows_word | A copy that the test saves with a password through Word | Exit 2 with a clear message. The process list equals the list before. |
-| S3-18 | Awkward paths | `export_handles_awkward_paths` | windows_word | A folder and file name with spaces and a non-ASCII letter; a long path | The PDF is written next to the file. |
-| S3-19 | Existing or locked `Guide.pdf` (decided point 6) | `export_replaces_or_reports_a_locked_pdf` | windows_word | A `Guide.pdf` from an earlier run; another with an exclusive handle held | The first is replaced. The second gives exit 2 with a clear message. |
+Built in M4a as the library `adapdf::export` (`src/export/`), with no CLI
+command and no report (those are M4c). The names below are the real test names.
+"unit" tests are in `src/export/tests.rs` and use a fake Word (the traits in
+`src/export/engine.rs`); "windows_word" tests are in `tests/export_word.rs` and
+`tests/export_fixtures.rs`. See "How M4a reads stage 3" and "Known gaps in M4a".
+
+| # | Requirement | Test name | Level | Fixture or input | Pass condition | Status |
+|---|---|---|---|---|---|---|
+| S3-01 | One hidden Word started by the tool | `export_starts_its_own_hidden_word` | windows_word | `clean()` document | While the export runs (a hook on the Word thread), a `WINWORD.EXE` process exists that was not in the list taken before. A `WordSession` (the type the export uses) reports `Visible` false and `DisplayAlerts` 0. | implemented. The `Visible` and alerts check runs on a session that the test starts itself, because the hook cannot ask Word; the export starts its Word with the same `WordSession::start`. |
+| S3-02 | The user's Word windows are not used or closed (AGENTS.md; spec 02) | `export_leaves_the_users_word_alone` | windows_word | The test starts a separate "user" Word (a `WordSession`) with fixture B open for editing and an unsaved edit. It notes the number of documents, the text, `Saved` (false) and the file bytes. Then it exports fixture A. A second step exports B itself. | After each export the user's process is alive, has the same number of documents and text, `Saved` is still false, the bytes of B are the same, and the `~$` lock file of B is still there. The `WINWORD.EXE` list equals the list before (it includes the real user's Word, PID 49988 on the test machine). | implemented. The test's "user" Word is hidden (the tool has no API to show Word), so "its window still exists" is not checked. The variant (the same file) is in the same test. |
+| S3-03 | The instance is closed after success | `export_closes_word_after_success` | windows_word | `clean()` document | The list of `WINWORD.EXE` process IDs equals the list before (checked for up to 20 seconds; the export itself returns only after Word has quit). No `~$` or temporary file remains. The .docx bytes and modified time are unchanged (it was opened read-only). The 30 second bound of the session is explained in "Known gaps in M3a". | implemented |
+| S3-04 | The instance is closed after an error | `export_closes_word_after_an_error` | windows_word | (1) An output folder that does not exist (the error comes before Word starts). (2) A .docx that stage 1 accepts and Word rejects (an empty `[Content_Types].xml`: "The file appears to be corrupted"). | The error is `OutputFolder` and `Word(Open)`. The process list equals the list before. No PDF and no temporary file remain. | implemented, with these differences from the first plan: stage 1 cannot be skipped by a hook (the export has no such switch), so the Word-side error is a file that only Word rejects; a read-only output folder is not tested (on Windows the read-only attribute of a folder does not stop new files; an ACL would be needed). The exit code 2 is the CLI (M4c). |
+| S3-05 | Closed also when the code panics | `export_closes_the_instance_when_the_code_panics` (unit); `export_closes_word_when_the_word_thread_panics` (windows_word) | unit and windows_word | A fake Word that panics inside the export call; the real Word with a hook that panics | Unit: the fake records `Quit` and the result is `WorkerStopped`; no temporary PDF. Real: the process list equals the list before. | implemented |
+| S3-06 | Timeout: end the instance the tool started and report the failure (spec 02) | `export_times_out_and_ends_only_its_own_word` (unit and windows_word); `export_times_out_before_word_has_started` and `a_result_is_not_lost_to_the_deadline` (unit) | unit and windows_word | Unit: a fake whose export blocks for 1 second with the timeout at 100 ms; a second fake "user" Word. Real: a hook that blocks until the tool's Word is gone, timeout 15 seconds, and a separate "user" Word (a `WordSession`) with an unsaved edit. | The result is `Timeout` with the id of the tool's Word and `ended` true. The ending is called with the tool's id only (unit: `[111]`; the user's fake has id 222 and is not called). Real: the tool's process is gone; the user's process, document count, text and `Saved` are as before; no PDF and no temporary file. A deadline before Word has started waits for the id and ends it. A result that arrives at the deadline is a result. | implemented. The exit code 2 is the CLI (M4c). |
+| S3-07 | The timeout is 5 minutes (spec 02) | `export_timeout_is_five_minutes_by_default` | unit | The default value | 300 seconds. | implemented |
+| S3-08 | Timeout with the real Word | `export_times_out_with_real_word` | windows_word | `clean()` document with the timeout set to 1 ms | `Timeout` with `ended` true. The process list equals the list before. No PDF, no temporary file. The .docx is unchanged. | implemented |
+| S3-09 | `ExportAsFixedFormat` parameters (spec 02, table) and a read-only open | `export_passes_the_spec_parameters`, `the_parameters_are_the_spec_table` | unit | A fake that records the call; the table in `docs/specs/02-pipeline.md` | The parameters are 17, false, 0, 0, true, 1, true, true, false for `ExportFormat`, `OpenAfterExport`, `OptimizeFor`, `Item`, `IncludeDocProps`, `CreateBookmarks`, `DocStructureTags`, `BitmapMissingFonts`, `UseISO19005_1`, and they equal the values in the spec table. The output file is a temporary name next to the PDF. | implemented. The open is read-only because the traits offer only a read-only open; the `WordSession::open` arguments (hidden, not in the recent files, no repair, no dialog) are read in the code and run in every Word test, not recorded by a fake. |
+| S3-10 | The parameters have the effect the spec says | `export_makes_a_tagged_pdf_with_bookmarks_and_properties` | windows_word | `clean()` with a Heading 2 added | The PDF has `/MarkInfo` with `/Marked true`, a `/StructTreeRoot`, `/Outlines` with a bookmark for each heading, the Info `/Title` and the XMP title, and no `pdfaid`. | implemented |
+| S3-11 | Fields are updated before the export (spec 02) | `export_updates_fields_before_exporting` | unit and windows_word | Unit: a fake that records the order. Word: a document with a table of contents of 1 entry and 4 headings; the `TXT-004-fail.docx` fixture (a heading renamed after the table was made). | Unit: `update_fields` comes after the open and before `export`. Word: the PDF has 4 link annotations (`/Subtype/Link`), one for each entry that Word wrote, and not the 1 of the stale table; the `TXT-004-fail.docx` PDF has 2. The .docx on disk is unchanged. This also proves S2-31. | implemented, but not as the first plan said: the PDF text is not read (see "Known gaps in M4a"), so a renamed heading with the same number of entries is not proved by the PDF. |
+| S3-12 | Export is refused when DOC-005 fires (spec 02) | `export_is_refused_when_doc_005_fires` (unit); `export_is_refused_when_doc_005_fires_and_starts_no_word` (windows_word) | unit and windows_word | `DOC-005-fail.docx` (tracked change); a document with only a comment | `ExportError::Blocked` with the DOC-005 finding (error). The fake Word is never started (the start panics if called); with the real Word the process list is unchanged. No PDF. The message names the rule and "tracked changes" or "comments". The .docx is unchanged. | implemented. The exit code 1 is the CLI (M4c). |
+| S3-13 | The PDF is written only when stage 1 has no errors (spec 02, "Inputs and outputs") | `export_writes_no_pdf_when_stage_1_has_errors` | unit now; CLI planned | Each of the 15 `*-fail.docx` fixtures whose rule is an error (DOC-001, 002, 005, 006; HDG-001, 002, 004; IMG-001, 007; TXB-001; LST-001; TBL-001, 002; LNK-003; CLR-001) | Unit: `Blocked` with the rule of the fixture for each of the 15; Word is not started; no `.pdf`. CLI (M4c): exit 1, `Guide.accessibility.html` exists, says Fail and lists the errors (decided point 7). | library part implemented; the CLI and report part is planned (M4c) |
+| S3-14 | Warnings do not block the export | `export_runs_when_only_warnings_exist` | unit and windows_word | `HDG-006-fail.docx` and `TXT-002-fail.docx` | A tagged PDF is written, and the result lists the warning. | implemented. "The report lists the warnings" is M4c. |
+| S3-15 | The source .docx is not changed by the export | `export_leaves_the_docx_unchanged`; `export_makes_tagged_pdfs_of_the_pass_fixtures` | windows_word | Two documents; the 33 pass fixtures of S5-10 | Bytes and modified time are the same before and after. | implemented |
+| S3-16 | Word is not installed | `export_reports_missing_word` | unit | A fake start that fails with `WordError::NotInstalled` | `ExportError::Word(NotInstalled)`; the message says Microsoft Word is not installed. No panic, no PDF. The exit code 2 is the CLI (M4c). | implemented |
+| S3-17 | A document Word cannot open (for example a password) | `export_reports_a_password_protected_document` | windows_word | A copy that the test saves with a password through Word | An error with a clear message. The process list equals the list before. | planned. A password-protected .docx is not a zip file, so stage 1 refuses it before Word starts (`a_file_that_is_not_a_docx_is_a_check_error` covers that refusal with a plain text file). Making a real one needs Word to save with a password, which the Word module cannot do yet. The Word-side open error is covered by S3-04. |
+| S3-18 | Awkward paths | `export_handles_awkward_paths` | windows_word | A folder and file name with spaces, non-ASCII letters, a dash and brackets; a path of about 220 characters | The PDF is written next to the file and is tagged. | implemented. A path over 260 characters is not tested (Word does not open it). |
+| S3-19 | Existing or locked `Guide.pdf` (decided point 6) | `export_replaces_an_existing_pdf`, `export_reports_a_locked_pdf_and_keeps_it`, `a_pdf_that_cannot_be_replaced_at_the_end_keeps_the_old_one` (unit); `export_replaces_or_reports_a_locked_pdf` (windows_word) | unit and windows_word | A `Guide.pdf` from an earlier run; another with an exclusive handle held; one that gets locked while Word works | The first is replaced. The second is `PdfLocked`, names `Guide.pdf`, and is not changed; Word is not started. The third (locked after the early check) is `PdfLocked` too, and the old PDF stays. No temporary file remains. The exit code 2 is the CLI (M4c). | implemented |
+
+Also built, without a row of the first plan: `a_missing_output_folder_is_an_error_that_names_it`,
+`output_that_is_not_a_pdf_is_an_error_and_keeps_the_old_pdf` (a Word that wrote
+nothing, or not a PDF), `a_file_that_is_not_a_docx_is_a_check_error`,
+`the_docx_is_not_changed_by_the_fake_export` and `error_messages_are_plain`.
 
 ### Stage 4: PDF metadata fixes (spec 02, stage 4)
 
@@ -448,7 +477,7 @@ Fixtures: JSON output of veraPDF for small PDFs made by test code, saved in
 | S5-07 | A crash is not a pass | `verapdf_crash_or_bad_output_is_not_a_pass` | unit | A runner that exits with an error, gives empty output, or gives invalid JSON | Exit 2, not pass. |
 | S5-08 | Any failure means the PDF does not pass | `verapdf_any_failure_means_not_pass` | unit | JSON with 1 failed check; JSON with 0 failed checks | 1 failed check: not pass, exit 1. 0 failed: pass. |
 | S5-09 | The real veraPDF runs on a PDF made by test code | `verapdf_runs_on_a_generated_pdf` | veraPDF | `tagged-complete` | The JSON parses and the failure count is the one the test knows. |
-| S5-10 | **Exit criterion.** Word-made PDFs of passing fixtures have 0 veraPDF failures (spec 01, success criterion 1, applied to the fixtures) | `verapdf_zero_failures_on_pass_fixtures` | veraPDF with windows_word | The 33 pass fixtures that have content and need no picture data: DOC-001 to DOC-006, HDG-001 to HDG-004, HDG-006, LST-001, LST-002, TXB-001 to TXB-004, TBL-001 to TBL-006, LNK-001 to LNK-003, CLR-001, CLR-002, TXT-001 to TXT-004 and IMG-006. | Each is exported by Word and checked. 0 failures for each. The 6 pass fixtures with a picture (IMG-001 to IMG-005 and IMG-007) are added when the builder writes a small image part (see "Known gaps in M2a"). Failing fixtures are not in the criterion, because stage 1 blocks those with errors. A failure here is a finding for Phase 0: a missing source rule or a Word export problem. |
+| S5-10 | **Exit criterion.** Word-made PDFs of passing fixtures have 0 veraPDF failures (spec 01, success criterion 1, applied to the fixtures) | `verapdf_zero_failures_on_pass_fixtures` | veraPDF with windows_word | The 33 pass fixtures that have content and need no picture data: DOC-001 to DOC-006, HDG-001 to HDG-004, HDG-006, LST-001, LST-002, TXB-001 to TXB-004, TBL-001 to TBL-006, LNK-001 to LNK-003, CLR-001, CLR-002, TXT-001 to TXT-004 and IMG-006. | Each is exported by Word and checked. 0 failures for each. The 6 pass fixtures with a picture (IMG-001 to IMG-005 and IMG-007) are added when the builder writes a small image part (see "Known gaps in M2a"). Failing fixtures are not in the criterion, because stage 1 blocks those with errors. A failure here is a finding for Phase 0: a missing source rule or a Word export problem. M4a already exports these 33 and checks that each PDF is tagged (`export_makes_tagged_pdfs_of_the_pass_fixtures` in `tests/export_fixtures.rs`; veraPDF is not run there), so this row has its inputs. |
 | S5-11 | Information only: veraPDF on failing fixtures that have only warnings | `verapdf_on_warning_fixtures_is_recorded` | veraPDF with windows_word | The `*-fail` fixtures of warning rules that can be exported | The veraPDF failures are recorded, to see which warnings need to become errors. No pass condition. |
 
 ### Stage 6: report (spec 02, stage 6)
@@ -774,7 +803,7 @@ Decisions for the IMG, TXB and TBL rules where spec 03 leaves room.
   run of W-04 after a build). The bound was 10 seconds, which a slow quit can
   pass; it is now 30 seconds. The time that Word needs does not depend clearly
   on the number of documents. The 5 minute timeout and the end of the tool's own process are
-  stage 3 (S3-06 to S3-08). The session gives the process id for that
+  stage 3 (S3-06 to S3-08, built in M4a: see "How M4a reads stage 3"). The session gives the process id for that
   (`WordSession::pid`); the tests use it only to end a hung test's own Word.
 - **The process id comes from a probe document.** Word has no process id
   property, so the session adds one hidden empty document to its new Word, finds
@@ -1122,6 +1151,115 @@ the code and the tests together if the spec changes.
   documents only (see "Known gaps in M1").
 - **The file can be changed between the release of the exclusive handle and the
   move.** The gap is very short; the tool does not guard it.
+
+## How M4a reads stage 3
+
+`adapdf::export::export_pdf(docx, pdf, fonts, options)` is the whole of stage 3.
+It has no CLI command and writes no report; the caller (M4c) does that.
+
+- **Order.** (1) Stage 1 on the .docx (`fonts` is for DOC-006). Any finding with
+  severity error, DOC-005 included, gives `ExportError::Blocked { findings }`
+  with all the findings of stage 1 (so that the report can say "Fail" and list
+  them). Word is not started, nothing is written. A file that stage 1 cannot read
+  is `ExportError::Check`. (2) The target is checked: an existing PDF must not be
+  held by another program (an exclusive open, as stage 2 does for the .docx), and
+  the tool makes an empty temporary file `Guide.adapdf-<process>-<n>.pdf` in the
+  target folder, which also shows that the folder takes new files
+  (`OutputFolder` otherwise). (3) The Word part (below). (4) The temporary file
+  must start with `%PDF-` (`NoPdf` otherwise), and it is moved over `Guide.pdf`
+  (`PdfLocked` when that fails and the PDF exists). A failed export removes the
+  temporary file and never touches the old PDF.
+- **The Word part.** The tool's own hidden Word (`WordSession`) opens the .docx
+  read-only, updates the fields (`Fields.Update` on the main text, then
+  `TablesOfContents(i).Update` for each table of contents; it never saves),
+  calls `ExportAsFixedFormat` by parameter name with the values of spec 02 (the
+  constant `ExportParameters::SPEC`, which a unit test compares with the table in
+  the spec), closes the document without saving, and the session quits Word.
+  The parameters that the spec does not name keep Word's defaults (the whole
+  document).
+- **What is reported.** `ExportResult`: the PDF path, the stage 1 findings (only
+  warnings, since an error refuses), `FieldUpdate` (how many fields, how many
+  tables of contents, the number of the first field that Word could not update),
+  the `ExportParameters` that were passed, Word's build and the duration (the
+  start of Word to the PDF in place).
+- **Threads.** A `WordSession` is not `Send` (COM, single-threaded apartment), so
+  the whole Word part runs on one worker thread that makes its own session. The
+  caller waits on a channel with a deadline. The worker sends the id of its Word
+  process as soon as it has it, and the result at the end, after the session is
+  dropped (so Word has quit when the caller gets the result). A panic on the
+  worker unwinds through the session (which quits Word) and the caller gets
+  `WorkerStopped`.
+- **The timeout (5 minutes, `ExportOptions::timeout`).** At the deadline the
+  caller ends the Word process that the worker reported, and only that one:
+  its id is `WordSession::pid`, which the session proved belongs to the Word that
+  it started (it is a new process that owns the session's own window; see the
+  doc comment of `WordSession`), and `word::end_word_process` opens the process
+  once, reads its image name from that open handle and ends it only if it is
+  `WINWORD.EXE`, so an id that another program has reused is not ended, and the
+  user's Word is never in the list. If the deadline passes before Word has
+  started, the caller waits up to 60 seconds for the id, then ends that Word. If
+  the id never comes nothing is ended and the error says so. A result that
+  arrives at the deadline is used as a result. After the end, the worker's COM
+  calls fail by themselves and it finishes; the caller waits up to 15 seconds for
+  it, then removes the temporary PDF. The error `Timeout` says what was ended.
+- **Test seams.** The Word calls are two traits (`WordApp`, `WordDoc`) with a fake
+  in the unit tests, the ending of a process is a trait (`EndProcess`), and
+  `ExportOptions::after_open` is a hook that runs on the Word thread with the
+  process id, after the document is open. The Word tests use it to hold Word at a
+  known place (a hang that is deterministic), to read the process id, and to
+  panic.
+- **What Word 16.0.20527 wrote** in the exports of M4a (for M4b and the Phase 0
+  table, S4-11): `/MarkInfo<</Marked true>>`, a `/StructTreeRoot`, `/Outlines`
+  with `/Title(...)` for each heading, the Info `/Title`, the XMP `dc:title`,
+  `/ViewerPreferences` with `/DisplayDocTitle true`, `/Lang(en)` for a document
+  whose language is `en-US`, and no `pdfuaid` in the XMP. A table of contents
+  entry is one `/Subtype/Link` annotation. Each export takes 5 to 7 seconds
+  (Word starts and quits for each one).
+
+## Known gaps in M4a
+
+- **The text of the table of contents is not read from the PDF.** Word writes
+  its fonts as subsets with glyph numbers, so the text needs a PDF reader that
+  decodes the streams and the font maps, and no PDF crate is in the project yet
+  (M4b may add `lopdf`). S3-11 proves the update by counting the links: a table of
+  contents of 1 entry in a document with 4 headings gives 4 links in the PDF.
+  A heading that is renamed (the `TXT-004-fail.docx` case) keeps the number of
+  entries, so for that case the test only checks that Word updated 1 table of
+  contents and that the PDF has the 2 links. When a PDF reader is available, add
+  the check of the text to `export_updates_fields_before_exporting`.
+- **Only the main text and the tables of contents are updated.** Fields in
+  headers, footers, text boxes, footnotes and tables of figures are not updated
+  by the tool. Word updates the page number fields while it lays out the pages.
+  `FieldUpdate::first_failed` gives the first field that Word could not update;
+  nothing makes it an error.
+- **The "user" Word in the tests is hidden.** S3-02 and S3-06 start a separate
+  Word with a document and an unsaved edit, through `WordSession` (always
+  hidden). A visible Word with a window is not tested, and "its window still
+  exists" is not checked. The real person's Word (PID 49988 on the test machine)
+  was running during every Word run, and the lists of `WINWORD.EXE` processes
+  (from `tasklist`) were the same before and after each test.
+- **A hang before the tool knows its Word.** If Word does not start within 60
+  seconds after the deadline, the id is never known, nothing is ended, and the
+  error says so (`pid` is none). This is not tested with a real Word (a fake that
+  starts slowly covers the wait). Word was not seen to hang while it started.
+- **A Word that was ended may leave a recovery file.** The tool ends a hung Word
+  with `TerminateProcess`. The tool's Word has no edited document (the tool
+  updates fields in memory only, and AutoRecover saves on a timer), but whether a
+  later start of the person's Word offers "document recovery" for it was not
+  checked.
+- **Password-protected files (S3-17) are planned.** Stage 1 refuses them (they
+  are not a zip file); a real one needs Word to save with a password.
+- **A read-only output folder is not tested**, and neither is a path over 260
+  characters. The first needs an ACL; Word does not open the second.
+- **The early lock check is stricter than the move.** A PDF that a viewer holds
+  open and shares for delete could be replaced by the move, but the exclusive
+  open of the early check refuses it, as stage 2 does for the .docx. The message
+  names the file. It is the safe choice; relax it only if users report it.
+- **One Word build.** All the `windows_word` results are from Word 16.0.20527
+  (Microsoft 365) on one machine.
+- **No `export` command and no report yet** (M4c). The exit codes in the S3 rows
+  (1 for a blocked export, 2 for a timeout, a locked PDF or a missing Word) are
+  the CLI's job; the library gives typed errors for them.
 
 ## Known gaps in M1
 

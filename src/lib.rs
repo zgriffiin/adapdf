@@ -12,6 +12,8 @@ use std::path::Path;
 
 pub mod docx;
 pub mod error;
+#[cfg(windows)]
+pub mod export;
 pub mod findings;
 pub mod fix;
 pub mod fixtures;
