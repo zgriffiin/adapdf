@@ -169,10 +169,8 @@ veraPDF, installer and manual tests will get their steps here when they exist.
 
 ## Counts at the time of writing
 
-Measured on 2026-11-16 on the tree of base commit `81766a3` (the merge of M3a
-and M3b) plus the changes of review round 1 (not yet committed: the
-independent check of S2-08, the new Word tests, the process choice and its unit
-tests, and the backup read-back). Commands: `cargo test` and
+Measured on 2026-11-16 on commit `0864900` (M3 with the changes of review
+round 1). Commands: `cargo test` and
 `cargo test --features windows_word`, with the counts taken from their "test
 result" lines. Two tests of M3b run on Windows only (the held file handle in
 S2-03, and the folder with the name of the backup in S2-06), and so does

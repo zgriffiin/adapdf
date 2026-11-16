@@ -98,7 +98,8 @@ pub type Result<T> = std::result::Result<T, WordError>;
 /// 2. COM starts Word (`CoCreateInstance` with `CLSCTX_LOCAL_SERVER`, never
 ///    `GetActiveObject`). The ids are read again. If no new process is there,
 ///    COM gave the session a Word that was already running (the user's). The
-///    session then does nothing to it except release its reference, and
+///    session does nothing to it except read-only checks and releasing its
+///    reference, and
 ///    [`start`](WordSession::start) fails with [`WordError::SharedInstance`].
 /// 3. A new process alone does not show that the object is its Word: COM could
 ///    have given the user's Word while an unrelated Word started at the same
