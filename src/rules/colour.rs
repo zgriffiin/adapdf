@@ -2,8 +2,9 @@
 //!
 //! Both rules read the runs of the body paragraphs, including paragraphs in
 //! table cells. Runs with no visible text are skipped. Header, footer and
-//! footnote text is not checked. Table styles are not applied, so a fill or a
-//! text colour that comes only from a table style is not seen.
+//! footnote text is not checked. Table styles are applied (see
+//! [`crate::model::table_styles`]), so a fill or a text colour that comes only
+//! from a table style is seen.
 
 use crate::findings::{Finding, Location, RuleId, snippet};
 use crate::model::colour::{auto_text_colour, contrast_ratio};
@@ -121,10 +122,7 @@ fn same_colour(a: Color, b: Color) -> bool {
 pub fn clr_002(doc: &Document) -> Vec<Finding> {
     let mut findings = Vec::new();
     for p in &doc.paragraphs {
-        let base = doc
-            .styles
-            .paragraph_run_fmt(p.style_id.as_deref())
-            .resolve();
+        let base = &p.style_run;
         let mut seen: Vec<Color> = Vec::new();
         for run in p.runs.iter().filter(|r| r.has_visible_text()) {
             let r = &run.props;

@@ -25,6 +25,7 @@ pub mod fields;
 pub mod numbering;
 pub mod props;
 pub mod styles;
+pub mod table_styles;
 pub mod tables;
 pub mod theme;
 
@@ -84,8 +85,13 @@ pub struct Paragraph {
     pub runs: Vec<Run>,
     /// Effective properties after style inheritance and direct formatting.
     pub props: ParagraphProps,
+    /// The run properties of the paragraph's text before any character style
+    /// or direct formatting: document defaults, the table style (for a
+    /// paragraph in a table), and the paragraph style.
+    pub style_run: RunProps,
     pub in_table: bool,
-    /// The fill behind the paragraph that comes from its table cell or table.
+    /// The fill behind the paragraph that comes from its table cell or table:
+    /// the cell's own shading, the table's, or the table style's.
     pub container_fill: Option<Rgb>,
     pub drawings: Vec<Drawing>,
     /// Equations (`m:oMath`) in the paragraph.

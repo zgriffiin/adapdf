@@ -7,11 +7,12 @@ description = "Checks Word training guides for accessibility problems before PDF
 publish = false
 
 [lints.rust]
-# No unsafe code. Windows COM (M4) is the only place that may need it.
-unsafe_code = "forbid"
+# No unsafe code, except in `src/word` (Windows COM), which allows it for itself.
+# `deny`, not `forbid`: `forbid` cannot be lifted for one module.
+unsafe_code = "deny"
 
 [features]
-# Enables tests that need Microsoft Word installed. None in M1.
+# Enables tests that need Microsoft Word installed (they start their own hidden Word).
 windows_word = []
 
 # Versions are pinned to releases that were at least 48 hours old when chosen.
@@ -23,3 +24,14 @@ serde_json = "=1.0.154"
 thiserror = "=2.0.21"
 ttf-parser = { version = "=0.25.1", default-features = false, features = ["std"] }
 zip = { version = "=9.5.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+
+# Windows COM, to drive Word (`src/word`). Only the features in use are on.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "=0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Ole",
+    "Win32_System_Variant",
+    "Win32_UI_WindowsAndMessaging",
+] }

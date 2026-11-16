@@ -3,6 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::props::{ParFmt, RunFmt};
+use super::table_styles::{TableStyle, TableStyles};
 use super::theme::Theme;
 use crate::docx::{WordNode, parse_xml};
 use crate::error::Result;
@@ -48,6 +49,8 @@ pub struct Styles {
     doc_par: ParFmt,
     styles: HashMap<String, Style>,
     default_paragraph: Option<String>,
+    table_styles: TableStyles,
+    default_table: Option<String>,
 }
 
 impl Styles {
@@ -98,6 +101,14 @@ impl Styles {
                     .default_paragraph
                     .get_or_insert_with(|| id.to_string());
             }
+            if kind == StyleKind::Table {
+                styles
+                    .table_styles
+                    .insert(id.to_string(), TableStyle::parse(node, theme));
+                if style.is_default {
+                    styles.default_table.get_or_insert_with(|| id.to_string());
+                }
+            }
             styles.styles.insert(id.to_string(), style);
         }
         Ok(styles)
@@ -110,6 +121,15 @@ impl Styles {
     /// The id of the paragraph style used when a paragraph names none.
     pub fn default_paragraph_id(&self) -> Option<&str> {
         self.default_paragraph.as_deref()
+    }
+
+    pub(super) fn table_style(&self, id: &str) -> Option<&TableStyle> {
+        self.table_styles.get(id)
+    }
+
+    /// The id of the table style used when a table names none.
+    pub(super) fn default_table_id(&self) -> Option<&str> {
+        self.default_table.as_deref()
     }
 
     /// The style and its base styles, the style itself first. Stops at a
@@ -149,7 +169,14 @@ impl Styles {
     /// Run properties of text in a paragraph style: document defaults, then
     /// the style chain.
     pub fn paragraph_run_fmt(&self, paragraph_style: Option<&str>) -> RunFmt {
+        self.paragraph_run_fmt_under(&RunFmt::default(), paragraph_style)
+    }
+
+    /// Like [`Styles::paragraph_run_fmt`] for text in a table cell: document
+    /// defaults, then the table style (`table`), then the paragraph style chain.
+    pub fn paragraph_run_fmt_under(&self, table: &RunFmt, paragraph_style: Option<&str>) -> RunFmt {
         let mut fmt = self.doc_run.clone();
+        fmt.overlay(table);
         if let Some(id) = paragraph_style {
             fmt.overlay(&self.style_run_fmt(id));
         }
@@ -159,7 +186,15 @@ impl Styles {
     /// Paragraph properties of a paragraph style: document defaults, then the
     /// style chain.
     pub fn paragraph_par_fmt(&self, paragraph_style: Option<&str>) -> ParFmt {
+        self.paragraph_par_fmt_under(&ParFmt::default(), paragraph_style)
+    }
+
+    /// Like [`Styles::paragraph_par_fmt`] for a paragraph in a table cell:
+    /// document defaults, then the table style (`table`), then the paragraph
+    /// style chain.
+    pub fn paragraph_par_fmt_under(&self, table: &ParFmt, paragraph_style: Option<&str>) -> ParFmt {
         let mut fmt = self.doc_par.clone();
+        fmt.overlay(table);
         if let Some(id) = paragraph_style {
             fmt.overlay(&self.style_par_fmt(id));
         }

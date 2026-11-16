@@ -15,6 +15,7 @@ use crate::fonts::{FontLookup, FontStatus};
 use crate::rules::document::TEMPLATE_FILE_NAME;
 
 mod links_colour_text;
+mod media;
 mod objects;
 use links_colour_text::shd_xml;
 pub use links_colour_text::{
@@ -424,6 +425,8 @@ pub struct DocxBuilder {
     page_background: Option<(String, bool)>,
     /// Character styles: id, name and the XML inside `w:rPr`.
     char_styles: Vec<(String, String, String)>,
+    /// Table styles as `w:style` XML. See [`DocxBuilder::table_style`].
+    table_styles: Vec<String>,
     body: Vec<Para>,
 }
 
@@ -448,6 +451,7 @@ impl DocxBuilder {
             footer_raw: None,
             page_background: None,
             char_styles: Vec::new(),
+            table_styles: Vec::new(),
             body: Vec::new(),
         }
     }
@@ -510,6 +514,27 @@ impl DocxBuilder {
         self
     }
 
+    /// Adds a table style. `inner` is the XML of the style after `w:name` and
+    /// `w:basedOn`, in schema order (`w:pPr`, `w:rPr`, `w:tblPr`, `w:tcPr`, then
+    /// the `w:tblStylePr` elements). The style is based on `based_on`, or on
+    /// Word's default table style `TableNormal` when that is `None`.
+    pub fn table_style(
+        mut self,
+        id: &str,
+        name: &str,
+        based_on: Option<&str>,
+        inner: &str,
+    ) -> DocxBuilder {
+        self.table_styles.push(format!(
+            r#"<w:style w:type="table" w:styleId="{}"><w:name w:val="{}"/><w:basedOn w:val="{}"/>{inner}</w:style>
+"#,
+            esc(id),
+            esc(name),
+            esc(based_on.unwrap_or("TableNormal"))
+        ));
+        self
+    }
+
     /// Adds a header with one paragraph of text.
     pub fn header_text(mut self, text: &str) -> DocxBuilder {
         self.header_text = Some(text.to_string());
@@ -545,6 +570,7 @@ impl DocxBuilder {
             body += "<w:p/>"; // a table cannot be the last thing in a body
         }
         let body = number_drawing_ids(&body);
+        let has_image = media::uses_image(&body);
         let header_ref = if self.header_text.is_some() {
             r#"<w:headerReference w:type="default" r:id="rIdHeader1"/>"#
         } else {
@@ -568,14 +594,14 @@ impl DocxBuilder {
         let mut parts: Vec<(String, Vec<u8>)> = vec![
             (
                 "[Content_Types].xml".into(),
-                self.content_types(&comments).into_bytes(),
+                self.content_types(&comments, has_image).into_bytes(),
             ),
             ("_rels/.rels".into(), ROOT_RELS.as_bytes().to_vec()),
             ("docProps/core.xml".into(), self.core().into_bytes()),
             ("word/document.xml".into(), document.into_bytes()),
             (
                 "word/_rels/document.xml.rels".into(),
-                self.document_rels(&comments).into_bytes(),
+                self.document_rels(&comments, has_image).into_bytes(),
             ),
             ("word/styles.xml".into(), self.styles().into_bytes()),
             ("word/numbering.xml".into(), NUMBERING.as_bytes().to_vec()),
@@ -622,6 +648,9 @@ impl DocxBuilder {
             );
             parts.push(("word/comments.xml".into(), xml.into_bytes()));
         }
+        if has_image {
+            parts.push((media::IMAGE_PART.into(), media::png()));
+        }
         let entries: Vec<(&str, &[u8])> = parts
             .iter()
             .map(|(name, data)| (name.as_str(), data.as_slice()))
@@ -629,7 +658,7 @@ impl DocxBuilder {
         zip_stored(&entries)
     }
 
-    fn content_types(&self, comments: &[String]) -> String {
+    fn content_types(&self, comments: &[String], has_image: bool) -> String {
         let mut overrides = String::new();
         let mut add = |part: &str, kind: &str| {
             overrides += &format!(
@@ -662,9 +691,14 @@ impl DocxBuilder {
                 "officedocument.wordprocessingml.comments",
             );
         }
+        let png = if has_image {
+            r#"<Default Extension="png" ContentType="image/png"/>"#
+        } else {
+            ""
+        };
         format!(
             r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>{overrides}</Types>"#
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>{png}{overrides}</Types>"#
         )
     }
 
@@ -680,7 +714,7 @@ impl DocxBuilder {
         )
     }
 
-    fn document_rels(&self, comments: &[String]) -> String {
+    fn document_rels(&self, comments: &[String], has_image: bool) -> String {
         const BASE: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
         let mut rels = format!(
             r#"<Relationship Id="rIdStyles" Type="{BASE}/styles" Target="styles.xml"/><Relationship Id="rIdNumbering" Type="{BASE}/numbering" Target="numbering.xml"/><Relationship Id="rIdSettings" Type="{BASE}/settings" Target="settings.xml"/>"#
@@ -708,6 +742,12 @@ impl DocxBuilder {
         if !comments.is_empty() {
             rels += &format!(
                 r#"<Relationship Id="rIdComments" Type="{BASE}/comments" Target="comments.xml"/>"#
+            );
+        }
+        if has_image {
+            rels += &format!(
+                r#"<Relationship Id="{}" Type="{BASE}/image" Target="media/image1.png"/>"#,
+                media::IMAGE_REL_ID
             );
         }
         format!(
@@ -772,6 +812,13 @@ impl DocxBuilder {
                 esc(&style.id),
                 esc(&style.name)
             );
+        }
+        if !self.table_styles.is_empty() {
+            // Word's own definition of the default table style, which a table
+            // style is based on.
+            styles += r#"<w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:uiPriority w:val="99"/><w:semiHidden/><w:unhideWhenUsed/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style>
+"#;
+            styles += &self.table_styles.concat();
         }
         for (id, name, rpr) in &self.char_styles {
             styles += &format!(

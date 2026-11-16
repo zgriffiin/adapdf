@@ -1,10 +1,11 @@
 //! Fixture builders for pictures, shapes, text boxes, equations and tables,
 //! and the passing and failing fixtures for the IMG, TXB and TBL rules.
 //!
-//! The pictures have no image data and the charts, SmartArt and embedded
-//! objects have no parts behind them, so these documents are for the checker
-//! only. The fixture files on disk use only pictures, shapes, a text box, an
-//! equation and tables.
+//! Pictures point to a real PNG part (`DocxBuilder::build` adds it; see
+//! `media.rs`). The charts, SmartArt and embedded objects have no parts behind
+//! them, so documents with them are for the checker only. The fixture files on
+//! disk use only pictures, shapes, a text box, an equation and tables, and Word
+//! opens all of them (test W-01).
 //!
 //! DrawingML shapes, groups and canvases are written the way Word writes them:
 //! the DrawingML in `mc:Choice` and a VML copy in `mc:Fallback`. The model
@@ -22,7 +23,7 @@ const SHAPE_URI: &str = "http://schemas.microsoft.com/office/word/2010/wordproce
 const GROUP_URI: &str = "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup";
 const CANVAS_URI: &str = "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas";
 const OFFICE_NS: &str = "urn:schemas-microsoft-com:office:office";
-const PICTURE_XML: &str = r#"<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="Picture 1"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>"#;
+const PICTURE_XML: &str = r#"<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="Picture 1"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdAdapdfImage1"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>"#;
 const EXTENT: &str = r#"<wp:extent cx="914400" cy="914400"/>"#;
 
 #[derive(Debug, Clone, Copy)]
@@ -237,10 +238,12 @@ impl Image {
             .unwrap_or_default();
         let shape = match self.kind {
             ImageKind::VmlPicture => {
-                format!(r#"<v:shape {attrs}><v:imagedata{title}/></v:shape>"#)
+                format!(
+                    r#"<v:shape {attrs}><v:imagedata r:id="rIdAdapdfImage1"{title}/></v:shape>"#
+                )
             }
             ImageKind::VmlGroup => format!(
-                r#"<v:group {attrs}{title}><v:shape id="_x0000_s1030" style="position:absolute;width:36pt;height:36pt"><v:imagedata/></v:shape><v:rect id="_x0000_s1031" style="position:absolute;width:18pt;height:18pt">{text_box}</v:rect></v:group>"#
+                r#"<v:group {attrs}{title}><v:shape id="_x0000_s1030" style="position:absolute;width:36pt;height:36pt"><v:imagedata r:id="rIdAdapdfImage1"/></v:shape><v:rect id="_x0000_s1031" style="position:absolute;width:18pt;height:18pt">{text_box}</v:rect></v:group>"#
             ),
             _ if self.text.is_some() => format!(r#"<v:rect {attrs}{title}>{text_box}</v:rect>"#),
             _ => format!(r#"<v:rect {attrs}{title}/>"#),
@@ -329,6 +332,8 @@ pub fn equation(text: &str) -> String {
 struct TableCell {
     text: String,
     span: u32,
+    /// The fill of the cell (`RRGGBB`), written in `w:tcPr/w:shd`.
+    fill: Option<String>,
     /// `Some(true)` starts a vertical merge, `Some(false)` continues it.
     v_merge: Option<bool>,
     /// Paragraph XML that replaces the text.
@@ -349,6 +354,13 @@ struct TableRow {
 #[derive(Debug, Clone)]
 pub struct Table {
     rows: Vec<TableRow>,
+    /// The table style by id (`w:tblStyle`).
+    style: Option<String>,
+    /// `w:tblLook` as XML.
+    look: Option<String>,
+    /// The band sizes of the table itself (rows, columns), which win over the
+    /// sizes in the table style.
+    band_sizes: Option<(u32, u32)>,
 }
 
 impl Table {
@@ -367,13 +379,43 @@ impl Table {
                         .map(|text| TableCell {
                             text: text.to_string(),
                             span: 1,
+                            fill: None,
                             v_merge: None,
                             raw: None,
                         })
                         .collect(),
                 })
                 .collect(),
+            style: None,
+            look: None,
+            band_sizes: None,
         }
+    }
+
+    /// The table style by id. Define it with [`DocxBuilder::table_style`].
+    pub fn style(mut self, style_id: &str) -> Table {
+        self.style = Some(style_id.to_string());
+        self
+    }
+
+    /// Sets `w:tblLook`. `xml` is the whole element, for example
+    /// `<w:tblLook w:val="04A0" w:firstRow="1" w:noVBand="1"/>`.
+    pub fn look(mut self, xml: &str) -> Table {
+        self.look = Some(xml.to_string());
+        self
+    }
+
+    /// Sets the band sizes in the table itself: how many rows and how many
+    /// columns make one band (`w:tblStyleRowBandSize`, `w:tblStyleColBandSize`).
+    pub fn band_sizes(mut self, rows: u32, columns: u32) -> Table {
+        self.band_sizes = Some((rows, columns));
+        self
+    }
+
+    /// The fill of one cell (`RRGGBB`), set in the cell itself.
+    pub fn cell_fill(mut self, row: usize, cell: usize, hex: &str) -> Table {
+        self.rows[row].cells[cell].fill = Some(hex.to_string());
+        self
     }
 
     /// The first row is not marked as a header row.
@@ -437,8 +479,22 @@ impl Table {
         let width = 9360 / columns;
         let grid = format!(r#"<w:gridCol w:w="{width}"/>"#).repeat(columns as usize);
         let rows: String = self.rows.iter().map(|r| r.xml(width)).collect();
+        let style = self
+            .style
+            .as_deref()
+            .map(|id| format!(r#"<w:tblStyle w:val="{}"/>"#, esc(id)))
+            .unwrap_or_default();
+        let bands = self
+            .band_sizes
+            .map(|(rows, columns)| {
+                format!(
+                    r#"<w:tblStyleRowBandSize w:val="{rows}"/><w:tblStyleColBandSize w:val="{columns}"/>"#
+                )
+            })
+            .unwrap_or_default();
+        let look = self.look.as_deref().unwrap_or_default();
         format!(
-            r#"<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tblGrid>{grid}</w:tblGrid>{rows}</w:tbl>"#
+            r#"<w:tbl><w:tblPr>{style}{bands}<w:tblW w:w="0" w:type="auto"/>{look}</w:tblPr><w:tblGrid>{grid}</w:tblGrid>{rows}</w:tbl>"#
         )
     }
 }
@@ -481,6 +537,9 @@ impl TableCell {
             Some(true) => properties += r#"<w:vMerge w:val="restart"/>"#,
             Some(false) => properties += "<w:vMerge/>",
             None => {}
+        }
+        if let Some(fill) = &self.fill {
+            properties += &super::shd_xml(fill);
         }
         let content = match (&self.raw, self.text.is_empty()) {
             (Some(raw), _) => raw.clone(),

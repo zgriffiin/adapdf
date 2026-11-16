@@ -5,10 +5,11 @@
 //! layers win) and then turned into complete [`RunProps`] and
 //! [`ParagraphProps`] with `resolve`.
 //!
-//! Layer order for a run: document defaults, paragraph style chain (base style
-//! first), character style chain, direct formatting. Two simplifications:
-//! table styles are not applied, and toggle properties such as bold follow
-//! "last layer wins" instead of Word's XOR rule for styles.
+//! Layer order for a run: document defaults, table style (for text in a table,
+//! see [`super::table_styles`]), paragraph style chain (base style first),
+//! character style chain, direct formatting. One simplification: toggle
+//! properties such as bold follow "last layer wins" instead of Word's XOR rule
+//! for styles.
 
 use roxmltree::Node;
 

@@ -3,8 +3,9 @@
 use roxmltree::Node;
 
 use super::numbering::Numbering;
-use super::props::{ParFmt, RunFmt, parse_shading};
+use super::props::{Color, ParFmt, RunFmt, parse_shading};
 use super::styles::Styles;
+use super::table_styles::{CellFmt, CellPos, TableProps};
 use super::tables::{self, Table};
 use super::theme::{Rgb, Theme};
 use super::{Drawing, Paragraph, Run, Section, drawings};
@@ -123,8 +124,9 @@ fn parse_paragraph(
         .filter(|id| styles.get(id).is_some())
         .or_else(|| styles.default_paragraph_id());
 
+    let table = table_layer(p, styles);
     let direct = ParFmt::parse(ppr, ctx.theme);
-    let mut par = styles.paragraph_par_fmt(style_id);
+    let mut par = styles.paragraph_par_fmt_under(&table.par, style_id);
     par.overlay(&direct);
     // A style that gives a list but no level is linked to a level in the list.
     if direct.num_id.is_none()
@@ -139,7 +141,7 @@ fn parse_paragraph(
         par.num_level = ctx.numbering.level_for_styles(num_id, &chain);
     }
 
-    let base_run = styles.paragraph_run_fmt(style_id);
+    let base_run = styles.paragraph_run_fmt_under(&table.run, style_id);
     let mut runs = Vec::new();
     let mut drawings = Vec::new();
     let mut text = String::new();
@@ -184,8 +186,9 @@ fn parse_paragraph(
         text,
         runs,
         props: par.resolve(),
+        style_run: base_run.resolve(),
         in_table: p.ancestors().any(|a| a.is_w("tbl")),
-        container_fill: container_fill(p, ctx.theme),
+        container_fill: container_fill(p, ctx),
         drawings,
         equations: extras.equations,
         has_break_or_field: extras.has_break_or_field,
@@ -194,21 +197,59 @@ fn parse_paragraph(
     }
 }
 
-/// The fill behind a paragraph that comes from the table around it: the
-/// shading of the nearest table cell (`w:tcPr/w:shd`) or, failing that, of the
-/// nearest table (`w:tblPr/w:shd`), working outwards through nested tables.
-/// Table styles are not applied.
-fn container_fill(p: Node, theme: &Theme) -> Option<Rgb> {
-    p.ancestors().find_map(|a| {
-        let pr = if a.is_w("tc") {
-            a.w_child("tcPr")
-        } else if a.is_w("tbl") {
-            a.w_child("tblPr")
-        } else {
-            None
-        }?;
-        parse_shading(&pr.w_child("shd")?, theme)?.rgb()
-    })
+/// What the table style of the table around the paragraph gives to its text.
+/// Only the nearest table counts: a nested table does not take the style of
+/// the table it is in.
+fn table_layer(p: Node, styles: &Styles) -> CellFmt {
+    let Some(tc) = p.ancestors().find(|a| a.is_w("tc")) else {
+        return CellFmt::default();
+    };
+    let Some((tbl, pos)) = CellPos::of(tc) else {
+        return CellFmt::default();
+    };
+    styles.table_cell_fmt(&TableProps::parse(tbl), pos)
+}
+
+/// The fill behind a paragraph that comes from the table around it. Working
+/// outwards through nested tables, for each cell in turn: the shading of the
+/// cell itself (`w:tcPr/w:shd`); else the shading of its table
+/// (`w:tblPr/w:shd`); else the fill that the table style gives to the cell
+/// (see [`super::table_styles`]). A cell shading of "no fill" (`fill="auto"`)
+/// also overrides the table style, and the fill of the cell around it shows.
+fn container_fill(p: Node, ctx: &Context) -> Option<Rgb> {
+    let mut cell: Option<Node> = None;
+    let mut no_fill = false;
+    for ancestor in p.ancestors() {
+        let direct = |pr: Option<Node>| {
+            pr.and_then(|pr| pr.w_child("shd"))
+                .and_then(|shd| parse_shading(&shd, ctx.theme))
+        };
+        if ancestor.is_w("tc") {
+            cell = Some(ancestor);
+            no_fill = false;
+            match direct(ancestor.w_child("tcPr")) {
+                Some(Color::Rgb(rgb)) => return Some(rgb),
+                Some(Color::Auto) => no_fill = true,
+                None => {}
+            }
+        } else if ancestor.is_w("tbl") {
+            match direct(ancestor.w_child("tblPr")) {
+                Some(Color::Rgb(rgb)) => return Some(rgb),
+                Some(Color::Auto) => continue,
+                None => {}
+            }
+            if no_fill {
+                continue;
+            }
+            if let Some((_, pos)) = cell.and_then(CellPos::of) {
+                let fmt = ctx.styles.table_cell_fmt(&TableProps::parse(ancestor), pos);
+                if let Some(Color::Rgb(rgb)) = fmt.fill {
+                    return Some(rgb);
+                }
+            }
+        }
+    }
+    None
 }
 
 /// True when the nearest `w:p` above the run is `p` (so the run is not inside

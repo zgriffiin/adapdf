@@ -3,7 +3,7 @@
 mod common;
 
 use adapdf::findings::{Finding, FixKind, RuleId, Severity};
-use adapdf::fixtures::{DocxBuilder, FixtureFonts, Para, Run, clean, raw_docx};
+use adapdf::fixtures::{DocxBuilder, FixtureFonts, Para, Run, Table, clean, raw_docx};
 use adapdf::rules::colour::{
     LARGE_BOLD_TEXT_HALF_POINTS, LARGE_TEXT_HALF_POINTS, MIN_CONTRAST_LARGE, MIN_CONTRAST_NORMAL,
 };
@@ -611,5 +611,244 @@ fn clr_002_reports_each_colour_once_in_a_paragraph() {
 #[test]
 fn clr_002_skips_runs_with_no_visible_text() {
     let builder = clean().paragraph(Para::empty().then(Run::new("  ").color("C00000")));
+    assert!(clr002(&builder).is_empty());
+}
+
+// ---- Table styles ----------------------------------------------------------
+//
+// A text colour or a fill that comes only from a table style counts. The
+// colour model of table styles is tested in `model::table_styles::tests`.
+
+fn tc_shd(fill: &str) -> String {
+    format!(r#"<w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="{fill}"/></w:tcPr>"#)
+}
+
+fn tc_colour(hex: &str) -> String {
+    format!(r#"<w:rPr><w:color w:val="{hex}"/></w:rPr>"#)
+}
+
+/// A conditional format with a text colour and a fill (`None`: not set).
+fn conditional(kind: &str, text: Option<&str>, fill: Option<&str>) -> String {
+    format!(
+        r#"<w:tblStylePr w:type="{kind}">{}{}</w:tblStylePr>"#,
+        text.map(tc_colour).unwrap_or_default(),
+        fill.map(tc_shd).unwrap_or_default()
+    )
+}
+
+const BAND_SIZES: &str =
+    r#"<w:tblPr><w:tblStyleRowBandSize w:val="1"/><w:tblStyleColBandSize w:val="1"/></w:tblPr>"#;
+/// The first row and the row bands.
+const LOOK_HEADER_AND_BANDS: &str = r#"<w:tblLook w:firstRow="1" w:lastRow="0" w:firstColumn="0" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/>"#;
+/// The first row, and no bands.
+const LOOK_HEADER_ONLY: &str = r#"<w:tblLook w:firstRow="1" w:lastRow="0" w:firstColumn="0" w:lastColumn="0" w:noHBand="1" w:noVBand="1"/>"#;
+
+/// A table of `rows` x 2 cells that uses the table style `Adapdf` with this
+/// inner XML, after the heading and the paragraph of `clean()`. The cells are
+/// paragraphs 2, 3, ... in reading order.
+fn styled_table(style_inner: &str, rows: usize, look: &str) -> DocxBuilder {
+    let text: Vec<Vec<String>> = (0..rows)
+        .map(|r| (0..2).map(|c| format!("r{r}c{c}")).collect())
+        .collect();
+    let refs: Vec<Vec<&str>> = text
+        .iter()
+        .map(|row| row.iter().map(String::as_str).collect())
+        .collect();
+    let slices: Vec<&[&str]> = refs.iter().map(Vec::as_slice).collect();
+    clean()
+        .table_style("Adapdf", "Adapdf Table", None, style_inner)
+        .table(Table::new(&slices).style("Adapdf").look(look))
+}
+
+/// The paragraph indexes (from 0) of the findings, in order.
+fn at(findings: &[Finding]) -> Vec<Option<usize>> {
+    findings
+        .iter()
+        .map(|f| f.location.paragraph_index)
+        .collect()
+}
+
+#[test]
+fn clr_001_white_header_text_on_a_dark_fill_from_the_table_style_passes() {
+    // Without the table style the text would be white on white.
+    let style = conditional("firstRow", Some("FFFFFF"), Some("1F3864"));
+    let builder = styled_table(&style, 3, LOOK_HEADER_ONLY);
+    assert!(clr001(&builder).is_empty());
+}
+
+#[test]
+fn clr_001_fails_for_header_text_that_is_only_too_light_because_of_the_table_style() {
+    // The paragraphs and runs set no colour. Only the table style does.
+    let style = conditional("firstRow", Some("FFFFFF"), Some("FFFF00"));
+    let found = clr001(&styled_table(&style, 3, LOOK_HEADER_ONLY));
+    assert_eq!(at(&found), [Some(2), Some(3)], "the two header cells");
+    assert!(found[0].message.contains("#FFFFFF"), "{}", found[0].message);
+    assert!(
+        found[0].message.contains("on #FFFF00"),
+        "{}",
+        found[0].message
+    );
+    // The same table with no style on it has no finding.
+    let plain = clean().table(Table::new(&[&["r0c0", "r0c1"], &["r1c0", "r1c1"]]));
+    assert!(clr001(&plain).is_empty());
+}
+
+#[test]
+fn clr_001_banded_rows_that_fail_come_from_the_band_fill() {
+    // Grey text (4.54:1 on white) on the band fill CCCCCC is 2.83:1.
+    let style = format!(
+        "{}{}{}{}",
+        tc_colour("767676"),
+        BAND_SIZES,
+        conditional("band1Horz", None, Some("CCCCCC")),
+        conditional("firstRow", Some("000000"), None),
+    );
+    let found = clr001(&styled_table(&style, 5, LOOK_HEADER_AND_BANDS));
+    // Row 0 is the header, rows 1 and 3 are the first band, rows 2 and 4 have
+    // no fill. Row r has paragraphs 2 + 2r and 3 + 2r.
+    assert_eq!(
+        at(&found),
+        [Some(4), Some(5), Some(8), Some(9)],
+        "rows 1 and 3"
+    );
+    assert!(found[0].message.contains("#767676"), "{}", found[0].message);
+    assert!(
+        found[0].message.contains("on #CCCCCC"),
+        "{}",
+        found[0].message
+    );
+}
+
+#[test]
+fn clr_001_tbl_look_can_switch_the_band_off() {
+    let style = format!(
+        "{}{}{}",
+        tc_colour("767676"),
+        BAND_SIZES,
+        conditional("band1Horz", None, Some("CCCCCC")),
+    );
+    let banded = |look: &str| clr001(&styled_table(&style, 3, look)).len();
+    assert_eq!(banded(LOOK_HEADER_AND_BANDS), 2, "row 1 is in the band");
+    assert_eq!(banded(LOOK_HEADER_ONLY), 0, "noHBand: no bands");
+    // The same in the older form: 0x0020 first row, 0x0200 no row bands.
+    assert_eq!(banded(r#"<w:tblLook w:val="0020"/>"#), 2);
+    assert_eq!(banded(r#"<w:tblLook w:val="0220"/>"#), 0);
+}
+
+#[test]
+fn clr_001_a_fill_set_in_the_cell_beats_the_table_style() {
+    // The style makes the header white on navy: it passes.
+    let style = conditional("firstRow", Some("FFFFFF"), Some("1F3864"));
+    let table = |fill: Option<(usize, &str)>| {
+        let mut table = Table::new(&[&["r0c0", "r0c1"], &["r1c0", "r1c1"]])
+            .style("Adapdf")
+            .look(LOOK_HEADER_ONLY);
+        if let Some((cell, hex)) = fill {
+            table = table.cell_fill(0, cell, hex);
+        }
+        clean()
+            .table_style("Adapdf", "Adapdf Table", None, &style)
+            .table(table)
+    };
+    assert!(clr001(&table(None)).is_empty());
+    // White text on a white cell fill fails, in that cell only.
+    let found = clr001(&table(Some((1, "FFFFFF"))));
+    assert_eq!(at(&found), [Some(3)]);
+}
+
+#[test]
+fn clr_001_a_fill_set_in_the_cell_can_also_make_the_style_pass() {
+    // The style makes the header white on yellow: it fails. A navy fill in
+    // the second cell fixes that cell.
+    let style = conditional("firstRow", Some("FFFFFF"), Some("FFFF00"));
+    let table = Table::new(&[&["r0c0", "r0c1"], &["r1c0", "r1c1"]])
+        .style("Adapdf")
+        .look(LOOK_HEADER_ONLY)
+        .cell_fill(0, 1, "1F3864");
+    let builder = clean()
+        .table_style("Adapdf", "Adapdf Table", None, &style)
+        .table(table);
+    assert_eq!(at(&clr001(&builder)), [Some(2)]);
+}
+
+#[test]
+fn clr_001_follows_the_based_on_chain_of_a_table_style() {
+    let base = format!(
+        "{}{}",
+        tc_colour("767676"),
+        conditional("firstRow", Some("FFFFFF"), Some("1F3864"))
+    );
+    // The derived style changes only the fill of the first row, to yellow.
+    let derived = conditional("firstRow", None, Some("FFFF00"));
+    let build = |style: &str| {
+        let table = Table::new(&[&["r0c0", "r0c1"], &["r1c0", "r1c1"]])
+            .style(style)
+            .look(LOOK_HEADER_ONLY);
+        clean()
+            .table_style("Base", "Base", None, &base)
+            .table_style("Derived", "Derived", Some("Base"), &derived)
+            .table(table)
+    };
+    assert!(clr001(&build("Base")).is_empty());
+    let found = clr001(&build("Derived"));
+    assert_eq!(
+        at(&found),
+        [Some(2), Some(3)],
+        "white (from Base) on yellow"
+    );
+}
+
+#[test]
+fn clr_001_a_paragraph_style_colour_beats_the_table_style_colour() {
+    let styles = r#"<w:style w:type="paragraph" w:styleId="Pale"><w:name w:val="Pale"/><w:rPr><w:color w:val="999999"/></w:rPr></w:style>
+<w:style w:type="table" w:styleId="TS"><w:name w:val="TS"/><w:rPr><w:color w:val="000000"/></w:rPr></w:style>"#;
+    let cell = |style: &str| {
+        let ppr = if style.is_empty() {
+            String::new()
+        } else {
+            format!(r#"<w:pPr><w:pStyle w:val="{style}"/></w:pPr>"#)
+        };
+        format!(
+            "<w:tc>{}</w:tc>",
+            p(&format!(r#"{ppr}<w:r><w:t>text</w:t></w:r>"#))
+        )
+    };
+    let body = format!(
+        r#"<w:tbl><w:tblPr><w:tblStyle w:val="TS"/></w:tblPr><w:tblGrid><w:gridCol w:w="4000"/><w:gridCol w:w="4000"/></w:tblGrid><w:tr>{}{}</w:tr></w:tbl><w:p/>"#,
+        cell("Pale"),
+        cell("")
+    );
+    let found = raw(&body, styles, false, RuleId::Clr001);
+    assert_eq!(
+        found.len(),
+        1,
+        "only the cell with the pale paragraph style"
+    );
+    assert!(found[0].message.contains("#999999"), "{}", found[0].message);
+}
+
+#[test]
+fn clr_002_the_table_style_colour_is_the_colour_of_the_text_around() {
+    // The table style makes the text navy. A run in the same navy is not a
+    // different colour; a red run is, and nothing else marks it.
+    let style = tc_colour("1F3864");
+    let navy = r#"<w:p><w:r><w:rPr><w:color w:val="1F3864"/></w:rPr><w:t>navy</w:t></w:r></w:p>"#;
+    let red = r#"<w:p><w:r><w:rPr><w:color w:val="C00000"/></w:rPr><w:t>red</w:t></w:r></w:p>"#;
+    let table = Table::new(&[&["a", "b"]])
+        .style("Adapdf")
+        .raw_cell(0, 0, navy)
+        .raw_cell(0, 1, red);
+    let builder = clean()
+        .table_style("Adapdf", "Adapdf Table", None, &style)
+        .table(table);
+    let found = clr002(&builder);
+    assert_eq!(at(&found), [Some(3)], "the red run only");
+    assert!(found[0].message.contains("#C00000"), "{}", found[0].message);
+}
+
+#[test]
+fn clr_002_white_header_text_from_the_table_style_is_not_reported() {
+    let style = conditional("firstRow", Some("FFFFFF"), Some("1F3864"));
+    let builder = styled_table(&style, 2, LOOK_HEADER_ONLY);
     assert!(clr002(&builder).is_empty());
 }

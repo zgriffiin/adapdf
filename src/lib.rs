@@ -4,6 +4,9 @@
 //! ([`model::Document`]), and run the pre-check rules ([`rules`]) to get
 //! [`findings::Finding`] values.
 
+// Unsafe code is only for Windows COM, in `word`, which allows it for itself.
+#![deny(unsafe_code)]
+
 use std::path::Path;
 
 pub mod docx;
@@ -14,6 +17,9 @@ pub mod fonts;
 pub mod model;
 pub mod render;
 pub mod rules;
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub mod word;
 
 use error::Result;
 use findings::Finding;

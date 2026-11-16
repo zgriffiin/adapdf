@@ -1,8 +1,9 @@
 # Test plan
 
 Status: M2 (all pre-check rules), plus groups, canvases and annotated
-screenshots (IMG-007). This plan says what is tested now and what is only planned. A row
-marked "planned" has no test yet.
+screenshots (IMG-007), and M3a (the Word automation layer, the first `windows_word`
+tests, and table styles in the colour rules). This plan says what is tested now
+and what is only planned. A row marked "planned" has no test yet.
 
 ## Scope
 
@@ -15,26 +16,33 @@ later change added groups and drawing canvases as one object, widened IMG-004,
 and added IMG-007 (annotated screenshots). Every rule in
 [03-precheck-rules](specs/03-precheck-rules.md) is now built.
 
-Not built: fixes, Word export, PDF metadata fixes, veraPDF, the report, the
-app and the installer. "Planned tests (not built)" lists each of them,
+M3a added the base that the Word export will build on: `src/word` starts the
+tool's own hidden Word through COM and always quits it (Windows only). It also
+added the first `windows_word` tests (W-01: Word opens every fixture), and it
+made the model apply table styles, so that CLR-001 and CLR-002 see a text colour
+or a fill that comes only from a table style.
+
+Not built: fixes, Word export (only the base in `src/word` exists), PDF metadata
+fixes, veraPDF, the report, the app and the installer. "Planned tests (not built)" lists each of them,
 requirement by requirement.
 
 **Milestones and phases.** The milestone numbers are not the phase numbers of
 [spec 01](specs/01-product.md#phases). M1 and M2 (with M2a and M2b) together
 are phase 2 (pre-check). M3 (fixes) is phase 4. M4 (Word export, PDF metadata
 fixes, veraPDF and the report) is phase 3. M5 (app and installer) is phase 5.
-Phase 0 (test with real guides) and phase 1 (template) have no milestone. The
-milestone numbers are the plan at the time of writing.
+Phase 0 (test with real guides) and phase 1 (template) have no milestone. M3a is
+the first part of M3: the Word automation layer, test W-01 and the table style
+colours. The milestone numbers are the plan at the time of writing.
 
 ## Test levels
 
 | Level | What it checks | Where | Status |
 |---|---|---|---|
-| Unit | The .docx reader, the document model (styles, numbering, theme, formatting, text boxes, sections), finding types, fonts, text output | `src/**` (`#[cfg(test)]`) | implemented |
+| Unit | The .docx reader, the document model (styles, table styles, numbering, theme, formatting, text boxes, sections), finding types, fonts, text output | `src/**` (`#[cfg(test)]`) | implemented |
 | Rule | Each rule against fixtures and small built documents: rule ID, severity, fix kind, location, thresholds | `tests/rules_document.rs`, `tests/rules_headings.rs`, `tests/rules_lists.rs`, `tests/rules_images.rs`, `tests/rules_textboxes.rs`, `tests/rules_tables.rs`, `tests/rules_links.rs`, `tests/rules_colour.rs`, `tests/rules_text.rs` | implemented |
 | Fixture | The files in `tests/fixtures/` match the generator byte for byte. Every rule has a passing and a failing fixture. | `tests/fixtures.rs` | implemented |
 | CLI | `adapdf check`: exit codes 0, 1 and 2, text output, JSON shape | `tests/cli.rs` | implemented |
-| Word integration (`windows_word`) | Word opens every fixture. Later: Word exports a tagged PDF; fixes leave a file that Word opens. | `tests/`, behind the cargo feature `windows_word` | feature defined; no tests yet (planned M3, M4) |
+| Word integration (`windows_word`) | Word opens every fixture (W-01). The session quits its Word after success, an error and a panic. The model's table style colours match what Word shows. Later: Word exports a tagged PDF; fixes leave a file that Word opens. | `tests/word.rs` and `tests/word_table_styles.rs`, behind the cargo feature `windows_word` | implemented for W-01, the session and table styles (M3a, 6 tests); export and fix tests planned (M3b, M4) |
 | veraPDF integration | A PDF exported from a fixture has 0 veraPDF PDF/UA-1 failures | behind `windows_word`, because it needs Word to export | planned (M4) |
 | Front-end | The Carbon views in the web UI: each screen, axe-core checks for WCAG 2.1 A and AA, and the focus order (TypeScript) | front-end folder, with Vitest and axe-core | planned (M5) |
 | Installer | The per-user installer installs without admin rights, runs, and removes cleanly on a clean Windows 11 machine | manual checklist | planned (M5) |
@@ -64,9 +72,9 @@ milestone numbers are the plan at the time of writing.
 | Fixture tests | `cargo test --test fixtures` |
 | CLI tests | `cargo test --test cli` |
 | Write the fixtures again after a change | `cargo run --example gen-fixtures` |
-| Word tests (none yet) | `cargo test --features windows_word` |
+| Word tests (need desktop Word; they start their own hidden Word; about 2 minutes) | `cargo test --features windows_word` (also runs everything above). One file: `cargo test --features windows_word --test word` or `--test word_table_styles` |
 | Front-end tests (none yet) | `pnpm test` in the front-end folder |
-| Format, lint | `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` |
+| Format, lint | `cargo fmt --check` and `cargo clippy --all-targets --all-features -- -D warnings` |
 
 veraPDF, installer and manual tests will get their steps here when they exist.
 
@@ -86,7 +94,9 @@ veraPDF, installer and manual tests will get their steps here when they exist.
   Every `wp:docPr` id is unique in a document (`DocxBuilder::build` numbers
   them; `drawing_ids_are_unique_in_every_fixture`). A DrawingML shape, group or
   canvas is inside `mc:AlternateContent`, with `mc:Choice` (`Requires` `wps`,
-  `wpg` or `wpc`) and a VML `mc:Fallback`, like `text_box()`. The model reads
+  `wpg` or `wpc`) and a VML `mc:Fallback`, like `text_box()`. A picture points
+  to a real 8 x 8 PNG part (`src/fixtures/media.rs`; the builder adds the part,
+  its relationship and its content type). The model reads
   only the Choice copy, so nothing is counted twice
   (`img_007_a_shape_in_alternate_content_is_counted_once`,
   `a_shape_group_or_canvas_in_alternate_content_is_one_drawing`). See "Known
@@ -117,18 +127,29 @@ veraPDF, installer and manual tests will get their steps here when they exist.
 - **Font lookup is injected.** DOC-006 tests use a fixed lookup. `SystemFonts`
   is tested with font files that the test writes itself. No test depends on
   the fonts on the machine.
+- **Word tests are safe for a person's Word.** Each test starts its own hidden
+  Word (`WordSession`) and takes one shared lock, so two tests never start Word
+  at the same time. The `WINWORD.EXE` processes are listed with `tasklist` (not
+  with the code under test) before and after, and the two lists must be equal,
+  so a Word that the person has open is never closed. A test that could hang
+  (a damaged file) runs on its own thread with a time limit; when the limit
+  passes, the test ends the Word process that it started and fails. The files
+  that a test writes go in a folder under the temp folder, which is removed at
+  the end.
 - **No real documents** are in the repository.
 
 ## Counts at the time of writing
 
-Measured on commit `efb63e1` (`c5591eb` changes only documentation). Command:
-`cargo test`, with the counts taken from its "test result" lines.
+Measured on the M3a commit (on top of `d9c27fc`). Command: `cargo test`, and
+`cargo test --features windows_word`, with the counts taken from their "test
+result" lines.
 
-`cargo test` runs 458 tests: 126 unit, 14 CLI, 8 fixture, 31 DOC rule tests, 28
+`cargo test` runs 492 tests: 150 unit, 14 CLI, 8 fixture, 31 DOC rule tests, 28
 HDG rule tests, 17 LST rule tests, 61 IMG rule tests, 35 TXB rule tests, 29 TBL
-rule tests, 23 LNK rule tests, 40 CLR rule tests and 46 TXT rule tests. The
-count changes as tests are added. `cargo test -- --list` gives the current
-list.
+rule tests, 23 LNK rule tests, 50 CLR rule tests and 46 TXT rule tests.
+`cargo test --features windows_word` runs those 492 and 6 more: 5 in
+`tests/word.rs` and 1 in `tests/word_table_styles.rs`, so 498. The count changes
+as tests are added. `cargo test -- --list` gives the current list.
 
 ## Traceability: pre-check rules
 
@@ -176,8 +197,8 @@ CLR and TXT in M2b (links, colour and text). IMG-007 came after M2.
 | LNK-001 | warning, manual | `LNK-001-fail/pass.docx` | `lnk_001_*` in `tests/rules_links.rs` | implemented |
 | LNK-002 | warning, manual | `LNK-002-fail/pass.docx` | `lnk_002_*` (40 and 41 characters) | implemented |
 | LNK-003 | error, manual | `LNK-003-fail/pass.docx` | `lnk_003_*`; `model::fields::tests::*` for reading links, fields and bookmarks | implemented |
-| CLR-001 | error, manual | `CLR-001-fail/pass.docx` | `clr_001_*` in `tests/rules_colour.rs`; `model::colour::tests::*` for the WCAG values | implemented |
-| CLR-002 | warning, manual | `CLR-002-fail/pass.docx` | `clr_002_*` | implemented (heuristic, see below) |
+| CLR-001 | error, manual | `CLR-001-fail/pass.docx` | `clr_001_*` in `tests/rules_colour.rs` (table styles: `clr_001_white_header_text_on_a_dark_fill_from_the_table_style_passes`, `..._fails_for_header_text_that_is_only_too_light_because_of_the_table_style`, `..._banded_rows_that_fail_come_from_the_band_fill`, `..._tbl_look_can_switch_the_band_off`, `..._a_fill_set_in_the_cell_beats_the_table_style`, `..._follows_the_based_on_chain_of_a_table_style` and two more); `model::colour::tests::*` for the WCAG values; `model::table_styles::tests::*`; `table_style_colours_match_word` (windows_word) | implemented (table styles applied, see "Known gaps in M2b") |
+| CLR-002 | warning, manual | `CLR-002-fail/pass.docx` | `clr_002_*` (table styles: `clr_002_the_table_style_colour_is_the_colour_of_the_text_around`, `clr_002_white_header_text_from_the_table_style_is_not_reported`) | implemented (heuristic, see below) |
 | TXT-001 | warning, manual | `TXT-001-fail/pass.docx` | `txt_001_*` in `tests/rules_text.rs` (9.5 pt and 10 pt) | implemented |
 | TXT-002 | warning, auto | `TXT-002-fail/pass.docx` | `txt_002_*` | implemented |
 | TXT-003 | warning, manual | `TXT-003-fail/pass.docx` | `txt_003_*` | implemented (heuristic, see below) |
@@ -209,7 +230,8 @@ The model parts for IMG, TXB and TBL are tested in `model::drawings::tests::*`
 | Stage 5: veraPDF run and message table | S5-01 to S5-11 | planned (M4) |
 | Stage 6: HTML and JSON report, and its own accessibility | S6-01 to S6-11 | planned (M4) |
 | Interface `adapdf export` | C-05 to C-08 | planned (M4) |
-| Fixtures open in Word (spec 02, Testing) | W-01 | planned (needs an image part in the builder) |
+| Fixtures open in Word (spec 02, Testing) | W-01 (`word_opens_every_fixture`) | implemented (M3a) |
+| Word automation base: own hidden Word, always quit (spec 02, "Rules for COM") | `tests/word.rs`: `the_session_quits_word_after_a_panic`, `the_session_quits_word_after_an_error`, `a_damaged_docx_gives_an_error_and_not_a_hang`, `a_missing_file_is_an_error` (windows_word). These cover the base only; the export rows S3-01 to S3-19 stay planned. | implemented (M3a) |
 | App (file picker, findings list, export, report) | A-01 to A-07 | planned (M5) |
 | Installer | I-01 to I-09 | planned (M5) |
 | Word template and acceptance (spec 04) | T-01 to T-10 | planned (phase 1, template) |
@@ -218,7 +240,8 @@ The model parts for IMG, TXB and TBL are tested in `model::drawings::tests::*`
 
 ## Planned tests (not built)
 
-Nothing in this section is built. Each row says what a test must show, so that
+Nothing in this section is built, except the rows W-01 to W-04 in "Fixture
+realism", which are marked implemented. Each row says what a test must show, so that
 the person who builds the stage knows when it is done. Test names are
 proposals. Levels: **unit** (no Word, Java or network), **CLI** (runs the
 `adapdf` binary), **windows_word** (needs Word, feature-gated), **veraPDF**
@@ -268,7 +291,10 @@ spec 02.
 
 | # | Requirement | Planned test name | Level | Fixture or input | Pass condition |
 |---|---|---|---|---|---|
-| W-01 | Word opens every fixture (spec 02, "Testing") | `word_opens_every_fixture` | windows_word | Every `tests/fixtures/*.docx`. The IMG fixtures need an image part in the builder first (see "Known gaps in M2a"). | Each file opens read-only in the test's own hidden Word, with no repair prompt or error. The number of `WINWORD.EXE` processes after the test equals the number before. |
+| W-01 | Word opens every fixture (spec 02, "Testing") | `word_opens_every_fixture` (`tests/word.rs`) | windows_word | Every `tests/fixtures/*.docx` (78 files). The pictures point to a real PNG part. | Each file opens read-only in the test's own hidden Word (one session, all open at once), with no repair and no error, and Word counts at least one paragraph in it. The `WINWORD.EXE` processes after the test are the same processes as before. **Implemented (M3a).** Result on 2026-11-16, Word 16.0.20527: all 78 open; the person's own Word (PID 49988) was running and was not touched. Word also opened the fixtures before the image part was added (a picture with no image data is shown as missing, not rejected), so no fixture builder had to be fixed for Word. |
+| W-02 | Word rejects a damaged file with an error and without a dialog (spec 02: a file Word cannot open is an error) | `a_damaged_docx_gives_an_error_and_not_a_hang` | windows_word | Half of a .docx; a plain text file named .docx; a zip with `word/document.xml` that is not valid XML | `WordSession::open_read_only` gives `WordError::Open` with Word's message for each, within 90 seconds. **Implemented (M3a).** A file with 0 bytes is not an error: Word opens it as an empty document (stage 1 refuses it first). |
+| W-03 | The session quits its Word after a panic and after an error | `the_session_quits_word_after_a_panic`, `the_session_quits_word_after_an_error` | windows_word | A panic inside `catch_unwind` while the session is alive; an error from `open_read_only` | The `WINWORD.EXE` processes are the same as before within 20 seconds. **Implemented (M3a).** |
+| W-04 | The model's table style colours are what Word shows (CLR-001 and CLR-002 depend on them) | `table_style_colours_match_word` (`tests/word_table_styles.rs`) | windows_word | 29 test tables in 2 documents: every conditional format with its own colour and fill; `tblLook` in both forms; band sizes; header rows; merged cells; `basedOn`; a fill set in the cell; a paragraph style over the table style | For every cell, the fill and the text colour that Word reports (`Cell.Shading.BackgroundPatternColor`, `Range.Font.Color`) equal the model's. **Implemented (M3a).** Result on 2026-11-16, Word 16.0.20527: 453 of 453 cells equal. |
 
 ### Stage 2: fixes (spec 02, stage 2)
 
@@ -526,8 +552,9 @@ changes.
   reports it.
 - **Formatting.** "Bold", "larger than body text" and the language are the
   effective values: document defaults, then the paragraph style and its base
-  styles, then the character style, then direct formatting. Table styles are
-  not applied. Word's rule that bold in a style and in a character style
+  styles, then the character style, then direct formatting. For text in a table
+  the table style comes after the document defaults and before the paragraph
+  style. Word's rule that bold in a style and in a character style
   switch each other off is not applied: the last layer wins.
 - **DOC-001.** The title is empty when it is missing or only spaces. The
   suggestion is the text of the first paragraph, in document order, that is
@@ -687,17 +714,42 @@ Decisions for the IMG, TXB and TBL rules where spec 03 leaves room.
   reported. The message lists the row numbers.
 - **TBL-006.** A row has no `w:cantSplit` (or it is switched off).
 
+## Known gaps in M3a
+
+- **One Word build.** Everything in `windows_word` was run only on Word
+  16.0.20527 (Microsoft 365), on one machine, with the person's own Word open.
+  Another build may differ, most likely in table style details (W-04).
+- **No timeout in `WordSession` itself.** Dropping the session quits Word and
+  waits at most 10 seconds for the process to end. It does not end a Word that
+  is stuck. The 5 minute timeout and the end of the tool's own process are
+  stage 3 (S3-06 to S3-08). The session gives the process id for that
+  (`WordSession::pid`); the tests use it only to end a hung test's own Word.
+- **The process id comes from a probe document.** Word has no process id
+  property, so the session adds one hidden empty document to its new Word, finds
+  the process that owns its window, and closes it (see the doc comment of
+  `WordSession`). This is tested only in the way that matters on a machine where
+  Word is open: the new process is never one that was running before. The case
+  where COM gives the person's own Word (`WordError::SharedInstance`) did not
+  occur and is not tested.
+- **Password-protected files** are not tested (S3-17). `open_read_only` passes a
+  fixed wrong password so that Word reports an error and does not ask in a
+  dialog. Whether that works for every kind of protection is not checked.
+- **A 0-byte file opens in Word** as an empty document. It is not an error at
+  this level; stage 1 refuses it first.
+
 ## Known gaps in M2a
 
-- **Fixtures have no media parts.** The pictures in the IMG fixtures have no
-  image data, and charts, SmartArt and embedded objects exist only in memory
-  tests. Word may show the pictures as missing. The planned W-01 test
-  (`word_opens_every_fixture`) will need a small image part in the builder.
+- **Charts, SmartArt and embedded objects have no parts.** The pictures in the
+  IMG fixtures now point to a real PNG part, and Word opens them (W-01). Charts,
+  SmartArt and embedded objects exist only in memory tests, with no part behind
+  them, so Word has never been asked to open a document with one. Word does not
+  report a picture that fails to load, so W-01 does not show that the PNG is
+  drawn.
 - **Fixtures are still not the same as Word files.** Shapes, groups and
   canvases are now written with `mc:AlternateContent`, and every `wp:docPr` id
   is unique. Still different: the VML copy is simplified and every VML shape id
   is the same; the VML copy of a canvas is a VML group, which is a guess; the
-  root element has no `mc:Ignorable`; and there are no media parts (above).
+  root element has no `mc:Ignorable`.
 - **Drawings inside text boxes** and in headers, footers, footnotes and
   endnotes are not read.
 - **Horizontal lines** (VML `o:hr`) are shapes without alt text, so IMG-001
@@ -799,11 +851,12 @@ together if the spec changes.
   visible text are skipped. One finding for each pair of colours and size
   class in a paragraph. Pattern shading is not blended: a solid pattern draws
   its colour, other patterns draw the fill. Headers, footers and footnotes are
-  not checked. Table styles are not applied, so a fill or colour that comes
-  only from a table style is not seen. Shade and tint follow Word (a change of
+  not checked. Table styles are applied (see "Known gaps in M2b"): the fill
+  and the text colour that a table style gives a cell count when the cell, the
+  paragraph and the run set none. Shade and tint follow Word (a change of
   the HSL lightness; accent 1 `4472C4` with tint `99` is `8FAADC`).
-- **CLR-002.** The run colour differs from the colour of the paragraph style
-  (automatic and black are the same). Other emphasis stops the finding: bold,
+- **CLR-002.** The run colour differs from the colour of the paragraph style,
+  or of the table style for text in a table (automatic and black are the same). Other emphasis stops the finding: bold,
   italic or underline that differs from the paragraph style, a highlight or
   run shading, a character style, or a run inside a hyperlink. A coloured run
   in a bold heading is therefore still reported, because the heading is bold
@@ -860,17 +913,29 @@ together if the spec changes.
   against a document that Word made.
 - **Links in headers, footers and footnotes are not read** (LNK-001 to
   LNK-003).
-- **Table styles are not applied.** A text colour or a fill that comes only
-  from a table style is not seen by CLR-001 and CLR-002.
+- **Table styles are applied, with limits.** The model gives a cell the text
+  colour, the other run properties, the paragraph properties and the fill of its
+  table style (`src/model/table_styles.rs` says in what order). It was checked
+  against Word 16.0.20527 cell by cell (W-04: 453 cells, all equal), and that
+  check found three behaviours that are easy to get wrong: the first row
+  and the last row win over the first column and the last column, the column
+  bands win over the row bands, and a table with no band size has no bands. Not
+  covered: the order among the corner cells other than the top left (a guess; they
+  meet only in a table of one cell); table styles in text boxes, headers and
+  footers (their text is not checked anyway); the table style's borders, margins
+  and widths (they do not matter for colour); the effect of a document's
+  compatibility mode (the test files have no compatibility settings); theme
+  colours in table styles (read like other theme colours, not compared with
+  Word); and a table style's paragraph shading (`w:pPr/w:shd`).
 - **`w:clrSchemeMapping` is not read.** The theme colours use Word's default
   mapping. A document with another mapping can give a wrong colour in CLR-001.
 
 ## Known gaps in M1
 
-- **Word is not used in any test.** No test checks that Word opens the
-  generated fixtures. This is planned as W-01 (`word_opens_every_fixture`,
-  under `windows_word`). Until then the
-  fixtures are only known to be valid for this tool's reader.
+- **Word is used only in the `windows_word` tests.** Since M3a, W-01
+  (`word_opens_every_fixture`) shows that Word opens every fixture. `cargo test`
+  without the feature still does not use Word. The fixtures are still made by
+  code, not by Word.
 - **DOC-004 detection is not checked against a document that Word made from
   the template.** The template does not exist yet. The fixture writes the
   attached template the way Word is known to write it, but this is not
@@ -892,7 +957,7 @@ together if the spec changes.
 - **Real documents.** During development `adapdf check` was run by hand on a
   few documents that Word made, to see that it does not fail on real files.
   The results are not kept and are not a test.
-- **Model limits.** The model does not apply table styles, list-level
+- **Model limits.** The model does not apply list-level
   overrides (`w:lvlOverride`) or Word's toggle rule for bold. Theme shade and
   tint follow Word's change of HSL lightness (checked against two palette
   values, not against Word itself). Only the standard (transitional)

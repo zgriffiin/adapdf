@@ -8,7 +8,8 @@ through Word, checks the PDF with veraPDF, and writes a report that serves as
 evidence. A person then confirms the result in PAC and signs off the checklist.
 
 Status: the pre-check rules are built (all of spec 03). `adapdf check` runs
-them. Fixes, export and the app are not built yet. See the
+them. Fixes, export and the app are not built yet. The base for the Word
+export (`src/word`, Windows only) is built and tested. See the
 [test plan](docs/test-plan.md) for what is tested and what is not.
 
 ## Specs
@@ -26,7 +27,7 @@ them. Fixes, export and the app are not built yet. See the
 
 ```
 Cargo.toml        Rust package: the `adapdf` library and command
-src/              Application code (Rust)
+src/              Application code (Rust). src/word drives Word through COM.
 examples/         gen-fixtures: writes the files in tests/fixtures/
 tests/            Tests
 tests/fixtures/   Small .docx files, one passing and one failing for each rule
@@ -52,8 +53,9 @@ Checks before a change is done:
 
 ```
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
+cargo clippy --all-targets --all-features -- -D warnings
 cargo test
+cargo test --features windows_word     # needs desktop Word; starts its own hidden Word
 ```
 
 ## First step

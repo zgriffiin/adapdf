@@ -2,7 +2,8 @@
 //!
 //! Every `w:tbl` in the body is in [`Document::tables`](super::Document::tables),
 //! outer tables before the tables inside them. Tables in text boxes are not
-//! read, like the paragraphs in them. Table styles are not applied.
+//! read, like the paragraphs in them. The colour of table styles is applied to
+//! the paragraphs (see [`super::table_styles`]); this list has no styles.
 
 use std::ops::Range;
 
