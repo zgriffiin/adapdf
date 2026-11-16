@@ -107,7 +107,14 @@ impl Tool {
     /// Looks for `vendor/` next to the program, and then at the root of the
     /// source tree (for development). When neither has the tools, the result is
     /// the folder next to the program, so that [`Tool::check`] names it.
+    ///
+    /// The environment variable `ADAPDF_VENDOR` names another `vendor` folder.
+    /// When it is set, it is the only place that is used, so that a wrong path
+    /// is an error that names it and not a silent use of another copy.
     pub fn locate() -> Tool {
+        if let Some(folder) = std::env::var_os("ADAPDF_VENDOR").filter(|v| !v.is_empty()) {
+            return Tool::in_vendor(Path::new(&folder));
+        }
         let mut candidates: Vec<PathBuf> = Vec::new();
         if let Some(dir) = std::env::current_exe()
             .ok()
@@ -279,6 +286,11 @@ pub struct Validation {
 }
 
 impl Validation {
+    /// The version of veraPDF that gave the result, if its report says it.
+    pub fn verapdf_version(&self) -> Option<&str> {
+        self.ua1.verapdf_version.as_deref()
+    }
+
     /// `true` when the PDF passes: no PDF/UA-1 rule or check failed. WCAG
     /// warnings do not change it.
     pub fn passed(&self) -> bool {

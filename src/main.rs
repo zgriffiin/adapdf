@@ -37,6 +37,12 @@ enum Command {
         /// The .docx file to fix.
         file: PathBuf,
     },
+    /// Export a .docx file to a tagged PDF with Word, check the PDF, and write
+    /// the accessibility report (HTML and JSON) next to it.
+    Export {
+        /// The .docx file to export.
+        file: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -44,7 +50,32 @@ fn main() -> ExitCode {
     match cli.command {
         Command::Check { file, json } => check(&file, json),
         Command::Fix { file } => fix(&file),
+        Command::Export { file } => export(&file),
     }
+}
+
+/// Stages 1, 3, 4, 5 and 6. The exit codes are in `adapdf::pipeline`.
+#[cfg(windows)]
+fn export(file: &std::path::Path) -> ExitCode {
+    let fonts = SystemFonts::from_environment();
+    let stages = adapdf::pipeline::RealStages {
+        fonts: &fonts,
+        tool: adapdf::verapdf::Tool::locate(),
+        options: adapdf::export::ExportOptions::default(),
+    };
+    let run = adapdf::pipeline::export_docx(file, &stages, &fonts, adapdf::fix::Timestamp::now());
+    eprint!("{}", run.stderr);
+    print!("{}", run.stdout);
+    ExitCode::from(run.exit.code())
+}
+
+#[cfg(not(windows))]
+fn export(file: &std::path::Path) -> ExitCode {
+    eprintln!(
+        "adapdf: {}: the export needs Microsoft Word, which runs on Windows only.",
+        file.display()
+    );
+    ExitCode::from(2)
 }
 
 fn fix(file: &std::path::Path) -> ExitCode {

@@ -174,11 +174,13 @@ fn exit_code_2_for_a_missing_file() {
 fn exit_code_2_for_wrong_usage() {
     assert_eq!(run(&[]).status.code(), Some(2));
     assert_eq!(run(&["check"]).status.code(), Some(2));
-    assert_eq!(
-        run(&["export", "a.docx"]).status.code(),
-        Some(2),
-        "export is not in this version"
-    );
+    // C-08: `export` is a command now. Without a file it is wrong usage, and a
+    // file that is not there is a tool failure with nothing on stdout.
+    assert_eq!(run(&["export"]).status.code(), Some(2));
+    let missing = run(&["export", "no-such-folder/a.docx"]);
+    assert_eq!(missing.status.code(), Some(2));
+    assert!(stdout(&missing).is_empty());
+    assert!(stderr(&missing).contains("a.docx"), "{}", stderr(&missing));
 }
 
 #[test]

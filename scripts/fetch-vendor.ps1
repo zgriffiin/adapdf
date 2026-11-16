@@ -61,14 +61,27 @@ $JreMark  = Join-Path $JreDir '.adapdf-version'
 $VeraMark = Join-Path $VeraDir '.adapdf-version'
 
 function Get-Marker($path) {
-    if (Test-Path -LiteralPath $path) { return (Get-Content -LiteralPath $path -Raw).Trim() }
+    if (Test-Path -LiteralPath $path) { return ([IO.File]::ReadAllText($path)).Trim() }
     return ''
+}
+
+# SHA-256 with .NET, so that the script does not need Get-FileHash. That cmdlet
+# is in a module that some PowerShell setups cannot load (for example a
+# PSModulePath that Windows PowerShell 5.1 inherits from PowerShell 7).
+function Get-Sha256($path) {
+    $stream = [IO.File]::OpenRead($path)
+    try {
+        $hasher = [Security.Cryptography.SHA256]::Create()
+        try { $bytes = $hasher.ComputeHash($stream) } finally { $hasher.Dispose() }
+    }
+    finally { $stream.Dispose() }
+    return [BitConverter]::ToString($bytes).Replace('-', '').ToLowerInvariant()
 }
 
 function Save-Verified($url, $sha256, $target) {
     Write-Host "Downloading $url"
     Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $target
-    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()
+    $actual = Get-Sha256 $target
     if ($actual -ne $sha256) {
         throw "SHA-256 mismatch for $url`n  expected $sha256`n  got      $actual`nNothing was installed."
     }
@@ -109,7 +122,7 @@ try {
         if ($null -eq $inner -or -not (Test-Path -LiteralPath (Join-Path $inner.FullName 'bin\java.exe'))) {
             throw 'The JRE archive does not have bin\java.exe where it was expected.'
         }
-        Set-Content -LiteralPath (Join-Path $inner.FullName '.adapdf-version') -Value $jreMarker -Encoding ASCII
+        [IO.File]::WriteAllText((Join-Path $inner.FullName '.adapdf-version'), $jreMarker)
         Replace-Directory $inner.FullName $JreDir
         Write-Host "Installed the Temurin JRE $JreVersion in $JreDir"
     }
@@ -157,7 +170,7 @@ try {
         # The uninstaller is not needed in a folder that is copied around.
         $uninstaller = Join-Path $target 'Uninstaller'
         if (Test-Path -LiteralPath $uninstaller) { Remove-Item -LiteralPath $uninstaller -Recurse -Force }
-        Set-Content -LiteralPath (Join-Path $target '.adapdf-version') -Value $veraMarker -Encoding ASCII
+        [IO.File]::WriteAllText((Join-Path $target '.adapdf-version'), $veraMarker)
         Replace-Directory $target $VeraDir
         Write-Host "Installed veraPDF $VeraVersion in $VeraDir"
     }

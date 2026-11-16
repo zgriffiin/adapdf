@@ -12,13 +12,18 @@ use std::path::Path;
 
 pub mod docx;
 pub mod error;
+#[cfg(windows)]
+pub mod export;
 pub mod findings;
 pub mod fix;
 pub mod fixtures;
 pub mod fonts;
 pub mod model;
 pub mod pdfmeta;
+#[cfg(windows)]
+pub mod pipeline;
 pub mod render;
+pub mod report;
 pub mod rules;
 pub mod verapdf;
 #[cfg(windows)]

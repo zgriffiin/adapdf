@@ -25,6 +25,8 @@ const EXPORT_AGAIN: &str =
 const FONT_FIX: &str = "Use a font that Word can embed (a TrueType or OpenType font that allows embedding), \
      or change the font of that text. Then export again.";
 
+const LINK_FIX: &str = "In Word, right-click the link, choose Edit Hyperlink, choose ScreenTip, and type a short description of where the link goes. Word writes the ScreenTip into the PDF as the description of the link. Word makes the links in a table of contents again each time it updates the table, so a ScreenTip typed there is lost: in References, Table of Contents, Custom Table of Contents, turn off \"Use hyperlinks instead of page numbers\", then update the table. Then export again.";
+
 /// The mapped rules, in clause order. Every entry has a test
 /// (`mapped_rules_become_findings_with_their_message` in `tests/verapdf_parse.rs`).
 pub const TABLE: &[Entry] = &[
@@ -189,12 +191,24 @@ pub const TABLE: &[Entry] = &[
         how_to_fix: "Mark the first row of the table as a header row (Table Properties, Row, \"Repeat as header row at the top of each page\"). Then export again.",
         pre_check: Some(RuleId::Tbl001),
     },
+    // Word writes the ScreenTip of a link (`w:tooltip`) as the `/Contents` of the
+    // link annotation, and writes no `/Contents` for a link without one. A
+    // Word-made table of contents has links with no ScreenTip. Seen with Word
+    // 16.0.20527 on every pass fixture that has a link (S5-10). No pre-check rule
+    // finds a link without a ScreenTip yet.
+    Entry {
+        clause: "7.18.1",
+        test_number: 2,
+        message: "A link has no description (Word's ScreenTip), so a screen reader has nothing to read for it except the address.",
+        how_to_fix: LINK_FIX,
+        pre_check: None,
+    },
     Entry {
         clause: "7.18.5",
         test_number: 2,
-        message: "A link has no description for assistive technology.",
-        how_to_fix: "Give the link clear text in Word (not a bare address), then export again.",
-        pre_check: Some(RuleId::Lnk001),
+        message: "A link has no description for assistive technology (Word's ScreenTip).",
+        how_to_fix: LINK_FIX,
+        pre_check: None,
     },
     Entry {
         clause: "7.21.4.1",

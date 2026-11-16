@@ -7,14 +7,15 @@ It checks the Word document, fixes what it safely can, exports a tagged PDF
 through Word, checks the PDF with veraPDF, and writes a report that serves as
 evidence. A person then confirms the result in PAC and signs off the checklist.
 
-Status: the pre-check rules are built (all of spec 03). `adapdf check` runs
-them. `adapdf fix` applies the fixes (stage 2) after it asks about each one. The
-base for the Word export (`src/word`, Windows only) is built and tested. Export
-and the app are not built yet. See the
-[test plan](docs/test-plan.md) for what is tested and what is not.
-
-The PDF metadata fixes (stage 4, `src/pdfmeta`) and the veraPDF run (stage 5,
-`src/verapdf`) are built and tested as library code. No command uses them yet.
+Status: the pipeline is built (stages 1 to 6 of the [pipeline spec](docs/specs/02-pipeline.md)).
+`adapdf check` runs the pre-check rules. `adapdf fix` applies the fixes (stage 2)
+after it asks about each one. `adapdf export` exports the PDF through Word (stage
+3), adds the missing PDF metadata (stage 4), runs veraPDF (stage 5) and writes
+the accessibility report as HTML and JSON (stage 6). The app and the installer
+are not built yet. See the [test plan](docs/test-plan.md) for what is tested and
+what is not, and for what the first runs with real Word and veraPDF found (a
+Word-made link has no description for assistive technology unless the author
+sets a ScreenTip; see "Known gaps in M4c").
 
 ## Specs
 
@@ -31,7 +32,9 @@ The PDF metadata fixes (stage 4, `src/pdfmeta`) and the veraPDF run (stage 5,
 
 ```
 Cargo.toml        Rust package: the `adapdf` library and command
-src/              Application code (Rust). src/word drives Word through COM.
+src/              Application code (Rust). src/word drives Word through COM,
+                  src/export is stage 3, src/pdfmeta stage 4, src/verapdf stage 5,
+                  src/report stage 6, src/pipeline the `export` command.
 scripts/          fetch-vendor.ps1 downloads veraPDF and Java into vendor/
 examples/         gen-fixtures: writes the files in tests/fixtures/
 tests/            Tests
@@ -50,10 +53,29 @@ vendor/           veraPDF and Java runtime for packaging (git ignores this folde
 cargo run -- check Guide.docx          # text report
 cargo run -- check Guide.docx --json   # the same results as JSON
 cargo run -- fix Guide.docx            # asks before each fix, writes a backup first
+cargo run -- export Guide.docx         # PDF and report, needs Word and vendor/
 ```
 
 Exit codes: 0 = no errors (warnings are allowed), 1 = errors found,
 2 = the tool failed (for example, the file cannot be read).
+
+`export` writes `Guide.pdf`, `Guide.accessibility.html` and
+`Guide.accessibility.json` next to the .docx. It starts its own hidden copy of
+Word and never uses a Word window that you have open. For `export`:
+
+- 0 = the report says Pass. 1 = the report says Fail: the pre-check found an
+  error (no PDF is made, the report still is), the PDF has no tags, or veraPDF
+  found a PDF/UA-1 failure. 2 = the tool failed: Word or veraPDF is missing, Word
+  timed out (5 minutes), `Guide.pdf` is locked by another program, or a file
+  cannot be read or written. Then the message is on stderr, stdout is empty, and
+  no report is written.
+- An existing `Guide.pdf` is replaced. The tool does not change the .docx. The
+  report names the newest `Guide.backup-*.docx` next to it, if there is one.
+- The HTML report is an accessible page that works with no script: the checklist
+  of the person who reviews the PDF, the place to record the PAC result, and the
+  sign-off are form fields on the page.
+- `ADAPDF_VENDOR` names another `vendor` folder (with `jre/` and `verapdf/`). When
+  it is set, only that folder is used.
 
 `fix` asks its questions on stderr and reads the answers from stdin. It does not
 write while Word has the file open (the `~$` lock file, or a file that cannot
@@ -69,6 +91,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 cargo test --features windows_word     # needs desktop Word; starts its own hidden Word
 cargo test --features verapdf          # needs vendor/ (see "Bundled tools"); runs the real veraPDF
+cargo test --features windows_word,verapdf   # also runs the real `export` (long: about 25 minutes)
 ```
 
 ## Bundled tools

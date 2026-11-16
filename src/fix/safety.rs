@@ -138,6 +138,14 @@ impl Timestamp {
         }
     }
 
+    /// `yyyy-mm-dd hh:mm:ss`, for the report.
+    pub fn display(&self) -> String {
+        format!(
+            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+            self.year, self.month, self.day, self.hour, self.minute, self.second
+        )
+    }
+
     /// `yyyymmdd-hhmmss`.
     pub fn backup_stamp(&self) -> String {
         format!(

@@ -18,6 +18,7 @@
 //! Windows only. All `unsafe` code is in `com.rs`, in small safe functions.
 
 mod com;
+mod export;
 
 use std::marker::PhantomData;
 use std::os::windows::ffi::OsStrExt;
@@ -31,6 +32,7 @@ use crate::model::theme::Rgb;
 use com::{ComApartment, Dispatch};
 
 pub use com::ComError;
+pub use export::{ExportParameters, FieldUpdate, end_word_process};
 
 /// The program ID of Word. COM turns it into the class that starts Word.
 const WORD_PROG_ID: &str = "Word.Application";

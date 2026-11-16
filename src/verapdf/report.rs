@@ -62,6 +62,9 @@ pub struct ProfileResult {
     pub passed_rules: u32,
     pub passed_checks: u32,
     pub findings: Vec<VeraFinding>,
+    /// The version of veraPDF that wrote the result, for example `1.28.2`
+    /// (the `core` release in its report).
+    pub verapdf_version: Option<String>,
 }
 
 impl ProfileResult {
@@ -78,8 +81,24 @@ struct Output {
 
 #[derive(Deserialize)]
 struct ReportJson {
+    #[serde(default, rename = "buildInformation")]
+    build_information: Option<BuildInformation>,
     #[serde(default)]
     jobs: Vec<Job>,
+}
+
+#[derive(Deserialize)]
+struct BuildInformation {
+    #[serde(default, rename = "releaseDetails")]
+    release_details: Vec<Release>,
+}
+
+#[derive(Deserialize)]
+struct Release {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    version: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -168,6 +187,12 @@ pub fn parse(output: &str, profile: Profile) -> Result<ProfileResult, VeraPdfErr
     let json = &trimmed[trimmed.find('{').unwrap_or(0)..];
     let parsed: Output = serde_json::from_str(json)
         .map_err(|e| VeraPdfError::BadOutput(format!("the output is not veraPDF JSON ({e})")))?;
+    let verapdf_version = parsed.report.build_information.and_then(|info| {
+        info.release_details
+            .into_iter()
+            .find(|release| release.id == "core")
+            .and_then(|release| release.version)
+    });
     let job = parsed
         .report
         .jobs
@@ -225,6 +250,7 @@ pub fn parse(output: &str, profile: Profile) -> Result<ProfileResult, VeraPdfErr
         passed_rules: details.passed_rules,
         passed_checks: details.passed_checks,
         findings,
+        verapdf_version,
     })
 }
 
