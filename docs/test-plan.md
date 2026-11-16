@@ -209,6 +209,7 @@ The model parts for IMG, TXB and TBL are tested in `model::drawings::tests::*`
 | Stage 5: veraPDF run and message table | S5-01 to S5-11 | planned (M4) |
 | Stage 6: HTML and JSON report, and its own accessibility | S6-01 to S6-11 | planned (M4) |
 | Interface `adapdf export` | C-05 to C-08 | planned (M4) |
+| Fixtures open in Word (spec 02, Testing) | W-01 | planned (needs an image part in the builder) |
 | App (file picker, findings list, export, report) | A-01 to A-07 | planned (M5) |
 | Installer | I-01 to I-09 | planned (M5) |
 | Word template and acceptance (spec 04) | T-01 to T-10 | planned (phase 1, template) |
@@ -420,7 +421,7 @@ the test needs a parser, which needs a decision.
 | N-02 | A full run works with the network off | `export_runs_with_the_network_disabled` | manual | A pass fixture, on a machine with the network adapters disabled | The same PDF and the same veraPDF result as with the network on. |
 | N-03 | The tool, the bundled Java and WebView2 make no connection | `no_connection_attempts_in_a_full_run` | manual | A Windows Firewall rule that blocks outbound traffic for `adapdf.exe`, the bundled `java.exe` and `msedgewebview2.exe`, with logging on, and a full `export` | The run succeeds and the firewall log has no entry for those three programs. |
 | N-04 | Only made-up documents are in git (AGENTS.md) | `repo_has_only_made_up_documents` | unit | `git ls-files` | The tracked `.docx` and `.pdf` files are the catalogue, the PDF fixtures and the template files, and nothing else. |
-| N-05 | The web UI loads nothing from the network (spec 01, constraints) | `frontend_bundle_has_no_remote_urls` | unit or CLI, after the front-end build | The built front-end assets, and `tauri.conf.json` | 0 matches for `http://` and `https://` in `src`, `href`, `url()` and `@import`, except Tauri's own IPC origin (`http://ipc.localhost`, a local address inside WebView2) and XML namespace strings, which the test lists by name. In the CSP, `default-src`, `connect-src`, `font-src` and `img-src` allow only `'self'` and Tauri's IPC scheme. |
+| N-05 | The web UI loads nothing from the network (spec 01, constraints) | `frontend_bundle_has_no_remote_urls` | CLI, after the front-end build | The built front-end assets, and `tauri.conf.json` | 0 matches for `http://` and `https://` in `src`, `href`, `url()` and `@import`, except Tauri's own IPC origin (`http://ipc.localhost`, a local address inside WebView2) and XML namespace strings, which the test lists by name. In the CSP, `default-src`, `connect-src`, `font-src` and `img-src` allow only `'self'` and Tauri's IPC scheme. | The URL scan finds addresses written into the files; the CSP check also blocks script requests such as `fetch()`, so both are needed.
 
 Carbon's Sass loads IBM Plex from a CDN by default. The build must point the
 font path at the bundled files, or N-05 fails.
@@ -435,7 +436,7 @@ font path at the bundled files, or N-05 fails.
 | A-04 | The app is usable with a screen reader (spec 01: Carbon in WebView2) | `app_widgets_have_names_and_roles` | front-end (TypeScript) | Each screen, tested with Vitest and axe-core (`pnpm test`) | axe-core reports 0 violations for WCAG 2.1 A and AA on each screen. The keyboard focus order follows the reading order. |
 | A-05 | Keyboard, screen reader and display settings | `app_manual_walkthrough` | manual | The app on Windows 11 | The whole flow (choose a file, see findings, apply a fix, export, open the report) works with the keyboard alone; Narrator and NVDA read each step; the app is usable at 200% scaling and in a high-contrast theme; dragging a file onto the window works. |
 | A-06 | The report opens from the app | `app_opens_the_report` | manual | After an export | The report opens from a local file path in the default browser. |
-| A-07 | The Tauri commands call the same pipeline as the CLI | `app_commands_match_the_cli` | unit (Rust); the `export` case is windows_word | `check`, `fix` and `export` commands on `LST-002-fail.docx`, `TXB-004-fail.docx` and a pass fixture | Each command returns the same findings, fix results and exit status as the matching CLI command on the same input. |
+| A-07 | The Tauri commands call the same pipeline as the CLI | `app_commands_match_the_cli` | unit (Rust); the `export` case is windows_word | `check`, `fix` and `export` commands on `LST-002-fail.docx`, `TXB-004-fail.docx` and a pass fixture | Each command returns the same findings, fix results and the same pass, errors or tool-failure result (exit 0, 1 or 2 in the CLI) as the matching CLI command on the same input. |
 
 ### Installer (spec 01, constraints and technology)
 
