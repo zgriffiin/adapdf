@@ -9,6 +9,7 @@ use std::path::Path;
 pub mod docx;
 pub mod error;
 pub mod findings;
+pub mod fix;
 pub mod fixtures;
 pub mod fonts;
 pub mod model;

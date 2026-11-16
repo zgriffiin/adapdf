@@ -1,7 +1,8 @@
 # Test plan
 
 Status: M2 (all pre-check rules), plus groups, canvases and annotated
-screenshots (IMG-007). This plan says what is tested now and what is only planned. A row
+screenshots (IMG-007), and M3b (stage 2: the fix engine and `adapdf fix`, without
+Word). This plan says what is tested now and what is only planned. A row
 marked "planned" has no test yet.
 
 ## Scope
@@ -15,9 +16,15 @@ later change added groups and drawing canvases as one object, widened IMG-004,
 and added IMG-007 (annotated screenshots). Every rule in
 [03-precheck-rules](specs/03-precheck-rules.md) is now built.
 
-Not built: fixes, Word export, PDF metadata fixes, veraPDF, the report, the
-app and the installer. "Planned tests (not built)" lists each of them,
-requirement by requirement.
+M3b built stage 2 ([02 pipeline](specs/02-pipeline.md#stage-2--fix)) and the
+command `adapdf fix`: the fixes for every auto and ask fix ID, the checks and the
+backup before a write, and stage 1 again after the fixes. The four rows that need
+Word (S2-02, S2-04, S2-15 and S2-23) are still planned; they wait for the Word
+module of M3a.
+
+Not built: Word export, PDF metadata fixes, veraPDF, the report, the app and
+the installer, and the stage 2 tests that need Word. "Planned tests (not built)"
+lists each of them, requirement by requirement.
 
 **Milestones and phases.** The milestone numbers are not the phase numbers of
 [spec 01](specs/01-product.md#phases). M1 and M2 (with M2a and M2b) together
@@ -34,6 +41,7 @@ milestone numbers are the plan at the time of writing.
 | Rule | Each rule against fixtures and small built documents: rule ID, severity, fix kind, location, thresholds | `tests/rules_document.rs`, `tests/rules_headings.rs`, `tests/rules_lists.rs`, `tests/rules_images.rs`, `tests/rules_textboxes.rs`, `tests/rules_tables.rs`, `tests/rules_links.rs`, `tests/rules_colour.rs`, `tests/rules_text.rs` | implemented |
 | Fixture | The files in `tests/fixtures/` match the generator byte for byte. Every rule has a passing and a failing fixture. | `tests/fixtures.rs` | implemented |
 | CLI | `adapdf check`: exit codes 0, 1 and 2, text output, JSON shape | `tests/cli.rs` | implemented |
+| Fix (stage 2) | The fix engine on fixtures and small built documents: only the spliced bytes change, the backup, the lock file, the atomic write, each fix and its refusals, and the stage 1 re-run. `adapdf fix`: the questions, the answers on stdin, and the exit codes. | `tests/fix_safety.rs`, `tests/fix_engine.rs`, `tests/fix_fixes.rs`, `tests/cli_fix.rs` (helpers in `tests/fix_support/`), and unit tests in `src/fix/` | implemented (the rows that need Word are planned) |
 | Word integration (`windows_word`) | Word opens every fixture. Later: Word exports a tagged PDF; fixes leave a file that Word opens. | `tests/`, behind the cargo feature `windows_word` | feature defined; no tests yet (planned M3, M4) |
 | veraPDF integration | A PDF exported from a fixture has 0 veraPDF PDF/UA-1 failures | behind `windows_word`, because it needs Word to export | planned (M4) |
 | Front-end | The Carbon views in the web UI: each screen, axe-core checks for WCAG 2.1 A and AA, and the focus order (TypeScript) | front-end folder, with Vitest and axe-core | planned (M5) |
@@ -47,6 +55,7 @@ milestone numbers are the plan at the time of writing.
 | Unit and rule | The crate builds. No Word, Java or network is needed. | `cargo test` passes with 0 failed, 0 ignored. Every rule has a passing and a failing fixture. Thresholds have tests on both sides. |
 | Fixture | The generator code changed, or a fixture was added. | `cargo run --example gen-fixtures` was run. The drift test is green. All `*-pass` fixtures have 0 findings. Every `wp:docPr` id is unique in each fixture. |
 | CLI | The `adapdf` binary builds. | Exit codes 0, 1 and 2 are tested for each command. On exit 2 nothing is written to stdout. Output for `--json` parses. |
+| Fix (stage 2, without Word) | The crate builds. No Word, Java or network is needed. Tests write only in their own folders under `target/tmp/`, and remove them. | `cargo test` passes with 0 failed, 0 ignored. Every S2 row that does not need Word and every `fix` row has a test with the name in the row. After each fix, only the target bytes changed (S2-08), the file is valid (S2-09) and stage 1 gives the expected findings (S2-10). |
 | `windows_word` | A Windows machine with desktop Word 16.0 (Microsoft 365). The tests start their own Word instances; no Word window of a person needs to be closed. The Word build number is noted. | `cargo test --features windows_word` passes. After the run the number of `WINWORD.EXE` processes is the same as before. No file the tests made is left in the temp folder. |
 | veraPDF | The bundled veraPDF and Java runtime are in place. For tests on Word exports, the `windows_word` entry applies too. | The exit criterion in "Stage 5" below holds for the named fixtures. |
 | Front-end (M5) | The web UI builds (its front-end and the Tauri shell). No Word or Java is needed. | `pnpm test` passes with 0 failed. axe-core reports 0 violations for WCAG 2.1 A and AA on each screen. The build passes N-05. |
@@ -62,7 +71,9 @@ milestone numbers are the plan at the time of writing.
 | Rule tests for one group | `cargo test --test rules_document` (or `rules_headings`, `rules_lists`, `rules_images`, `rules_textboxes`, `rules_tables`, `rules_links`, `rules_colour`, `rules_text`) |
 | Tests for one rule | `cargo test hdg_003` (test names start with the rule ID in lower case) |
 | Fixture tests | `cargo test --test fixtures` |
-| CLI tests | `cargo test --test cli` |
+| CLI tests | `cargo test --test cli` (and `cargo test --test cli_fix` for `adapdf fix`) |
+| Stage 2 (fix) tests | `cargo test --test fix_safety`, `--test fix_engine`, `--test fix_fixes` and `--test cli_fix`; unit tests: `cargo test --lib fix::` |
+| Tests for one fix | `cargo test fix_` or `cargo test ask_` (the names in the stage 2 table) |
 | Write the fixtures again after a change | `cargo run --example gen-fixtures` |
 | Word tests (none yet) | `cargo test --features windows_word` |
 | Front-end tests (none yet) | `pnpm test` in the front-end folder |
@@ -94,6 +105,14 @@ veraPDF, installer and manual tests will get their steps here when they exist.
 - **CLI tests write each fixture to its own file.** The `fixture()` helper in
   `tests/cli.rs` adds a counter to the file name, so tests that run in
   parallel never write the same path.
+- **Fix tests** (M3b) run the fix on the bytes of a fixture, or of a small
+  document made by the builder, and compare. `assert_only_the_splices_changed`
+  in `tests/fix_support/mod.rs` is the check of S2-08: the entries have the
+  same names and order, every part with no splice has the same bytes, and every
+  changed part equals the original with the splice list of the fix applied by
+  hand (the test applies it itself). Tests that write files use a folder of their
+  own under `target/tmp/fix/` (`TempDir`), which is removed at the end. The
+  clock and the file calls are injected, so no test depends on the time of day.
 - **Rule tests check** the rule ID, severity, fix kind, and the whole
   location (part, paragraph index, snippet, heading above) of the failing
   fixture. The shared helper `assert_location` in `tests/common/mod.rs` checks
@@ -121,10 +140,15 @@ veraPDF, installer and manual tests will get their steps here when they exist.
 
 ## Counts at the time of writing
 
-Measured on commit `efb63e1` (`c5591eb` changes only documentation). Command:
-`cargo test`, with the counts taken from its "test result" lines.
+Measured on the M3b commit (its parent is `d9c27fc`, which is the M2 code and
+the test plan). Command: `cargo test` on Windows, with the counts taken from its
+"test result" lines. Two tests of M3b run on Windows only (the held file handle
+in S2-03, and the folder with the name of the backup in S2-06); the counts
+include them.
 
-`cargo test` runs 458 tests: 126 unit, 14 CLI, 8 fixture, 31 DOC rule tests, 28
+`cargo test` runs 547 tests: 140 unit (126 before M3b; 14 new in `src/fix/`), 14
+CLI, 13 CLI for `fix`, 14 fix engine, 38 fix (one test for each fix, and more), 10
+fix safety, 8 fixture, 31 DOC rule tests, 28
 HDG rule tests, 17 LST rule tests, 61 IMG rule tests, 35 TXB rule tests, 29 TBL
 rule tests, 23 LNK rule tests, 40 CLR rule tests and 46 TXT rule tests. The
 count changes as tests are added. `cargo test -- --list` gives the current
@@ -184,12 +208,12 @@ CLR and TXT in M2b (links, colour and text). IMG-007 came after M2.
 | TXT-004 | warning, auto | `TXT-004-fail/pass.docx` | `txt_004_*` | implemented |
 
 "auto" and "ask" in this table are the fix kinds the finding reports. The fixes
-themselves are not built (planned M3). Severities and fix kinds are checked
+themselves are built (M3b): see "Stage 2: fixes" below, which has a row for each
+fix ID. Severities and fix kinds are checked
 against spec 03 in `findings::tests::severities_and_fixes_match_spec_03` (DOC,
 HDG, IMG, TXB, LST and TBL) and `severities_and_fixes_match_spec_03` in
-`tests/rules_links.rs` (LNK, CLR and TXT). The fix `AlignLeft` (TXT-002) is not built
-(planned M3). The fix `UpdateFields` (TXT-004) is done at export (M4; decided
-point 1).
+`tests/rules_links.rs` (LNK, CLR and TXT). The fix `UpdateFields` (TXT-004)
+writes nothing: Word does it at export (M4; decided point 1).
 
 The model parts for IMG, TXB and TBL are tested in `model::drawings::tests::*`
 (including groups, canvases and VML groups) and `model::tables::tests::*`.
@@ -202,8 +226,9 @@ The model parts for IMG, TXB and TBL are tested in `model::drawings::tests::*`
 | Stage 1: finding fields and location | `findings::tests::*`, the location checks in the rule tests, `json_shape_of_a_finding` in `tests/cli.rs` | implemented |
 | Stage 1: errors block export | The exit code 1 on errors is tested (`exit_code_1_when_there_are_errors`). The export that is blocked does not exist yet. | partly implemented |
 | Interface `adapdf check`, exit codes 0, 1, 2, `--json` | `tests/cli.rs` | implemented |
-| Stage 2: fix, backup, lock-file check | "Planned tests: Stage 2" (S2-01 to S2-31) | planned (M3) |
-| Interface `adapdf fix` | C-01 to C-04 | planned (M3) |
+| Stage 2: fix, backup, lock-file check | "Stage 2: fixes" below (S2-01 to S2-31): `tests/fix_safety.rs`, `tests/fix_engine.rs`, `tests/fix_fixes.rs`, `fix::*` unit tests | implemented (M3b), except S2-02, S2-04, S2-15 and S2-23, which need Word and are planned (they wait for the Word module of M3a) |
+| Stage 2: the user picks the fixes, and ask fixes take typed text | S2-11 to S2-13; `adapdf fix` rows C-01 to C-04 | implemented (M3b) |
+| Interface `adapdf fix` | C-01 to C-04: `tests/cli_fix.rs` | implemented (M3b) |
 | Stage 3: Word export through COM | S3-01 to S3-19 | planned (M4) |
 | Stage 4: PDF metadata fixes | S4-01 to S4-12 | planned (M4) |
 | Stage 5: veraPDF run and message table | S5-01 to S5-11 | planned (M4) |
@@ -218,7 +243,9 @@ The model parts for IMG, TXB and TBL are tested in `model::drawings::tests::*`
 
 ## Planned tests (not built)
 
-Nothing in this section is built. Each row says what a test must show, so that
+Nothing in this section is built, except the stage 2 rows and the `fix` rows
+(C-01 to C-04), which have a status column that says what was built in M3b. Each
+row says what a test must show, so that
 the person who builds the stage knows when it is done. Test names are
 proposals. Levels: **unit** (no Word, Java or network), **CLI** (runs the
 `adapdf` binary), **windows_word** (needs Word, feature-gated), **veraPDF**
@@ -227,11 +254,13 @@ axe-core) and **manual** (a person, with a record). The
 columns are: requirement (with the spec it comes from), planned test name,
 level, fixture or input, and the pass condition.
 
-Test seams the unit rows need. They are design requirements of the tests and
-are not in the code yet: the file system calls of stage 2 go through a small
-writer that a test can record or make fail; the Word COM calls of stage 3 go
+Test seams the unit rows need. They are design requirements of the tests. The
+seam of stage 2 is built (M3b): the file system calls go through the trait
+`fix::FileSystem`, which a test can record or make fail, and the clock is a
+value in `fix::Environment`. The others are not in the code yet: the Word COM
+calls of stage 3 go
 through a small trait with a fake that records calls and can block, fail or
-panic; the clock, the Word timeout and the path of veraPDF can be set by the
+panic; the Word timeout and the path of veraPDF can be set by the
 caller.
 
 ### Decided points
@@ -272,45 +301,50 @@ spec 02.
 
 ### Stage 2: fixes (spec 02, stage 2)
 
+Built in M3b (the engine is `src/fix/`; `fix::apply` works on bytes, `fix::fix_file` adds
+the safety rules, `fix::offers` lists what can be fixed). Four rows (S2-02, S2-04,
+S2-15 and S2-23) need Word and are still planned; they wait for the Word module
+of M3a. The names in the table are the names of the tests.
+
 Fix IDs in `src/findings.rs`: 11 auto (`SetDefaultLanguage`,
 `ApplyHeadingStyle`, `DeleteEmptyHeading`, `ApplyListStyle`,
 `MakeImageInline`, `DeleteEmptyParagraphs`, `MarkHeaderRow`, `DeleteEmptyRow`,
 `DisallowRowBreak`, `AlignLeft`, `UpdateFields`) and 3 ask (`SetTitle`,
 `SetAltText`, `MarkAnnotationsDecorative`). Each has its own row below.
 
-| # | Requirement | Planned test name | Level | Fixture or input | Pass condition |
-|---|---|---|---|---|---|
-| S2-01 | Check for the `~$` lock file before any write (spec 02, stage 2) | `fix_refuses_when_a_lock_file_exists` | unit | A copy of `DOC-002-fail.docx` in a temp folder, with a lock file that the test makes next to it, for file names of 5, 8, 9 and 20 characters and one with spaces | Exit 2. The message names the file and says to close it in Word. The file bytes are unchanged. No backup is written. |
-| S2-02 | The lock-file name is the one Word writes (decided point 5) | `fix_detects_the_lock_file_word_writes` | windows_word | The test starts its own hidden Word, opens a copy of a fixture (same five file names) and leaves it open | The tool sees every lock file Word made. The observed names are copied into this plan. |
-| S2-03 | Try to open the file for writing before any write | `fix_refuses_when_the_file_cannot_be_opened_for_writing` | unit | A copy of `DOC-002-fail.docx` held open by the test with no sharing; a second copy with the read-only attribute | Exit 2 for both. Bytes unchanged. No backup. |
-| S2-04 | Never write while Word has the file open (AGENTS.md; spec 02) | `fix_never_writes_while_word_has_the_file_open` | windows_word | A copy of a fixture open in the test's own Word, first read and write, then read-only | Exit 2. SHA-256 of the file is the same. No backup and no temp file in the folder. The same copy with Word open on a different file: the fix runs. |
-| S2-05 | The backup is written before any write to the target (AGENTS.md; spec 02) | `fix_writes_the_backup_before_the_first_write` | unit | Any fix on a fixture copy, with the writer recording every call | The first recorded write is the backup. It was closed and read back equal before the first write to the target. |
-| S2-06 | No backup, no write | `fix_stops_when_the_backup_cannot_be_written` | unit | A directory that has the backup's name, so the backup cannot be made | Exit 2. Target bytes unchanged. |
-| S2-07 | Backup name `Guide.backup-<yyyymmdd-hhmmss>.docx`, bytes equal to the original (spec 02, "Inputs and outputs") | `fix_backup_name_and_bytes` | unit | `DOC-002-fail.docx` as `Guide.docx`, clock fixed at 2026-03-05 10:15:30 | `Guide.backup-20260305-101530.docx` is next to the source. Its bytes equal the original. A second run in the same second does not overwrite it. |
-| S2-08 | Only the target XML bytes change; all other parts and all bytes outside the splices are identical (spec 02 stage 2; spec 01) | `fix_changes_only_the_spliced_bytes` | unit | The failing fixture of every fix ID in the rows below | Every part but the target has equal bytes after unzip, and the entries have the same names and order. In the target part, the result equals the original with the fix's splice list applied by hand (the test applies it itself), so the bytes before, between and after the splices are equal. |
-| S2-09 | The written file is a valid .docx | `fix_result_is_a_valid_docx` | unit | Same | The zip opens, the target part parses as XML, and `Document::from_bytes` reads it. |
-| S2-10 | Stage 1 runs again after the fixes and shows the new results (spec 02) | `fix_reruns_stage_1_and_the_fixed_finding_is_gone` | unit | Each failing fixture in the rows below, then one document with every auto problem | The finding of the rule is gone. No new finding appears, except those the rows list. After all auto fixes the document has no auto finding left (decided point 1 aside); the manual findings are the same rules and counts as before. |
-| S2-11 | The user picks which fixes to apply (spec 02) | `fix_applies_only_the_fixes_the_user_picked` | unit | A document with 3 auto problems; the user picks 1 | Only that rule's finding is gone. The other two remain. Bytes outside that splice are equal. |
-| S2-12 | Ask fixes never write content the user did not type (AGENTS.md; spec 02) | `ask_fix_without_text_writes_nothing` | unit | Each ask fix ID with empty input and with spaces only; `DOC-001-fail.docx` shows the suggestion "Test guide" but the user types nothing | No write, no backup. The finding remains. The suggestion is never used as input. |
-| S2-13 | The typed text is what is written | `ask_fix_writes_exactly_the_typed_text` | unit | Text `A & B <C> "D" é 日本` for the title and for alt text | The XML is escaped. Reading the file back gives the same text. Nothing else is added. |
-| S2-14 | A failed write does not damage the source | `fix_write_is_atomic` | unit | The writer fails after half of the bytes | The original file is intact. No partial file stays. |
-| S2-15 | Word still opens the fixed file (spec 02, "Testing") | `fix_result_opens_in_word` | windows_word | Every fixture, fixed with every fix that applies to it | The test's hidden Word opens it read-only, with repair off and alerts off, and does not fail. The paragraph count equals the model's count. |
-| S2-16 | `SetTitle` (DOC-001, ask) | `ask_set_title_writes_dc_title` | unit | `DOC-001-fail.docx` (empty `dc:title`); a copy with no `dc:title` element | The typed title is in `docProps/core.xml` only. DOC-001 is gone. Spaces only is refused. |
-| S2-17 | `SetDefaultLanguage` (DOC-002, auto) | `fix_set_default_language` | unit | `DOC-002-fail.docx`; a copy with an empty `w:lang`; a copy with other `rPr` children in the defaults | `w:lang` has the language of the setting (default en-US) in the document defaults of `word/styles.xml`. DOC-002 is gone. A setting of en-GB writes en-GB. |
-| S2-18 | `ApplyHeadingStyle` (HDG-003, auto; the user confirms each paragraph) | `fix_apply_heading_style_at_the_suggested_level` | unit | `HDG-003-fail.docx`; a copy where the style is not defined in `styles.xml` (decided point 4); one with no heading above | The paragraph has the suggested style (Heading 2 in the fixture). The text is the same. HDG-003 is gone. No HDG-002 appears. An undefined Heading style is added from Word's built-in definition, then applied. |
-| S2-19 | `DeleteEmptyHeading` (HDG-004, auto) | `fix_delete_empty_heading` | unit | `HDG-004-fail.docx`; a copy where the empty heading holds a section break; one where it holds a bookmark | The empty paragraph is removed and HDG-004 is gone. The neighbours are byte-equal. A paragraph with a section break or a bookmark is not deleted, and the user is told why. |
-| S2-20 | `ApplyListStyle` (LST-001, auto) | `fix_apply_list_style` | unit | `LST-001-fail.docx`; a typed-bullet copy; a marker split across two runs; a tab after the marker | The marker and its separator are gone and the text after them is the same. The List Number or List Bullet style is set. LST-001 is gone. LST-002 does not appear. |
-| S2-21 | `SetAltText` (IMG-001 and IMG-002, ask), with the "Mark as decorative" choice | `ask_set_alt_text_writes_descr_or_alt` | unit | `IMG-001-fail.docx`, `IMG-002-fail.docx`; copies with a chart, a shape, a group, a VML picture, and a shape in `mc:AlternateContent` (decided point 2) | The text is in `descr` (DrawingML) and, when there is a VML copy, in its `alt` too, so both copies agree. "Decorative" writes the decorative extension instead. IMG-001 is gone. IMG-002 is gone unless the typed text is itself a placeholder. |
-| S2-22 | `MakeImageInline` (IMG-004, auto) | `fix_make_inline_for_pictures_charts_and_smart_art` | unit | `IMG-004-fail.docx`; in-memory floating chart and SmartArt | `wp:anchor` becomes `wp:inline` and keeps the extent, `wp:docPr` and graphic. IMG-004 is gone. |
-| S2-23 | IMG-004 caveat: groups, canvases and shapes (see "How M2a reads the rules") | `fix_make_inline_for_groups_canvases_and_shapes` | windows_word, then manual | In-memory `Image::group()`, `canvas()` and `shape()` with `.floating()`, made inline by the fix and opened in Word | A person looks at the result in Word for each object and records whether the layout inside is kept. Until then, the fix is not offered for these three objects and the finding says to do it in Word. After that, the branch that was chosen is tested. |
-| S2-24 | `MarkAnnotationsDecorative` (IMG-007, ask) | `ask_mark_annotations_decorative` | unit | `IMG-007-fail.docx` (three shapes in `mc:AlternateContent`) | After the user confirms that the picture's alt text describes the arrows, each unresolved shape's `wp:docPr` gets the decorative extension (the empty element is expanded and the namespace is declared). IMG-007 is gone. The picture's alt text is unchanged. With no confirmation, nothing is written. If the picture has no alt text, the fix waits for IMG-001. |
-| S2-25 | IMG-007 caveat: VML shapes cannot be marked decorative | `ask_mark_annotations_for_vml_shapes` | unit | A picture with two `Image::vml_shape().floating()` | The tool does not claim to mark them. It asks for alt text for each, or tells the user to convert the file. IMG-007 is gone only after one of these. |
-| S2-26 | `DeleteEmptyParagraphs` (TXB-004, auto; decided point 3) | `fix_delete_empty_paragraphs` | unit | `TXB-004-fail.docx` (2 in a row); a row of 4; two rows in one document | All but one of each row is deleted. TXB-004 is gone. A paragraph that holds a drawing, break, field or section break is not deleted. |
-| S2-27 | `MarkHeaderRow` (TBL-001, auto; the user confirms the first row is the header) | `fix_mark_header_row` | unit | `TBL-001-fail.docx`; a copy whose first row has `w:trPr` without `w:tblHeader`; a copy with no `w:trPr`; a nested table | `<w:tblHeader/>` is in the first row's `w:trPr` of the right table only. `w:cantSplit` stays. TBL-001 is gone. Without confirmation nothing is written. |
-| S2-28 | `DeleteEmptyRow` (TBL-005, auto) | `fix_delete_empty_row` | unit | `TBL-005-fail.docx` (row 3 empty); two empty rows; the empty row last | The empty rows are gone and TBL-005 is gone. Other rows are byte-equal. If one row is left, the re-run may show TBL-004 and the test expects it. |
-| S2-29 | `DisallowRowBreak` (TBL-006, auto) | `fix_disallow_row_break` | unit | `TBL-006-fail.docx`; a copy with `w:trPr` but no `w:cantSplit`; a copy with `w:cantSplit w:val="0"` | Every row has `<w:cantSplit/>`. The header flag stays. TBL-006 is gone. |
-| S2-30 | `AlignLeft` (TXT-002, auto) | `fix_align_left` | unit | `TXT-002-fail.docx` (direct `jc both`); a copy where the style is justified | The paragraph has `w:jc w:val="left"` in its own `w:pPr`. Its effective alignment is left, the style is unchanged, and TXT-002 is gone (decided point 9). |
-| S2-31 | `UpdateFields` (TXT-004, auto; decided point 1) | `fix_update_fields_is_done_at_export` | unit | `TXT-004-fail.docx` | The fix writes nothing to the .docx and no backup is made. The finding is listed as "done at export". The proof is `export_updates_fields_before_exporting` in stage 3. |
+| # | Requirement | Test name (planned name if not built) | Level | Fixture or input | Pass condition | Status |
+|---|---|---|---|---|---|---|
+| S2-01 | Check for the `~$` lock file before any write (spec 02, stage 2) | `fix_refuses_when_a_lock_file_exists` | unit | A copy of `DOC-002-fail.docx` in a temp folder, with a lock file that the test makes next to it, for file names of 5, 8, 9 and 20 characters and one with spaces | Exit 2. The message names the file and says to close it in Word. The file bytes are unchanged. No backup is written. | implemented: `fix_refuses_when_a_lock_file_exists` in `tests/fix_safety.rs`. Both forms of the lock file name are tried for each file name (see "How M3b reads stage 2"). The message is at library level; exit 2 is in C-03. |
+| S2-02 | The lock-file name is the one Word writes (decided point 5) | `fix_detects_the_lock_file_word_writes` | windows_word | The test starts its own hidden Word, opens a copy of a fixture (same five file names) and leaves it open | The tool sees every lock file Word made. The observed names are copied into this plan. | planned: needs Word. It waits for the Word module of M3a. Until it runs, the lock file name rule is a guess that checks two forms. |
+| S2-03 | Try to open the file for writing before any write | `fix_refuses_when_the_file_cannot_be_opened_for_writing` | unit | A copy of `DOC-002-fail.docx` held open by the test with no sharing; a second copy with the read-only attribute | Exit 2 for both. Bytes unchanged. No backup. | implemented: `fix_refuses_when_the_file_cannot_be_opened_for_writing` in `tests/fix_safety.rs`. The held handle part runs on Windows only (it uses `share_mode(0)`); the read-only part runs everywhere. |
+| S2-04 | Never write while Word has the file open (AGENTS.md; spec 02) | `fix_never_writes_while_word_has_the_file_open` | windows_word | A copy of a fixture open in the test's own Word, first read and write, then read-only | Exit 2. SHA-256 of the file is the same. No backup and no temp file in the folder. The same copy with Word open on a different file: the fix runs. | planned: needs Word. It waits for the Word module of M3a. |
+| S2-05 | The backup is written before any write to the target (AGENTS.md; spec 02) | `fix_writes_the_backup_before_the_first_write` | unit | Any fix on a fixture copy, with the writer recording every call | The first recorded write is the backup. It was closed and read back equal before the first write to the target. | implemented: `fix_writes_the_backup_before_the_first_write` in `tests/fix_safety.rs`. The recorded calls are: open the file, write the backup, read the backup back, write the temporary file, move it over the file. |
+| S2-06 | No backup, no write | `fix_stops_when_the_backup_cannot_be_written` | unit | A directory that has the backup's name, so the backup cannot be made | Exit 2. Target bytes unchanged. | implemented: `fix_stops_when_the_backup_cannot_be_written` in `tests/fix_safety.rs` (the writer fails, also after half of the bytes), and, on Windows, `a_folder_with_the_name_of_the_backup_stops_the_fix` (a folder with the name of the backup: Windows says "access denied", and the tool stops). On Windows only a file with the name, not a folder, gets the next name (S2-07). |
+| S2-07 | Backup name `Guide.backup-<yyyymmdd-hhmmss>.docx`, bytes equal to the original (spec 02, "Inputs and outputs") | `fix_backup_name_and_bytes` | unit | `DOC-002-fail.docx` as `Guide.docx`, clock fixed at 2026-03-05 10:15:30 | `Guide.backup-20260305-101530.docx` is next to the source. Its bytes equal the original. A second run in the same second does not overwrite it. | implemented: `fix_backup_name_and_bytes` in `tests/fix_safety.rs`. The second backup in the same second is `Guide.backup-20260305-101530-1.docx`. The time is UTC. |
+| S2-08 | Only the target XML bytes change; all other parts and all bytes outside the splices are identical (spec 02 stage 2; spec 01) | `fix_changes_only_the_spliced_bytes` | unit | The failing fixture of every fix ID in the rows below | Every part but the target has equal bytes after unzip, and the entries have the same names and order. In the target part, the result equals the original with the fix's splice list applied by hand (the test applies it itself), so the bytes before, between and after the splices are equal. | implemented: `fix_changes_only_the_spliced_bytes` and `fix_changes_only_the_target_part` in `tests/fix_engine.rs`, with the helper `assert_only_the_splices_changed`. It runs for every fix that writes (14 rules). `untouched_entries_are_copied_raw` checks that untouched entries keep their compressed bytes, method and CRC. `a_byte_order_mark_is_kept` checks a part with a byte order mark. |
+| S2-09 | The written file is a valid .docx | `fix_result_is_a_valid_docx` | unit | Same | The zip opens, the target part parses as XML, and `Document::from_bytes` reads it. | implemented: `fix_result_is_a_valid_docx` in `tests/fix_engine.rs`. |
+| S2-10 | Stage 1 runs again after the fixes and shows the new results (spec 02) | `fix_reruns_stage_1_and_the_fixed_finding_is_gone` | unit | Each failing fixture in the rows below, then one document with every auto problem | The finding of the rule is gone. No new finding appears, except those the rows list. After all auto fixes the document has no auto finding left (decided point 1 aside); the manual findings are the same rules and counts as before. | implemented: `fix_reruns_stage_1_and_the_fixed_finding_is_gone` and `fix_reruns_stage_1_with_every_auto_problem_in_one_document` in `tests/fix_engine.rs`. The extra findings that the plan allows (TBL-004 after S2-28) are tested in the test of that fix. |
+| S2-11 | The user picks which fixes to apply (spec 02) | `fix_applies_only_the_fixes_the_user_picked` | unit | A document with 3 auto problems; the user picks 1 | Only that rule's finding is gone. The other two remain. Bytes outside that splice are equal. | implemented: `fix_applies_only_the_fixes_the_user_picked` in `tests/fix_engine.rs`. `the_same_text_cannot_be_changed_by_two_different_fixes`, `two_fixes_on_the_same_drawing_do_not_overlap` and the tests for one `w:pPr` and one `w:trPr` check fixes that meet in one place. |
+| S2-12 | Ask fixes never write content the user did not type (AGENTS.md; spec 02) | `ask_fix_without_text_writes_nothing` | unit | Each ask fix ID with empty input and with spaces only; `DOC-001-fail.docx` shows the suggestion "Test guide" but the user types nothing | No write, no backup. The finding remains. The suggestion is never used as input. | implemented: `ask_fix_without_text_writes_nothing` in `tests/fix_engine.rs`. For `MarkAnnotationsDecorative` the "input" is the confirmation: text or "decorative" is refused. `cli_fix_shows_the_suggestion_but_never_fills_it_in` in `tests/cli_fix.rs` checks the CLI. |
+| S2-13 | The typed text is what is written | `ask_fix_writes_exactly_the_typed_text` | unit | Text `A & B <C> "D" é 日本` for the title and for alt text | The XML is escaped. Reading the file back gives the same text. Nothing else is added. | implemented: `ask_fix_writes_exactly_the_typed_text` in `tests/fix_engine.rs`. Line breaks and tabs in alt text are written as character references and read back. |
+| S2-14 | A failed write does not damage the source | `fix_write_is_atomic` | unit | The writer fails after half of the bytes | The original file is intact. No partial file stays. | implemented: `fix_write_is_atomic` in `tests/fix_safety.rs`: the writer fails after half of the bytes, and the move fails. The backup stays in both cases (it is a whole copy). |
+| S2-15 | Word still opens the fixed file (spec 02, "Testing") | `fix_result_opens_in_word` | windows_word | Every fixture, fixed with every fix that applies to it | The test's hidden Word opens it read-only, with repair off and alerts off, and does not fail. The paragraph count equals the model's count. | planned: needs Word. It waits for the Word module of M3a. |
+| S2-16 | `SetTitle` (DOC-001, ask) | `ask_set_title_writes_dc_title` | unit | `DOC-001-fail.docx` (empty `dc:title`); a copy with no `dc:title` element | The typed title is in `docProps/core.xml` only. DOC-001 is gone. Spaces only is refused. | implemented: `ask_set_title_writes_dc_title` in `tests/fix_fixes.rs`, and `set_title_refuses_a_document_with_no_properties_part`. |
+| S2-17 | `SetDefaultLanguage` (DOC-002, auto) | `fix_set_default_language` | unit | `DOC-002-fail.docx`; a copy with an empty `w:lang`; a copy with other `rPr` children in the defaults | `w:lang` has the language of the setting (default en-US) in the document defaults of `word/styles.xml`. DOC-002 is gone. A setting of en-GB writes en-GB. | implemented: `fix_set_default_language`, `set_default_language_writes_the_language_of_the_setting` and `set_default_language_in_a_styles_part_with_fewer_parts` in `tests/fix_fixes.rs`. |
+| S2-18 | `ApplyHeadingStyle` (HDG-003, auto; the user confirms each paragraph) | `fix_apply_heading_style_at_the_suggested_level` | unit | `HDG-003-fail.docx`; a copy where the style is not defined in `styles.xml` (decided point 4); one with no heading above | The paragraph has the suggested style (Heading 2 in the fixture). The text is the same. HDG-003 is gone. No HDG-002 appears. An undefined Heading style is added from Word's built-in definition, then applied. | implemented: `fix_apply_heading_style_at_the_suggested_level`, `fix_apply_heading_style_when_the_style_is_not_defined` and `fix_apply_heading_style_with_no_heading_above_and_a_style_already_set` in `tests/fix_fixes.rs`. Only Heading 1 to Heading 4 are defined (the tool never suggests a deeper level). |
+| S2-19 | `DeleteEmptyHeading` (HDG-004, auto) | `fix_delete_empty_heading` | unit | `HDG-004-fail.docx`; a copy where the empty heading holds a section break; one where it holds a bookmark | The empty paragraph is removed and HDG-004 is gone. The neighbours are byte-equal. A paragraph with a section break or a bookmark is not deleted, and the user is told why. | implemented: `fix_delete_empty_heading` and `fix_delete_empty_heading_refuses_what_it_must_keep` in `tests/fix_fixes.rs`. A page break, a field or a picture in the heading also stops the deletion, and so does the last paragraph of a table cell. |
+| S2-20 | `ApplyListStyle` (LST-001, auto) | `fix_apply_list_style` | unit | `LST-001-fail.docx`; a typed-bullet copy; a marker split across two runs; a tab after the marker | The marker and its separator are gone and the text after them is the same. The List Number or List Bullet style is set. LST-001 is gone. LST-002 does not appear. | implemented: `fix_apply_list_style` and four more tests (`fix_apply_list_style_for_every_form_of_typed_marker`, `..._keeps_formatting_of_the_text_that_stays`, `..._refuses_when_the_document_has_no_list_style`, `..._closes_a_mixed_list`) in `tests/fix_fixes.rs`. |
+| S2-21 | `SetAltText` (IMG-001 and IMG-002, ask), with the "Mark as decorative" choice | `ask_set_alt_text_writes_descr_or_alt` | unit | `IMG-001-fail.docx`, `IMG-002-fail.docx`; copies with a chart, a shape, a group, a VML picture, and a shape in `mc:AlternateContent` (decided point 2) | The text is in `descr` (DrawingML) and, when there is a VML copy, in its `alt` too, so both copies agree. "Decorative" writes the decorative extension instead. IMG-001 is gone. IMG-002 is gone unless the typed text is itself a placeholder. | implemented: `ask_set_alt_text_writes_descr_or_alt`, `ask_set_alt_text_for_charts_shapes_groups_and_vml`, `ask_set_alt_text_can_mark_as_decorative` and `ask_set_alt_text_for_two_drawings_in_one_paragraph` in `tests/fix_fixes.rs`. "Decorative" also clears a placeholder `descr`. VML cannot be marked decorative: refused. |
+| S2-22 | `MakeImageInline` (IMG-004, auto) | `fix_make_inline_for_pictures_charts_and_smart_art` | unit | `IMG-004-fail.docx`; in-memory floating chart and SmartArt | `wp:anchor` becomes `wp:inline` and keeps the extent, `wp:docPr` and graphic. IMG-004 is gone. | implemented: `fix_make_inline_for_pictures_charts_and_smart_art` in `tests/fix_fixes.rs`. A floating picture, chart or SmartArt in `mc:AlternateContent` and a VML picture are refused. |
+| S2-23 | IMG-004 caveat: groups, canvases and shapes (see "How M2a reads the rules") | `fix_make_inline_for_groups_canvases_and_shapes` | windows_word, then manual | In-memory `Image::group()`, `canvas()` and `shape()` with `.floating()`, made inline by the fix and opened in Word | A person looks at the result in Word for each object and records whether the layout inside is kept. Until then, the fix is not offered for these three objects and the finding says to do it in Word. After that, the branch that was chosen is tested. | planned for Word (`windows_word`, then manual). The first part of the pass condition is implemented now: `fix_does_not_offer_inline_for_groups_canvases_and_shapes` in `tests/fix_fixes.rs` (the offer says "not available" and says to do it in Word; a request is refused and writes nothing). |
+| S2-24 | `MarkAnnotationsDecorative` (IMG-007, ask) | `ask_mark_annotations_decorative` | unit | `IMG-007-fail.docx` (three shapes in `mc:AlternateContent`) | After the user confirms that the picture's alt text describes the arrows, each unresolved shape's `wp:docPr` gets the decorative extension (the empty element is expanded and the namespace is declared). IMG-007 is gone. The picture's alt text is unchanged. With no confirmation, nothing is written. If the picture has no alt text, the fix waits for IMG-001. | implemented: `ask_mark_annotations_decorative` and `ask_mark_annotations_waits_for_the_alt_text_of_the_picture` in `tests/fix_fixes.rs`. |
+| S2-25 | IMG-007 caveat: VML shapes cannot be marked decorative | `ask_mark_annotations_for_vml_shapes` | unit | A picture with two `Image::vml_shape().floating()` | The tool does not claim to mark them. It asks for alt text for each, or tells the user to convert the file. IMG-007 is gone only after one of these. | implemented: `ask_mark_annotations_for_vml_shapes` in `tests/fix_fixes.rs`. The tool takes the "tells the user to convert the file" branch (and to give each shape alt text in Word). It does not ask for the alt text of the shapes itself. If any unresolved shape is VML, the whole fix is refused. |
+| S2-26 | `DeleteEmptyParagraphs` (TXB-004, auto; decided point 3) | `fix_delete_empty_paragraphs` | unit | `TXB-004-fail.docx` (2 in a row); a row of 4; two rows in one document | All but one of each row is deleted. TXB-004 is gone. A paragraph that holds a drawing, break, field or section break is not deleted. | implemented: `fix_delete_empty_paragraphs` and `fix_delete_empty_paragraphs_keeps_what_is_not_empty` in `tests/fix_fixes.rs`. An "empty" paragraph that holds a bookmark (the rule counts it as empty) is not deleted. |
+| S2-27 | `MarkHeaderRow` (TBL-001, auto; the user confirms the first row is the header) | `fix_mark_header_row` | unit | `TBL-001-fail.docx`; a copy whose first row has `w:trPr` without `w:tblHeader`; a copy with no `w:trPr`; a nested table | `<w:tblHeader/>` is in the first row's `w:trPr` of the right table only. `w:cantSplit` stays. TBL-001 is gone. Without confirmation nothing is written. | implemented: `fix_mark_header_row` and `fix_mark_header_row_changes_the_right_table_only` in `tests/fix_fixes.rs`. |
+| S2-28 | `DeleteEmptyRow` (TBL-005, auto) | `fix_delete_empty_row` | unit | `TBL-005-fail.docx` (row 3 empty); two empty rows; the empty row last | The empty rows are gone and TBL-005 is gone. Other rows are byte-equal. If one row is left, the re-run may show TBL-004 and the test expects it. | implemented: `fix_delete_empty_row` and `fix_delete_empty_row_refuses_what_it_must_keep` in `tests/fix_fixes.rs`. A row that holds a merged cell is kept, and a table in which every row is empty is refused. |
+| S2-29 | `DisallowRowBreak` (TBL-006, auto) | `fix_disallow_row_break` | unit | `TBL-006-fail.docx`; a copy with `w:trPr` but no `w:cantSplit`; a copy with `w:cantSplit w:val="0"` | Every row has `<w:cantSplit/>`. The header flag stays. TBL-006 is gone. | implemented: `fix_disallow_row_break` in `tests/fix_fixes.rs`, and `header_row_and_row_break_fixes_on_the_same_row_make_one_trpr`. |
+| S2-30 | `AlignLeft` (TXT-002, auto) | `fix_align_left` | unit | `TXT-002-fail.docx` (direct `jc both`); a copy where the style is justified | The paragraph has `w:jc w:val="left"` in its own `w:pPr`. Its effective alignment is left, the style is unchanged, and TXT-002 is gone (decided point 9). | implemented: `fix_align_left` in `tests/fix_fixes.rs`, and `heading_style_and_align_left_on_the_same_paragraph_make_one_ppr`. |
+| S2-31 | `UpdateFields` (TXT-004, auto; decided point 1) | `fix_update_fields_is_done_at_export` | unit | `TXT-004-fail.docx` | The fix writes nothing to the .docx and no backup is made. The finding is listed as "done at export". The proof is `export_updates_fields_before_exporting` in stage 3. | implemented: `fix_update_fields_is_done_at_export` in `tests/fix_engine.rs`. The proof that the export does it stays in stage 3. |
 
 ### Stage 3: Word export (spec 02, stage 3)
 
@@ -404,10 +438,10 @@ the test needs a parser, which needs a decision.
 
 | # | Requirement | Planned test name | Level | Fixture or input | Pass condition |
 |---|---|---|---|---|---|
-| C-01 | `fix`: 0 when no error remains after the fixes (or nothing to fix) | `cli_fix_exit_0_when_no_error_remains` | CLI | `DOC-002-fail.docx`, fix confirmed | Exit 0. A backup exists. Re-running `check` gives exit 0. |
-| C-02 | `fix`: 1 when errors remain after the fixes | `cli_fix_exit_1_when_errors_remain` | CLI | `HDG-002-fail.docx` (manual error); a document with one auto and one manual error | Exit 1. The auto fix was applied. The manual error is listed. |
-| C-03 | `fix`: 2 for a tool failure | `cli_fix_exit_2_on_tool_failure` | CLI | A locked file; a file that is not a .docx; a missing file; a backup that cannot be written; wrong arguments | Exit 2. stderr says why. stdout is empty. The file is unchanged. |
-| C-04 | `fix` asks before each fix | `cli_fix_confirms_each_fix` | CLI | A document with 3 auto problems, with answers piped in: yes, no, yes | The first and the third are applied. The second is not. |
+| C-01 | `fix`: 0 when no error remains after the fixes (or nothing to fix) | `cli_fix_exit_0_when_no_error_remains` | CLI | `DOC-002-fail.docx`, fix confirmed | Exit 0. A backup exists. Re-running `check` gives exit 0. Status: implemented in `tests/cli_fix.rs`: `cli_fix_exit_0_when_no_error_remains`, and `cli_fix_exit_0_when_there_is_nothing_to_fix` (no backup). |
+| C-02 | `fix`: 1 when errors remain after the fixes | `cli_fix_exit_1_when_errors_remain` | CLI | `HDG-002-fail.docx` (manual error); a document with one auto and one manual error | Exit 1. The auto fix was applied. The manual error is listed. Status: implemented: `cli_fix_exit_1_when_errors_remain` (both inputs). The answers come from stdin. |
+| C-03 | `fix`: 2 for a tool failure | `cli_fix_exit_2_on_tool_failure` | CLI | A locked file; a file that is not a .docx; a missing file; a backup that cannot be written; wrong arguments | Exit 2. stderr says why. stdout is empty. The file is unchanged. Status: implemented: `cli_fix_exit_2_on_tool_failure` (locked file, not a .docx, missing file, wrong arguments), and, on Windows, `cli_fix_exit_2_when_the_backup_cannot_be_written` (folders with the names of the backups of the next 30 seconds, so that the real clock hits one). The questions of `fix` go to stderr, and the result goes to stdout only after the file is written, so stdout is empty on every exit 2. |
+| C-04 | `fix` asks before each fix | `cli_fix_confirms_each_fix` | CLI | A document with 3 auto problems, with answers piped in: yes, no, yes | The first and the third are applied. The second is not. Status: implemented: `cli_fix_confirms_each_fix` (answers y, n, y). More: `cli_fix_applies_nothing_when_every_answer_is_no_or_the_input_ends`, `cli_fix_asks_again_for_an_answer_it_does_not_understand`, `cli_fix_shows_the_suggestion_but_never_fills_it_in`, `cli_fix_asks_for_alt_text_or_decorative`, `cli_fix_asks_before_marking_the_arrows_decorative`, `cli_fix_says_what_it_cannot_do_and_what_word_does` and `cli_fix_writes_the_text_for_the_picture_it_was_asked_about`. `adapdf fix` has no flags. |
 | C-05 | `export`: 0 on a pass | `cli_export_exit_0_on_a_pass` | windows_word | `DOC-001-pass.docx` | Exit 0. `Guide.pdf` and the two report files exist. |
 | C-06 | `export`: 1 for stage 1 errors, veraPDF failures or a PDF with no tags | `cli_export_exit_1_on_errors` | CLI | `HDG-002-fail.docx` (no PDF); a stage 5 fake that reports 1 failure; the stage 4 input `no-structtreeroot`, an untagged PDF (decided point 8) | Exit 1 in all three. |
 | C-07 | `export`: 2 for a tool failure (Word missing, timeout, veraPDF or Java missing) | `cli_export_exit_2_on_tool_failure` | CLI | The fakes of S3-16, S3-06 and S5-06 | Exit 2. stdout is empty. |
@@ -864,6 +898,127 @@ together if the spec changes.
   from a table style is not seen by CLR-001 and CLR-002.
 - **`w:clrSchemeMapping` is not read.** The theme colours use Word's default
   mapping. A document with another mapping can give a wrong colour in CLR-001.
+
+## How M3b reads stage 2
+
+Decisions made where spec 02, the decided points and the rows leave room. Change
+the code and the tests together if the spec changes.
+
+- **Splices on the original text.** All fixes of a run are worked out against
+  the original document, and all splices go into the original text of each
+  part. Paragraph numbers in the findings stay right when a fix deletes a
+  paragraph. A splice inside a deletion is dropped (the deletion wins). The
+  same splice twice counts once. Other overlaps stop the run (`FixError::Conflict`)
+  with no change to the file. Several fixes for one `w:pPr` or one `w:trPr` are
+  written as one edit, with the children in schema order
+  (`new_properties_go_in_schema_order_in_a_busy_paragraph_and_row`). After the splices, the
+  tool reads the new parts and the whole document again; if that fails, nothing
+  is written.
+- **Which finding.** A request names its finding. The engine runs the rule
+  again and checks that the finding is still there (a finding from an older
+  version of the file is refused). Findings can be the same in every field, for
+  example two pictures in one paragraph that both have no alt text, so a
+  request can carry the position of the finding among the findings of its rule,
+  and `fix::offers` gives it. `adapdf fix` always uses it.
+- **Offers.** `fix::offers` works out whether each fix can be applied, by
+  running all the fixes in memory with placeholder text. A fix that the tool
+  will not do is "not available", with the reason. `adapdf fix` shows the
+  reason and does not ask.
+- **Order of the checks before a write.** The `~$` file, then an exclusive open
+  of the file (this also reads it), then the fixes in memory, then the backup
+  (written, closed, read back and compared), then the new file in a temporary
+  file in the same folder (`Guide.docx.adapdf-0.tmp`), then the move over the
+  file. `adapdf fix` makes the first two checks before it asks anything, and
+  again before it writes. The handle is let go just before the move, because
+  Windows cannot replace an open file.
+- **The lock file.** Word's rule for the name of the `~$` file is not known.
+  `fix::lock_file_names` gives two forms for `Guide.docx`: `~$Guide.docx` and
+  `~$ide.docx` (the first two characters replaced). Either one stops the fix.
+  S2-02 will show the real names, and the function is the one place to change.
+- **The backup.** Its name uses the time in UTC (the standard library has no
+  local time). An existing file with the name makes the tool use
+  `...-1.docx`, `...-2.docx` and so on. On Windows a folder with the name is an
+  "access denied" error, not "already exists", and the tool stops (S2-06). The
+  backup stays when a later step fails; it is a whole copy.
+- **Nothing to write.** When no fix changes the file (all declined, all refused,
+  or only `UpdateFields`), there is no backup and the file is not touched.
+- **`SetTitle`.** The text goes in `dc:title`. A `dc:title` that is empty,
+  self-closing or only spaces is filled; a missing one is added. A document with
+  no `docProps/core.xml` is refused (the tool does not add parts).
+- **`SetDefaultLanguage`.** `w:lang w:val` in `docDefaults/rPrDefault/rPr` of
+  `word/styles.xml`, in schema order. Missing parent elements are added. The
+  language is `FixOptions::default_language` (en-US); a value that is not a
+  language tag is refused.
+- **`ApplyHeadingStyle`.** The level comes from the suggestion ("Heading 2").
+  The style that the document has with that name is used. If it has none, Word's
+  definition of Heading 1 to 4 (Microsoft 365 template, without the link to a
+  character style) is added at the end of `styles.xml` once, based on the default
+  paragraph style. An existing `w:pStyle` is replaced.
+- **`DeleteEmptyHeading`, `DeleteEmptyParagraphs`.** A paragraph is deleted only
+  when it holds nothing but spaces, tabs and plain line breaks. A section break,
+  a bookmark, a comment mark, a page or column break, a field, a drawing or any
+  other element stops the deletion, with the reason. A paragraph that a table
+  cell or the end of the document needs is kept. For a row of empty paragraphs
+  the first stays and the others go (decided point 3); if some cannot go, they
+  stay and the message says so.
+- **`ApplyListStyle`.** The leading spaces, the marker and the spaces and tabs
+  after it are removed from the runs (a run that held only that is removed, a
+  run that holds more keeps its other content), and the style List Number or
+  List Bullet is set. The style must exist in `styles.xml`. If it does not,
+  the fix is refused: its numbering lives in `numbering.xml`, and adding it is
+  not planned. An existing `w:pStyle` is replaced.
+- **`SetAltText`.** The text goes in `descr` of `wp:docPr` (DrawingML) or `alt`
+  of the first VML shape, and also in `alt` of the VML copy in `mc:Fallback`
+  (decided point 2). A new attribute is written after the last one. "Mark as
+  decorative" writes the extension that Word writes, expands `<wp:docPr/>` if
+  needed, sets `val="0"` to `1`, and clears a `descr` that was there. It is
+  refused for VML.
+- **`MakeImageInline`.** Pictures, charts and SmartArt written as DrawingML
+  only. `wp:anchor` becomes `wp:inline` (distances 0); only the extent, the
+  effect extent, `wp:docPr`, `wp:cNvGraphicFramePr` and the graphic stay.
+  Groups, canvases and single shapes, VML objects, and objects in
+  `mc:AlternateContent` are not changed. The message says to do it in Word
+  (S2-23).
+- **`MarkAnnotationsDecorative`.** The user's confirmation is the input. The
+  picture must have alt text (or be decorative); if not, the fix waits for
+  IMG-001. DrawingML shapes only: if any unresolved shape is VML, the whole fix
+  is refused, with the two ways out (alt text in Word, or convert the file).
+  The tool does not ask for alt text for VML shapes (S2-25).
+- **`MarkHeaderRow`, `DisallowRowBreak`, `DeleteEmptyRow`.** The table is the
+  one of the finding (the n-th table with the problem, in table order, so a
+  nested table is told apart from its outer table). Empty rows that start a
+  merge are kept; a table with only empty rows is refused. If the header row
+  itself is deleted, the next row does not become the header row.
+- **`AlignLeft`.** `w:jc w:val="left"` in the paragraph's own `w:pPr` (decided
+  point 9).
+- **`UpdateFields`.** Listed as "done at export". Nothing is written.
+- **`adapdf fix`.** Questions go to stderr and answers are read from stdin; the
+  result (backup, fixes applied, fixes not applied, the new check) goes to
+  stdout after the write. A yes is `y` or `yes`, a no is `n`, `no` or an empty
+  line, and the end of the input is "no". Another answer is asked again. For an
+  ask fix the text (or the choice) is typed; the suggestion is shown only as
+  "Suggestion (not applied)". For alt text the first question is "Mark it as
+  decorative?", and the second asks for the text. An empty text skips the fix.
+  Text typed in the CLI is trimmed. There are no flags.
+
+## Known gaps in M3b
+
+- **Word has not opened a fixed file.** S2-15 waits for the Word module of M3a.
+  Until then the files are only known to be valid for this tool's reader, and
+  the new XML (the heading styles, the `w:trPr` and `w:pPr` order, the decorative
+  mark) is written to match how Word writes it, not checked against Word.
+- **The lock-file name rule is not confirmed** (S2-02). Two forms are checked.
+- **The backup time is UTC**, not local time.
+- **Only the body is fixed.** The model does not read headers, footers,
+  footnotes and text boxes, so no fix changes them.
+- **Not fixed by the tool**, and said so in the offer: groups, canvases, single
+  shapes, VML objects and objects in `mc:AlternateContent` for IMG-004; VML
+  shapes for IMG-007 and for "Mark as decorative"; list styles that the document
+  does not define; a document with no `docProps/core.xml` for DOC-001.
+- **The tool is not checked on a real guide.** The fixes run on made-up
+  documents only (see "Known gaps in M1").
+- **The file can be changed between the release of the exclusive handle and the
+  move.** The gap is very short; the tool does not guard it.
 
 ## Known gaps in M1
 

@@ -8,7 +8,8 @@ through Word, checks the PDF with veraPDF, and writes a report that serves as
 evidence. A person then confirms the result in PAC and signs off the checklist.
 
 Status: the pre-check rules are built (all of spec 03). `adapdf check` runs
-them. Fixes, export and the app are not built yet. See the
+them. `adapdf fix` applies the fixes (stage 2) after it asks about each one.
+Export and the app are not built yet. See the
 [test plan](docs/test-plan.md) for what is tested and what is not.
 
 ## Specs
@@ -43,10 +44,17 @@ vendor/           veraPDF and Java runtime for packaging (git ignores this folde
 ```
 cargo run -- check Guide.docx          # text report
 cargo run -- check Guide.docx --json   # the same results as JSON
+cargo run -- fix Guide.docx            # asks before each fix, writes a backup first
 ```
 
 Exit codes: 0 = no errors (warnings are allowed), 1 = errors found,
 2 = the tool failed (for example, the file cannot be read).
+
+`fix` asks its questions on stderr and reads the answers from stdin. It does not
+write while Word has the file open (the `~$` lock file, or a file that cannot
+be opened for writing). It writes `Guide.backup-<yyyymmdd-hhmmss>.docx` (UTC)
+next to the file before it changes anything. It never types alt text or a
+title for you.
 
 Checks before a change is done:
 
