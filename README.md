@@ -13,6 +13,9 @@ base for the Word export (`src/word`, Windows only) is built and tested. Export
 and the app are not built yet. See the
 [test plan](docs/test-plan.md) for what is tested and what is not.
 
+The PDF metadata fixes (stage 4, `src/pdfmeta`) and the veraPDF run (stage 5,
+`src/verapdf`) are built and tested as library code. No command uses them yet.
+
 ## Specs
 
 1. [Product](docs/specs/01-product.md): goal, constraints, scope, technology,
@@ -29,6 +32,7 @@ and the app are not built yet. See the
 ```
 Cargo.toml        Rust package: the `adapdf` library and command
 src/              Application code (Rust). src/word drives Word through COM.
+scripts/          fetch-vendor.ps1 downloads veraPDF and Java into vendor/
 examples/         gen-fixtures: writes the files in tests/fixtures/
 tests/            Tests
 tests/fixtures/   Small .docx files, one passing and one failing for each rule
@@ -64,7 +68,28 @@ cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 cargo test --features windows_word     # needs desktop Word; starts its own hidden Word
+cargo test --features verapdf          # needs vendor/ (see "Bundled tools"); runs the real veraPDF
 ```
+
+## Bundled tools
+
+Stage 5 runs veraPDF with a Java runtime that ships with the tool, so users
+install no Java. A build downloads both once into `vendor/` (ignored by Git):
+
+```
+powershell -ExecutionPolicy Bypass -File scripts/fetch-vendor.ps1
+```
+
+The script gets a pinned veraPDF (1.28.2) and a pinned Eclipse Temurin JRE
+(21.0.13+9), checks the SHA-256 value of each download against the value written
+in the script, and stops on a difference. It does nothing when the right
+versions are already in `vendor/`; `-Force` downloads them again. This is the
+only download in the project. The finished program makes no network calls.
+Licences are in [THIRD-PARTY.md](THIRD-PARTY.md).
+
+At run time the tool looks for `vendor/jre` and `vendor/verapdf` next to the
+program, and then at the root of the source tree. `cargo test` does not need
+`vendor/`; only the tests of the feature `verapdf` do.
 
 ## First step
 

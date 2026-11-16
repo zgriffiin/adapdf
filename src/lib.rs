@@ -17,8 +17,10 @@ pub mod fix;
 pub mod fixtures;
 pub mod fonts;
 pub mod model;
+pub mod pdfmeta;
 pub mod render;
 pub mod rules;
+pub mod verapdf;
 #[cfg(windows)]
 #[allow(unsafe_code)]
 pub mod word;

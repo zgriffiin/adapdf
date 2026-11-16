@@ -1,0 +1,115 @@
+{"report":{"buildInformation":{"releaseDetails":[{
+  "id" : "core",
+  "version" : "1.28.2",
+  "buildDate" : 1752617220000
+},{
+  "id" : "validation-model",
+  "version" : "1.28.2",
+  "buildDate" : 1752617520000
+},{
+  "id" : "gui",
+  "version" : "1.28.2",
+  "buildDate" : 1752620340000
+}]},"jobs":[{"itemDetails":{
+  "name" : "ua1-metadata-missing.pdf",
+  "size" : 1165
+},"validationResult":[ {
+  "details" : {
+    "passedRules" : 103,
+    "failedRules" : 3,
+    "passedChecks" : 13,
+    "failedChecks" : 3,
+    "tags" : [ "metadata", "syntax" ],
+    "ruleSummaries" : [ {
+      "ruleStatus" : "FAILED",
+      "specification" : "ISO 14289-1:2014",
+      "clause" : "7.1",
+      "testNumber" : 10,
+      "status" : "failed",
+      "failedChecks" : 1,
+      "tags" : [ "syntax" ],
+      "description" : "The document catalog dictionary shall include a ViewerPreferences dictionary containing a DisplayDocTitle key, whose value shall be true",
+      "object" : "CosDocument",
+      "test" : "DisplayDocTitle == true",
+      "checks" : [ {
+        "status" : "failed",
+        "context" : "root",
+        "errorMessage" : "ViewerPreferences dictionary is not present in the document Catalog, or DisplayDocTitle key is set to false or is not present in the ViewerPreferences dictionary (ViewerPreferences = null, DisplayDocTitle = null)",
+        "errorArguments" : [ null, null ]
+      } ]
+    }, {
+      "ruleStatus" : "FAILED",
+      "specification" : "ISO 14289-1:2014",
+      "clause" : "7.1",
+      "testNumber" : 9,
+      "status" : "failed",
+      "failedChecks" : 1,
+      "tags" : [ "metadata" ],
+      "description" : "The Metadata stream in the document's catalog dictionary shall contain a dc:title entry, where dc is the recommended prefix for the Dublin Core metadata schema as defined in the XMP specification, which clearly identifies the document",
+      "object" : "MainXMPPackage",
+      "test" : "dc_title != null",
+      "checks" : [ {
+        "status" : "failed",
+        "context" : "root/document[0]/metadata[0](6 0 obj PDMetadata)/XMPPackage[0]",
+        "errorMessage" : "Metadata stream does not contain dc:title",
+        "errorArguments" : [ ]
+      } ]
+    }, {
+      "ruleStatus" : "FAILED",
+      "specification" : "ISO 14289-1:2014",
+      "clause" : "5",
+      "testNumber" : 1,
+      "status" : "failed",
+      "failedChecks" : 1,
+      "tags" : [ "metadata" ],
+      "description" : "The PDF/UA version and conformance level of a file shall be specified using the PDF/UA Identification extension schema",
+      "object" : "MainXMPPackage",
+      "test" : "containsPDFUAIdentification == true",
+      "checks" : [ {
+        "status" : "failed",
+        "context" : "root/document[0]/metadata[0](6 0 obj PDMetadata)/XMPPackage[0]",
+        "errorMessage" : "The document metadata stream doesn't contain PDF/UA Identification Schema",
+        "errorArguments" : [ ]
+      } ]
+    } ]
+  },
+  "jobEndStatus" : "normal",
+  "profileName" : "PDF/UA-1 validation profile",
+  "statement" : "PDF file is not compliant with Validation Profile requirements.",
+  "compliant" : false
+} ],"processingTime":{
+  "start" : 1794854308295,
+  "finish" : 1794854308724,
+  "duration" : "00:00:00.429",
+  "difference" : 429
+}}],"batchSummary":{
+  "duration" : {
+    "start" : 1794854308214,
+    "finish" : 1794854308755,
+    "duration" : "00:00:00.541",
+    "difference" : 541
+  },
+  "totalJobs" : 1,
+  "outOfMemory" : 0,
+  "veraExceptions" : 0,
+  "multiJob" : false,
+  "failedEncryptedJobs" : 0,
+  "validationSummary" : {
+    "nonCompliantPdfaCount" : 1,
+    "totalJobCount" : 1,
+    "failedJobCount" : 0,
+    "compliantPdfaCount" : 0,
+    "successfulJobCount" : 1
+  },
+  "failedParsingJobs" : 0,
+  "featuresSummary" : {
+    "totalJobCount" : 0,
+    "failedJobCount" : 0,
+    "successfulJobCount" : 0
+  },
+  "repairSummary" : {
+    "totalJobCount" : 0,
+    "failedJobCount" : 0,
+    "successfulJobCount" : 0
+  }
+}}}

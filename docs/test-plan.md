@@ -3,8 +3,10 @@
 Status: M2 (all pre-check rules), plus groups, canvases and annotated
 screenshots (IMG-007), M3a (the Word automation layer, the first `windows_word`
 tests, and table styles in the colour rules) and M3b (stage 2: the fix engine and
-`adapdf fix`), including the stage 2 tests that need Word. This plan says what is
-tested now and what is only planned. A row marked "planned" has no test yet.
+`adapdf fix`), including the stage 2 tests that need Word, and M4b (stage 4, the
+PDF metadata fixes, and stage 5, the veraPDF run, as library code). This plan
+says what is tested now and what is only planned. A row marked "planned" has no
+test yet.
 
 ## Scope
 
@@ -31,9 +33,15 @@ on the Word module of M3a, in `tests/fix_word.rs`. They also gave the real name
 of Word's lock file (the rule in `fix::lock_file_names` was corrected), and the
 name of a backup now uses local time.
 
-Not built: Word export (only the base in `src/word` exists), PDF metadata
-fixes, veraPDF, the report, the app and the installer. "Planned tests (not
-built)" lists each of them, requirement by requirement.
+M4b built stage 4 (`src/pdfmeta`) and stage 5 (`src/verapdf`) as library code,
+the script that downloads the bundled tools (`scripts/fetch-vendor.ps1`) and the
+first test for N-01. No command uses stages 4 and 5 yet: `adapdf export` comes
+when stage 3 (M4a) is merged. "How M4b reads stages 4 and 5" and "Known gaps in
+M4b" below say what was decided and what is left.
+
+Not built: Word export (only the base in `src/word` exists), the report, the
+`export` command, the app and the installer. "Planned tests (not built)" lists
+each of them, requirement by requirement.
 
 **Milestones and phases.** The milestone numbers are not the phase numbers of
 [spec 01](specs/01-product.md#phases). M1 and M2 (with M2a and M2b) together
@@ -53,7 +61,11 @@ colours. The milestone numbers are the plan at the time of writing.
 | CLI | `adapdf check`: exit codes 0, 1 and 2, text output, JSON shape | `tests/cli.rs` | implemented |
 | Fix (stage 2) | The fix engine on fixtures and small built documents: only the spliced bytes change, the backup, the lock file, the atomic write, each fix and its refusals, and the stage 1 re-run. `adapdf fix`: the questions, the answers on stdin, and the exit codes. | `tests/fix_safety.rs`, `tests/fix_engine.rs`, `tests/fix_fixes.rs`, `tests/cli_fix.rs` (helpers in `tests/fix_support/`), and unit tests in `src/fix/` | implemented |
 | Word integration (`windows_word`) | Word opens every fixture (W-01). The session quits its Word after success, an error and a panic. The model's table style colours match what Word shows. Word's lock file name, and a file that Word has open is never written (S2-02, S2-04). Every fixed file opens in Word and Word reads the fix as the model does (S2-15). Later: Word exports a tagged PDF. | `tests/word.rs`, `tests/word_table_styles.rs` and `tests/fix_word.rs` (helpers in `tests/word_support/`), behind the cargo feature `windows_word` | implemented for W-01 to W-04 (M3a, 6 tests) and S2-02, S2-04, S2-15 and the Word part of S2-23 (4 tests); export tests planned (M4) |
-| veraPDF integration | A PDF exported from a fixture has 0 veraPDF PDF/UA-1 failures | behind `windows_word`, because it needs Word to export | planned (M4) |
+| PDF metadata (stage 4) | The metadata checks and fixes on small PDFs made by test code (classic and cross-reference-stream layouts, with and without an earlier update): the original bytes are a prefix of the output, each fix, no change when nothing is missing, no change to content or tags, encrypted and damaged PDFs are refused. | `tests/pdfmeta_fixes.rs` (PDF builder in `tests/pdf_support/`), and unit tests in `src/pdfmeta/` | implemented (M4b); the test on a real Word export (S4-11) is planned |
+| veraPDF (stage 5) without Java | The run command, the JSON of veraPDF read into findings, the table of rule IDs, the pass decision, missing tools, crashes, the timeout, the WCAG profile (with a fake runner and JSON recorded from the real veraPDF) | `tests/verapdf_parse.rs`, `tests/data/verapdf/*.json` | implemented (M4b) |
+| veraPDF integration (feature `verapdf`) | The real veraPDF with the bundled Java on PDFs made by test code (S5-09), and on the stage 4 output (S4-10) | `tests/verapdf_real.rs`, behind the cargo feature `verapdf` (needs `vendor/`) | implemented (M4b, 8 tests) |
+| veraPDF on Word exports | A PDF exported from a fixture has 0 veraPDF PDF/UA-1 failures (S5-10, S5-11) | behind `windows_word`, because it needs Word to export | planned (needs M4a) |
+| No network | No HTTP client in the dependency graph (N-01) | `tests/no_network.rs` | implemented (M4b); N-02 to N-05 are planned |
 | Front-end | The Carbon views in the web UI: each screen, axe-core checks for WCAG 2.1 A and AA, and the focus order (TypeScript) | front-end folder, with Vitest and axe-core | planned (M5) |
 | Installer | The per-user installer installs without admin rights, runs, and removes cleanly on a clean Windows 11 machine | manual checklist | planned (M5) |
 | Manual: Phase 0 and PAC | Real guides exported from Word, checked with veraPDF and PAC. A person confirms PAC reports 0 errors. | manual, with files in `samples/` | planned. Phase 0 is postponed until real guides are in `samples/`. |
@@ -67,7 +79,7 @@ colours. The milestone numbers are the plan at the time of writing.
 | CLI | The `adapdf` binary builds. | Exit codes 0, 1 and 2 are tested for each command. On exit 2 nothing is written to stdout. Output for `--json` parses. |
 | Fix (stage 2, without Word) | The crate builds. No Word, Java or network is needed. Tests write only in their own folders under `target/tmp/`, and remove them. | `cargo test` passes with 0 failed, 0 ignored. Every S2 row that does not need Word and every `fix` row has a test with the name in the row. After each fix, only the target bytes changed (S2-08), the file is valid (S2-09) and stage 1 gives the expected findings (S2-10). |
 | `windows_word` | A Windows machine with desktop Word 16.0 (Microsoft 365). The tests start their own Word instances; no Word window of a person needs to be closed. The Word build number is noted. | `cargo test --features windows_word` passes. After the run the number of `WINWORD.EXE` processes is the same as before. No file the tests made is left in the temp folder. |
-| veraPDF | The bundled veraPDF and Java runtime are in place. For tests on Word exports, the `windows_word` entry applies too. | The exit criterion in "Stage 5" below holds for the named fixtures. |
+| veraPDF | The bundled veraPDF and Java runtime are in `vendor/` (run `scripts/fetch-vendor.ps1` once). For tests on Word exports, the `windows_word` entry applies too. | `cargo test --features verapdf` passes with 0 failed. The exit criterion in "Stage 5" below (S5-10) holds for the named fixtures; it needs the export of M4a and is not run yet. |
 | Front-end (M5) | The web UI builds (its front-end and the Tauri shell). No Word or Java is needed. | `pnpm test` passes with 0 failed. axe-core reports 0 violations for WCAG 2.1 A and AA on each screen. The build passes N-05. |
 | Installer (manual) | A clean Windows 11 machine or snapshot with a standard (non-admin) user, no Java and no earlier install. | Every row of the installer table is signed with a date, the installer version and the machine used. |
 | Phase 0 and PAC (manual) | At least 5 real guides in `samples/` (git ignores them), PAC installed (version noted), the Word build noted. | Every row of the Phase 0 tables has a result. Changes to specs 02 and 03 that the results ask for are made. |
@@ -86,10 +98,15 @@ colours. The milestone numbers are the plan at the time of writing.
 | Tests for one fix | `cargo test fix_` or `cargo test ask_` (the names in the stage 2 table) |
 | Write the fixtures again after a change | `cargo run --example gen-fixtures` |
 | Word tests (need desktop Word; they start their own hidden Word; about 3 minutes) | `cargo test --features windows_word` (also runs everything above). One file: `cargo test --features windows_word --test word`, `--test word_table_styles` or `--test fix_word` |
+| Stage 4 (PDF metadata) tests | `cargo test --test pdfmeta_fixes`; unit tests: `cargo test --lib pdfmeta::` |
+| Stage 5 (veraPDF) tests that need no Java | `cargo test --test verapdf_parse` |
+| Get the bundled veraPDF and Java (once; needs the network) | `powershell -ExecutionPolicy Bypass -File scripts/fetch-vendor.ps1` (checks pinned SHA-256 values; does nothing if `vendor/` is up to date; `-Force` to fetch again) |
+| Tests with the real veraPDF (need `vendor/`; about 40 seconds) | `cargo test --features verapdf` (also runs everything above). One file: `cargo test --features verapdf --test verapdf_real`. With the feature on and `vendor/` missing, these tests fail and say what to run. A plain `cargo test` does not build them. |
+| No network (N-01) | `cargo test --test no_network` |
 | Front-end tests (none yet) | `pnpm test` in the front-end folder |
 | Format, lint | `cargo fmt --check` and `cargo clippy --all-targets --all-features -- -D warnings` |
 
-veraPDF, installer and manual tests will get their steps here when they exist.
+Installer and manual tests will get their steps here when they exist.
 
 ## Test conventions
 
@@ -186,6 +203,18 @@ those 588 and 10 more: 5 in `tests/word.rs`, 1 in `tests/word_table_styles.rs`
 and 4 in `tests/fix_word.rs`, so 598. The run took 2 minutes 45 seconds. The count
 changes as tests are added. `cargo test -- --list` gives the current list.
 
+**M4b counts.** Measured on 2026-11-16 on the M4b tree (the commit "M4b: PDF
+metadata and veraPDF stages", whose parent is `dbda92c`). Commands: `cargo test`
+and `cargo test --features verapdf`, summed from their "test result" lines.
+`cargo test` runs 647 tests, none failed: the 588 above, 10 more unit tests in
+`src/pdfmeta/` (179 unit in all), 24 in `tests/pdfmeta_fixes.rs`, 22 in
+`tests/verapdf_parse.rs` (3 of them run only on Windows, in its `process` module)
+and 3 in `tests/no_network.rs`. `cargo test --features verapdf` runs those 647
+and 8 more in `tests/verapdf_real.rs`, so 655, none failed; the 8 take about 35
+seconds. Stage 3 (M4a) is not in this tree, so the counts do not include it, and
+`windows_word` was not run for M4b (the 598 of the M3 count are unchanged:
+M4b changes no code that those tests use).
+
 ## Traceability: pre-check rules
 
 Test names start with the rule ID in lower case, for example
@@ -262,8 +291,9 @@ The model parts for IMG, TXB and TBL are tested in `model::drawings::tests::*`
 | Stage 2: the user picks the fixes, and ask fixes take typed text | S2-11 to S2-13; `adapdf fix` rows C-01 to C-04 | implemented (M3b) |
 | Interface `adapdf fix` | C-01 to C-04: `tests/cli_fix.rs` | implemented (M3b) |
 | Stage 3: Word export through COM | S3-01 to S3-19 | planned (M4) |
-| Stage 4: PDF metadata fixes | S4-01 to S4-12 | planned (M4) |
-| Stage 5: veraPDF run and message table | S5-01 to S5-11 | planned (M4) |
+| Stage 4: PDF metadata fixes | S4-01 to S4-12 (`src/pdfmeta`) | implemented for S4-01 to S4-10 and S4-12 (M4b: `tests/pdfmeta_fixes.rs`, S4-10 in `tests/verapdf_real.rs`). S4-11 needs a Word export (M4a) and is planned. |
+| Stage 5: veraPDF run and message table | S5-01 to S5-11 (`src/verapdf`) | implemented for S5-01 to S5-05, S5-07 to S5-09 (M4b: `tests/verapdf_parse.rs`, S5-09 in `tests/verapdf_real.rs`). S5-06 is implemented as a typed error; the exit code 2 of the `export` command is planned. S5-10 and S5-11 need a Word export (M4a) and are planned. |
+| The bundled tools (spec 01, technology) | `scripts/fetch-vendor.ps1`, run by hand; `Tool::locate` in `tests/verapdf_parse.rs` and `tests/verapdf_real.rs` | the script is written and was not run as a script (see "Known gaps in M4b"); the same steps were done by hand and the real veraPDF tests pass on the result |
 | Stage 6: HTML and JSON report, and its own accessibility | S6-01 to S6-11 | planned (M4) |
 | Interface `adapdf export` | C-05 to C-08 | planned (M4) |
 | Fixtures open in Word (spec 02, Testing) | W-01 (`word_opens_every_fixture`) | implemented (M3a) |
@@ -271,14 +301,16 @@ The model parts for IMG, TXB and TBL are tested in `model::drawings::tests::*`
 | App (file picker, findings list, export, report) | A-01 to A-07 | planned (M5) |
 | Installer | I-01 to I-09 | planned (M5) |
 | Word template and acceptance (spec 04) | T-01 to T-10 | planned (phase 1, template) |
-| No network (spec 01) | N-01 to N-05 | planned |
+| No network (spec 01) | N-01 to N-05 | N-01 implemented (M4b: `tests/no_network.rs`); N-02 to N-05 planned |
 | Phase 0 and PAC | The Phase 0 tables and P0-01 to P0-09 | planned (postponed) |
 
 ## Planned tests (not built)
 
 Nothing in this section is built, except the rows W-01 to W-04 in "Fixture
-realism", which are marked implemented, and the stage 2 rows and the `fix` rows
-(C-01 to C-04), which have a status column that says what was built in M3b. Each
+realism", which are marked implemented, the stage 2 rows and the `fix` rows
+(C-01 to C-04), which have a status column that says what was built in M3b, the
+stage 4 and 5 rows (S4-01 to S4-12 and S5-01 to S5-11), which end with a status
+that says what was built in M4b, and the row N-01. Each
 row says what a test must show, so that
 the person who builds the stage knows when it is done. Test names are
 proposals. Levels: **unit** (no Word, Java or network), **CLI** (runs the
@@ -291,10 +323,13 @@ level, fixture or input, and the pass condition.
 Test seams the unit rows need. They are design requirements of the tests. The
 seam of stage 2 is built (M3b): the file system calls go through the trait
 `fix::FileSystem`, which a test can record or make fail, and the clock is a
-value in `fix::Environment`. The others are not in the code yet: the Word COM
-calls of stage 3 go
+value in `fix::Environment`. The seam of stage 5 is built (M4b): the process
+calls go through the trait `verapdf::Runner`, which a test can replace with a
+fake that records the command and gives any output, error or timeout, and the
+Java and veraPDF paths (`verapdf::Tool`) and the timeout are arguments. The
+others are not in the code yet: the Word COM calls of stage 3 go
 through a small trait with a fake that records calls and can block, fail or
-panic; the Word timeout and the path of veraPDF can be set by the
+panic; the Word timeout can be set by the
 caller.
 
 ### Decided points
@@ -410,46 +445,49 @@ Fix IDs in `src/findings.rs`: 11 auto (`SetDefaultLanguage`,
 
 ### Stage 4: PDF metadata fixes (spec 02, stage 4)
 
-Fixtures: small PDFs made by test code (the planned `lopdf` dependency can
-write them), kept in `tests/pdf-fixtures/` with a drift test like the .docx
-fixtures. Names: `tagged-complete`, `missing-pdfua`, `missing-title`,
-`missing-displaydoctitle`, `missing-lang`, `no-markinfo`, `no-structtreeroot`
-and `all-missing`, each with a classic cross-reference table and, where it
-matters, a cross-reference stream.
+Fixtures: small PDFs made by test code with `lopdf`, in memory, by the `Pdf`
+builder in `tests/pdf_support/mod.rs` (not kept as files, so there is no drift
+test). `Pdf::complete()` is `tagged-complete`; `Pdf::all_missing()` is
+`all-missing`; the other names of the first plan (`missing-pdfua`,
+`missing-title`, `missing-displaydoctitle`, `missing-lang`, `no-markinfo`,
+`no-structtreeroot`) are the builder's fields changed one at a time. The `modern`
+field gives object streams and a cross-reference stream; `with_foreign_update`
+adds an update made by another writer.
 
 | # | Requirement | Planned test name | Level | Fixture or input | Pass condition |
 |---|---|---|---|---|---|
-| S4-01 | Incremental update: new bytes at the end, existing bytes not rewritten | `pdfmeta_output_starts_with_the_original_bytes` | unit | `all-missing` (classic and stream variants) | The original bytes are a byte prefix of the output. The output is longer. The new tail has its own cross-reference section whose `/Prev` points to the old one. |
-| S4-02 | XMP `pdfuaid:part` = 1 | `pdfmeta_adds_pdfuaid_part_1` | unit | `missing-pdfua`; a copy that already has 1; a copy that has 2 | Missing: added, other XMP content kept. Already 1: no change. A value other than 1 is reported as an error and not changed. |
-| S4-03 | XMP `dc:title` and Info `Title` from the .docx title | `pdfmeta_copies_the_title` | unit | `missing-title` with the .docx title "Adapdf test guide"; a copy missing only one of the two | Both are set to the .docx title; only the missing one is added when one is present. An empty .docx title: nothing is invented and an error is reported. |
-| S4-04 | `/ViewerPreferences /DisplayDocTitle true` | `pdfmeta_sets_display_doc_title` | unit | `missing-displaydoctitle`; a copy with a `ViewerPreferences` that has other keys; a copy with it true | Set to true. Other keys are kept. Already true: no change. |
-| S4-05 | Catalog `/Lang` from the .docx default language | `pdfmeta_copies_the_language` | unit | `missing-lang` with default language en-US; a copy that has `/Lang` | `/Lang (en-US)` is added. An existing value is not changed. |
-| S4-06 | `/MarkInfo /Marked true` and `/StructTreeRoot` are not fixed; the error is reported (spec 02) | `pdfmeta_reports_missing_markinfo_and_structtreeroot` | unit | `no-markinfo`, `no-structtreeroot` | No `/MarkInfo` or `/StructTreeRoot` object is in the appended bytes. An error finding says the export failed (decided point 8). |
-| S4-07 | The content and the tags are never changed (AGENTS.md; spec 01) | `pdfmeta_does_not_touch_content_or_tags` | unit | `all-missing` | The objects in the appended tail are only the catalog, the Info dictionary and the metadata stream (and `ViewerPreferences` if it is an indirect object). No page, content stream, font or structure element is redefined. The catalog's `/StructTreeRoot` and `/Pages` references are the same as before. |
-| S4-08 | Nothing missing means no change | `pdfmeta_no_change_when_nothing_is_missing` | unit | `tagged-complete` | The output bytes equal the input. The report says there were no changes. |
-| S4-09 | Each change is listed in the report | `pdfmeta_changes_are_listed` | unit | Each fixture above | The list of changes (what, before, after) matches the differences found by comparing the two files. |
-| S4-10 | The result is a readable PDF and the metadata failures are gone | `pdfmeta_output_passes_verapdf_metadata_checks` | veraPDF | Outputs of S4-02 to S4-05 | veraPDF reads the file. The metadata-related failures that the input had are gone. |
-| S4-11 | What Word already writes (spec 02: "keep only the fixes that are needed") | `pdfmeta_on_a_real_word_export` | windows_word | A pass fixture exported by Word | Values that Word wrote are left alone. The values that were added are recorded in the Phase 0 table. |
-| S4-12 | A PDF the tool cannot read | `pdfmeta_reports_a_pdf_it_cannot_read` | unit | A truncated PDF; an encrypted PDF | Exit 2. The input file is unchanged. |
+| S4-01 | Incremental update: new bytes at the end, existing bytes not rewritten | `pdfmeta_output_starts_with_the_original_bytes` | unit | `all-missing` (classic and stream variants) | The original bytes are a byte prefix of the output. The output is longer. The new tail has its own cross-reference section whose `/Prev` points to the old one. **Implemented (M4b).** The tests run on four layouts: classic, classic after an update by another program (`with_foreign_update`, made with `lopdf`'s own incremental writer), cross-reference stream with object streams, and that after an update. Each is read again with `lopdf` (one more cross-reference section, no repair), and the `/Prev` in the new tail is the old `startxref`. The prefix holds by construction: `pdfmeta::Outcome::appended` has only the new bytes, and the output is the original and then those bytes. |
+| S4-02 | XMP `pdfuaid:part` = 1 | `pdfmeta_adds_pdfuaid_part_1` | unit | `missing-pdfua`; a copy that already has 1; a copy that has 2 | Missing: added, other XMP content kept. Already 1: no change. A value other than 1 is reported as an error and not changed. **Implemented (M4b).** The case with no `/Metadata` at all is also tested (`a_missing_xmp_stream_is_made`). |
+| S4-03 | XMP `dc:title` and Info `Title` from the .docx title | `pdfmeta_copies_the_title` | unit | `missing-title` with the .docx title "Adapdf test guide"; a copy missing only one of the two | Both are set to the .docx title; only the missing one is added when one is present. An empty .docx title: nothing is invented and an error is reported. **Implemented (M4b).** More: an empty title in the PDF counts as missing, a title with other letters is written as UTF-16 in the Info dictionary and escaped in the XMP, and the title and language come from the .docx model (`the_source_metadata_comes_from_the_docx`). |
+| S4-04 | `/ViewerPreferences /DisplayDocTitle true` | `pdfmeta_sets_display_doc_title` | unit | `missing-displaydoctitle`; a copy with a `ViewerPreferences` that has other keys; a copy with it true | Set to true. Other keys are kept. Already true: no change. **Implemented (M4b).** Direct and indirect `ViewerPreferences`. |
+| S4-05 | Catalog `/Lang` from the .docx default language | `pdfmeta_copies_the_language` | unit | `missing-lang` with default language en-US; a copy that has `/Lang` | `/Lang (en-US)` is added. An existing value is not changed. **Implemented (M4b).** No language in the .docx and none in the PDF is an error, and nothing is invented. |
+| S4-06 | `/MarkInfo /Marked true` and `/StructTreeRoot` are not fixed; the error is reported (spec 02) | `pdfmeta_reports_missing_markinfo_and_structtreeroot` | unit | `no-markinfo`, `no-structtreeroot` | No `/MarkInfo` or `/StructTreeRoot` object is in the appended bytes. An error finding says the export failed (decided point 8). **Implemented (M4b), and stricter than the row:** when either is missing nothing at all is appended, not even the other metadata fixes, because the export failed and the file is thrown away. `MarkInfo` with `Marked false` counts as missing. |
+| S4-07 | The content and the tags are never changed (AGENTS.md; spec 01) | `pdfmeta_does_not_touch_content_or_tags` | unit | `all-missing` | The objects in the appended tail are only the catalog, the Info dictionary and the metadata stream (and `ViewerPreferences` if it is an indirect object). No page, content stream, font or structure element is redefined. The catalog's `/StructTreeRoot` and `/Pages` references are the same as before. **Implemented (M4b).** Run on all four layouts. The appended text is also searched for `/Kids`, `/MediaBox`, `/StructElem`, `/Font`, `BT` and `/Contents`. |
+| S4-08 | Nothing missing means no change | `pdfmeta_no_change_when_nothing_is_missing` | unit | `tagged-complete` | The output bytes equal the input. The report says there were no changes. **Implemented (M4b)** for both layouts, and `fix_file` leaves the file and its modified time alone. |
+| S4-09 | Each change is listed in the report | `pdfmeta_changes_are_listed` | unit | Each fixture above | The list of changes (what, before, after) matches the differences found by comparing the two files. **Implemented (M4b).** Each change has the field, a plain description, the old value and the new value; the JSON names are tested. |
+| S4-10 | The result is a readable PDF and the metadata failures are gone | `pdfmeta_output_passes_verapdf_metadata_checks` | veraPDF | Outputs of S4-02 to S4-05 | veraPDF reads the file. The metadata-related failures that the input had are gone. **Implemented (M4b)** in `tests/verapdf_real.rs` (feature `verapdf`), on the four layouts. Before the fix veraPDF fails exactly 5-1, 7.1-9 and 7.1-10; after it, 0 failures. veraPDF has its own PDF reader, so this also shows that the new cross-reference section is valid for a reader that is not `lopdf`. `the_language_failure_goes_away_when_the_pdf_has_a_language` does the same for 7.2-34. |
+| S4-11 | What Word already writes (spec 02: "keep only the fixes that are needed") | `pdfmeta_on_a_real_word_export` | windows_word | A pass fixture exported by Word | Values that Word wrote are left alone. The values that were added are recorded in the Phase 0 table. **Planned.** It needs the Word export of M4a. |
+| S4-12 | A PDF the tool cannot read | `pdfmeta_reports_a_pdf_it_cannot_read` | unit | A truncated PDF; an encrypted PDF | Exit 2. The input file is unchanged. **Implemented (M4b)** as typed errors (`PdfMetaError::Unreadable`, `Encrypted`, `Io`); the exit code 2 belongs to the `export` command. The input file is unchanged. A PDF whose cross-reference table `lopdf` had to repair is refused too, because an update that points to a wrong table would be wrong. Encrypted: with an owner password only and with a user password. |
 
 ### Stage 5: veraPDF (spec 02, stage 5)
 
-Fixtures: JSON output of veraPDF for small PDFs made by test code, saved in
-`tests/verapdf/`.
+Fixtures: JSON output of veraPDF 1.28.2 for small PDFs made by test code (the same
+`Pdf` builder), recorded and saved in `tests/data/verapdf/` (7 files; only the file
+name in them was shortened). The real-tool rows run the bundled veraPDF.
 
 | # | Requirement | Planned test name | Level | Fixture or input | Pass condition |
 |---|---|---|---|---|---|
-| S5-01 | The command is `verapdf --flavour ua1 --format json <pdf>` | `verapdf_runs_the_ua1_profile_command` | unit | A fake runner that records the command | Arguments are exactly `--flavour ua1 --format json` and the PDF path. The bundled veraPDF is used, not one on the PATH. |
-| S5-02 | Each failed rule becomes a finding with a plain message | `verapdf_json_failed_rules_become_findings` | unit | A saved JSON with 3 failed rules, 2 of them mapped | 3 findings. Each has the clause, the test number, a message, how to fix, and the context path. |
-| S5-03 | A table links common veraPDF rule IDs to the Word cause and the fix (for example "Figure without alt text" to IMG-001) | `verapdf_every_mapped_rule_has_a_message` | unit | The table, and one saved JSON for each mapped ID | Every mapped ID gives its message and its linked pre-check rule, which is in `RuleId::ALL`. The table has no ID without a test. |
-| S5-04 | An ID that is not in the table is still shown | `verapdf_unmapped_rule_keeps_the_original_text` | unit | A saved JSON with an unmapped rule | A finding with the original clause text and ID. It is not dropped. |
-| S5-05 | The WCAG machine-check profile, if installed, is shown as warnings (spec 02) | `verapdf_wcag_profile_results_are_warnings` | unit | A fake runner for a veraPDF that has the profile, and one that does not | Profile results have severity warning and do not change pass or fail. Without the profile there is no second run, and the report says it was not available. |
-| S5-06 | veraPDF or Java is missing: exit 2 with a clear message | `verapdf_missing_gives_exit_2` | CLI | The path of veraPDF set to a folder that does not exist; a veraPDF folder without the Java runtime | Exit 2 in both. stderr names what is missing. stdout is empty. |
-| S5-07 | A crash is not a pass | `verapdf_crash_or_bad_output_is_not_a_pass` | unit | A runner that exits with an error, gives empty output, or gives invalid JSON | Exit 2, not pass. |
-| S5-08 | Any failure means the PDF does not pass | `verapdf_any_failure_means_not_pass` | unit | JSON with 1 failed check; JSON with 0 failed checks | 1 failed check: not pass, exit 1. 0 failed: pass. |
-| S5-09 | The real veraPDF runs on a PDF made by test code | `verapdf_runs_on_a_generated_pdf` | veraPDF | `tagged-complete` | The JSON parses and the failure count is the one the test knows. |
-| S5-10 | **Exit criterion.** Word-made PDFs of passing fixtures have 0 veraPDF failures (spec 01, success criterion 1, applied to the fixtures) | `verapdf_zero_failures_on_pass_fixtures` | veraPDF with windows_word | The 33 pass fixtures that have content and need no picture data: DOC-001 to DOC-006, HDG-001 to HDG-004, HDG-006, LST-001, LST-002, TXB-001 to TXB-004, TBL-001 to TBL-006, LNK-001 to LNK-003, CLR-001, CLR-002, TXT-001 to TXT-004 and IMG-006. | Each is exported by Word and checked. 0 failures for each. The 6 pass fixtures with a picture (IMG-001 to IMG-005 and IMG-007) are added when the builder writes a small image part (see "Known gaps in M2a"). Failing fixtures are not in the criterion, because stage 1 blocks those with errors. A failure here is a finding for Phase 0: a missing source rule or a Word export problem. |
-| S5-11 | Information only: veraPDF on failing fixtures that have only warnings | `verapdf_on_warning_fixtures_is_recorded` | veraPDF with windows_word | The `*-fail` fixtures of warning rules that can be exported | The veraPDF failures are recorded, to see which warnings need to become errors. No pass condition. |
+| S5-01 | The command is `verapdf --flavour ua1 --format json <pdf>` | `verapdf_runs_the_ua1_profile_command` | unit | A fake runner that records the command | Arguments are exactly `--flavour ua1 --format json` and the PDF path. The bundled veraPDF is used, not one on the PATH. **Implemented (M4b).** The command is the Java of the bundle with the veraPDF jar files and the main class `org.verapdf.apps.GreenfieldCliWrapper`, which is what `verapdf.bat` runs. The arguments after the main class are exactly the ones in the row. |
+| S5-02 | Each failed rule becomes a finding with a plain message | `verapdf_json_failed_rules_become_findings` | unit | A saved JSON with 3 failed rules, 2 of them mapped | 3 findings. Each has the clause, the test number, a message, how to fix, and the context path. **Implemented (M4b)** on JSON recorded from the real veraPDF 1.28.2: 3 failed rules, 7 failed rules, and 1 (the figure). All of them are mapped, so the unmapped case is in S5-04. veraPDF writes the failed rules in a different order from run to run; the tool sorts them by clause (as numbers) and test number. |
+| S5-03 | A table links common veraPDF rule IDs to the Word cause and the fix (for example "Figure without alt text" to IMG-001) | `verapdf_every_mapped_rule_has_a_message` | unit | The table, and one saved JSON for each mapped ID | Every mapped ID gives its message and its linked pre-check rule, which is in `RuleId::ALL`. The table has no ID without a test. **Implemented (M4b).** The table has 28 entries. The test makes a JSON for every entry from a recorded report and checks the message, the fix and the linked rule; `the_mapped_rule_ids_are_these` lists the IDs, so a new entry cannot be added without a place in the test. 11 of the IDs are also in the reports that were recorded from the real veraPDF. |
+| S5-04 | An ID that is not in the table is still shown | `verapdf_unmapped_rule_keeps_the_original_text` | unit | A saved JSON with an unmapped rule | A finding with the original clause text and ID. It is not dropped. **Implemented (M4b).** The finding has veraPDF's own description, the clause and the test number. |
+| S5-05 | The WCAG machine-check profile, if installed, is shown as warnings (spec 02) | `verapdf_wcag_profile_results_are_warnings` | unit | A fake runner for a veraPDF that has the profile, and one that does not | Profile results have severity warning and do not change pass or fail. Without the profile there is no second run, and the report says it was not available. **Implemented (M4b)**, with the real profile file `WCAG-2-2-Machine.xml` of veraPDF 1.28.2 ("WCAG 2.2 machine validation profile"; `--profile <file>`). The second run happens only when that file is in the bundle. A WCAG finding that repeats a PDF/UA-1 failure (same specification, clause and test) is not shown twice. A WCAG run that fails is recorded (`WcagOutcome::Failed`) and does not change the result. The real run is in `the_wcag_machine_profile_of_the_bundle_runs`. |
+| S5-06 | veraPDF or Java is missing: exit 2 with a clear message | `verapdf_missing_gives_exit_2` | CLI | The path of veraPDF set to a folder that does not exist; a veraPDF folder without the Java runtime | Exit 2 in both. stderr names what is missing. stdout is empty. **Implemented (M4b) as typed errors** (`JavaMissing`, `VeraPdfMissing`), checked before anything is started, with the path in the message. The exit code 2 and the empty stdout belong to the `export` command and are planned (C-07). |
+| S5-07 | A crash is not a pass | `verapdf_crash_or_bad_output_is_not_a_pass` | unit | A runner that exits with an error, gives empty output, or gives invalid JSON | Exit 2, not pass. **Implemented (M4b)** as typed errors for 11 cases, including a PDF that veraPDF cannot read (exit code 7 and a `taskException` in the JSON), a timeout and a program that cannot start. The exit code 2 is planned (C-07). The timeout is also tested with a real process (`verapdf_timeout_stops_the_process`) and with the real veraPDF. |
+| S5-08 | Any failure means the PDF does not pass | `verapdf_any_failure_means_not_pass` | unit | JSON with 1 failed check; JSON with 0 failed checks | 1 failed check: not pass, exit 1. 0 failed: pass. **Implemented (M4b).** Not compliant, a failed check, or a failed rule: not a pass, also when the rule list is empty. A job that did not end normally is an error. The exit code 1 is planned (C-06). |
+| S5-09 | The real veraPDF runs on a PDF made by test code | `verapdf_runs_on_a_generated_pdf` | veraPDF | `tagged-complete` | The JSON parses and the failure count is the one the test knows. **Implemented (M4b)** (feature `verapdf`): `Pdf::complete()` (the `tagged-complete` fixture) has 0 failures, in the classic layout and with object streams; an untagged PDF with an unembedded font has exactly 7 failed rules; a figure without alt text fails only 7.3-1 and is linked to IMG-001. |
+| S5-10 | **Exit criterion.** Word-made PDFs of passing fixtures have 0 veraPDF failures (spec 01, success criterion 1, applied to the fixtures) | `verapdf_zero_failures_on_pass_fixtures` | veraPDF with windows_word | The 33 pass fixtures that have content and need no picture data: DOC-001 to DOC-006, HDG-001 to HDG-004, HDG-006, LST-001, LST-002, TXB-001 to TXB-004, TBL-001 to TBL-006, LNK-001 to LNK-003, CLR-001, CLR-002, TXT-001 to TXT-004 and IMG-006. | Each is exported by Word and checked. 0 failures for each. The 6 pass fixtures with a picture (IMG-001 to IMG-005 and IMG-007) are added when the builder writes a small image part (see "Known gaps in M2a"). Failing fixtures are not in the criterion, because stage 1 blocks those with errors. A failure here is a finding for Phase 0: a missing source rule or a Word export problem. **Planned.** It needs the Word export of M4a. |
+| S5-11 | Information only: veraPDF on failing fixtures that have only warnings | `verapdf_on_warning_fixtures_is_recorded` | veraPDF with windows_word | The `*-fail` fixtures of warning rules that can be exported | The veraPDF failures are recorded, to see which warnings need to become errors. No pass condition. **Planned.** It needs the Word export of M4a. |
 
 ### Stage 6: report (spec 02, stage 6)
 
@@ -489,7 +527,7 @@ the test needs a parser, which needs a decision.
 
 | # | Requirement | Planned test name | Level | Fixture or input | Pass condition |
 |---|---|---|---|---|---|
-| N-01 | The shipped program has no HTTP client | `no_http_client_in_the_dependency_graph` | unit | `Cargo.lock` (read as text) and the `windows` crate features in `Cargo.toml` | None of `reqwest`, `hyper`, `ureq`, `curl`, `attohttpc`, `isahc`, `surf`, `h2`, `native-tls`, `rustls`, `openssl` is a package. No `windows` feature for networking (`Win32_Networking`, `Win32_NetworkManagement`). Equivalent check with `cargo tree -e normal`. |
+| N-01 | The shipped program has no HTTP client | `no_http_client_in_the_dependency_graph` | unit | `Cargo.lock` (read as text) and the `windows` crate features in `Cargo.toml` | None of `reqwest`, `hyper`, `ureq`, `curl`, `attohttpc`, `isahc`, `surf`, `h2`, `native-tls`, `rustls`, `openssl` is a package. No `windows` feature for networking (`Win32_Networking`, `Win32_NetworkManagement`). Equivalent check with `cargo tree -e normal`. **Implemented (M4b)** in `tests/no_network.rs`: the lock file (all packages, also those only used for tests), `Cargo.toml`, and `cargo tree -e normal --locked --offline`. The list of crates has 17 names; a third test shows that the check finds a client when there is one. |
 | N-02 | A full run works with the network off | `export_runs_with_the_network_disabled` | manual | A pass fixture, on a machine with the network adapters disabled | The same PDF and the same veraPDF result as with the network on. |
 | N-03 | The tool, the bundled Java and WebView2 make no connection | `no_connection_attempts_in_a_full_run` | manual | A Windows Firewall rule that blocks outbound traffic for `adapdf.exe`, the bundled `java.exe` and `msedgewebview2.exe`, with logging on, and a full `export` | The run succeeds and the firewall log has no entry for those three programs. |
 | N-04 | Only made-up documents are in git (AGENTS.md) | `repo_has_only_made_up_documents` | unit | `git ls-files` | The tracked `.docx` and `.pdf` files are the catalogue, the PDF fixtures and the template files, and nothing else. |
@@ -1122,6 +1160,128 @@ the code and the tests together if the spec changes.
   documents only (see "Known gaps in M1").
 - **The file can be changed between the release of the exclusive handle and the
   move.** The gap is very short; the tool does not guard it.
+
+## How M4b reads stages 4 and 5
+
+Decisions that the specs leave open. A reader of the code needs them.
+
+**Stage 4 (`src/pdfmeta`)**
+
+- **API.** `pdfmeta::check_bytes(pdf, &SourceMetadata) -> Result<Outcome>` works
+  out the fix and writes nothing. `Outcome::appended` holds only the bytes to put
+  after the original; `Outcome::apply(original)` is the new file. `fix_file(path,
+  &source)` does it for a file: it writes the new file to `<name>.adapdf-metadata.tmp`
+  next to it and renames it over the original, and it does not touch the file
+  when nothing is missing. `SourceMetadata::from_document` takes the .docx title
+  and default language from the model. The `Report` has `changes` (field, plain
+  description, old value, new value) and `issues` (error findings with a message
+  and how to fix).
+- **How the prefix property is guaranteed.** The tail is built by `pdfmeta::update`
+  with its own writer (not `lopdf`'s `IncrementalDocument`), and only the tail is
+  ever produced. It writes the changed objects, then a cross-reference section
+  of the same kind as the file's last one (a table, or a stream when the last
+  `startxref` points to a stream), then a trailer with `/Prev` set to the old
+  `startxref`. `lopdf` is used to read, and to write each object's bytes. The
+  `lopdf` writer was not used for the update because for a cross-reference
+  stream it copies keys of the old stream dictionary (`/DecodeParms`, `/XRefStm`)
+  that must not be repeated. Before it returns, `check_bytes` reads the new file
+  again: it must open, have no cross-reference repair and have exactly one more
+  cross-reference section, or the result is an error and nothing is written.
+- **Untagged PDF: nothing is written.** If `/MarkInfo /Marked true` or
+  `/StructTreeRoot` is missing, the result has the error findings and no change at
+  all, even for metadata that is also missing. The export failed, and the file
+  is not used. This is stricter than row S4-06.
+- **Empty means missing.** A blank title or language in the PDF is replaced; a
+  value that is there is never changed, except that a `pdfuaid:part` other than 1
+  is an error and is left as it is. An empty title or language in the .docx gives
+  an error finding and nothing is invented.
+- **XMP.** A new `rdf:Description` is added before the end of `rdf:RDF` (with the
+  `rdf:about` that the packet already uses); an empty `dc:title` element is
+  replaced where it is; the rest of the packet is kept as text. A missing
+  metadata stream is made. XMP that is not UTF-8 or not XML is refused (exit 2
+  later), not guessed at.
+- **Refused:** an encrypted PDF (typed error `Encrypted`), a PDF whose
+  cross-reference table `lopdf` had to repair, and one whose last `startxref`
+  does not agree with what `lopdf` read.
+- **What Word writes** is not known yet (S4-11, Phase 0). The checks are written to leave
+  anything that is there alone.
+
+**Stage 5 (`src/verapdf`)**
+
+- **API.** `verapdf::validate(&Tool, pdf) -> Result<Validation, VeraPdfError>`
+  (`validate_with` takes a `Runner` and a timeout; the default is 180 seconds).
+  `Tool::locate()` looks for `vendor/` next to the program and then at the root of
+  the source tree; `Tool::new(java, verapdf_home)` and `Tool::in_vendor(dir)` give
+  other paths. `Validation::passed()` is true only when the UA-1 run has no failed
+  rule or check. `Validation::findings()` lists UA-1 errors and then WCAG
+  warnings. Findings and results serialise to JSON.
+- **The command.** The bundled `java.exe` is run directly with `-classpath
+  <verapdf>/bin/*`, UTF-8 output flags and the main class
+  `org.verapdf.apps.GreenfieldCliWrapper` (what `verapdf.bat` does, without
+  `cmd.exe` and without `JAVA_HOME`), then `--flavour ua1 --format json <pdf>`.
+  The window is hidden on Windows. veraPDF's exit codes are 0 (compliant), 1 (not
+  compliant) and 7 (cannot read the PDF); the tool reads the JSON, not the code.
+- **Offline.** veraPDF has no offline switch to set. The command line has no
+  update check (the updater class `SoftwareUpdater` is in the GUI jar, which the
+  command line does not call), and the PDF/UA-1 profile is inside the jar. This
+  was read from the jar contents; no packet capture was done (N-02 and N-03 stay
+  manual).
+- **WCAG profile.** veraPDF 1.28.2 has no `--flavour` for WCAG, but its
+  `profiles/*/PDF_UA/WCAG-2-2-Machine.xml` ("WCAG 2.2 machine validation profile")
+  runs with `--profile <file> --format json`. The tool runs it when the file is
+  there and shows its findings as warnings, without the ones that repeat a UA-1
+  failure. veraPDF 1.30.4 does not install these profile files, which is why 1.28.2
+  is pinned. WTPDF profiles (`wt1a`, `wt1r`) are not WCAG and are not run.
+- **Findings.** `VeraFinding` has the specification, clause, test number, veraPDF's
+  description, the number of failed checks, the context and message of the first
+  failure, a plain message, how to fix, and the linked pre-check rule. The table
+  (`verapdf::rules::TABLE`) has 28 rules of ISO 14289-1. A rule that is not in it
+  keeps veraPDF's description. Findings are sorted by clause number and test
+  number, because veraPDF's order changes from run to run.
+- **Errors, not passes:** missing Java or veraPDF (named, checked before anything
+  starts), a launch failure, a timeout (the process is killed), no output, output
+  that is not veraPDF JSON, a job that did not end normally, and a PDF that
+  veraPDF cannot read.
+
+**The bundled tools.** `scripts/fetch-vendor.ps1` pins veraPDF 1.28.2 (SHA-256
+`d1693a5f0bf0997180f6d97e8a5568b0cf39e27eee338d439c8adb58435c1e89`, from
+`software.verapdf.org/releases/1.28/`) and Temurin JRE 21.0.13+9 x64 Windows
+(SHA-256 `2332c0b4cff6bed722da3567c91d5e47568bcba863fa4945d0a8d6fc76158628`,
+equal to the value in the publisher's `.sha256.txt`). veraPDF publishes only a PGP
+signature, not a checksum file, so its value is of the file as downloaded over
+HTTPS; the signature could not be checked because its key was not found on a key
+server. The installer is IzPack; the script answers it with an XML file and runs
+it with the bundled JRE. Licences: `THIRD-PARTY.md`.
+
+## Known gaps in M4b
+
+- **The fetch script was not run as a script.** The tool that runs commands for
+  the worker did not allow `powershell`. The same steps (download, SHA-256 check,
+  unzip, IzPack install with the same answer file, remove the uninstaller, move
+  into `vendor/`) were done by hand, and the veraPDF tests pass on that result.
+  The script itself has not been run; someone must run it once on a clean
+  `vendor/` and fix anything it shows.
+- **The pack names in the answer file are those of veraPDF 1.28.2.** Version 1.30.x
+  has other pack names (`veraPDF GUI`, `veraPDF CLI`). Changing the pinned version
+  means changing them.
+- **Stage 4 is tested on PDFs made by `lopdf`, not on Word's.** S4-11 needs the
+  export of M4a. If Word writes a layout that `lopdf` reads differently (a hybrid
+  file, a linearized file), the result is a typed error, not a bad file; the
+  update was checked with veraPDF's own reader on four layouts only.
+- **S5-10 and S5-11** (veraPDF on Word exports) are planned and need M4a.
+- **Exit codes** for stage 4 and 5 errors (2) and failures (1) belong to
+  `adapdf export` and are not tested yet (C-06, C-07).
+- **The rule table is a start.** 28 of the 100 or so rules of the profile, chosen
+  from the Word problems that are likely. The links to pre-check rules for 7.1-3
+  (to TXB-001), 7.18.5-2 (to LNK-001) and the table rules are best guesses until
+  Phase 0 shows real failures.
+- **No real WCAG-only warning has been seen.** On every test PDF the WCAG
+  profile only repeated UA-1 failures, so the warnings are tested with the fake
+  runner and the recorded WCAG JSON only.
+- **No check that the network is not used.** See "Offline" above.
+- **`Tool::locate` finds `vendor/` next to the program or in the source tree.**
+  The installer layout (M5) must put it next to `adapdf.exe`.
+- **N-04** (only made-up documents are tracked) is still planned.
 
 ## Known gaps in M1
 
