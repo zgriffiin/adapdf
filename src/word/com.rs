@@ -9,7 +9,7 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 
-use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, RPC_E_CHANGED_MODE};
+use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, RPC_E_CHANGED_MODE, STILL_ACTIVE};
 use windows::Win32::System::Com::{
     CLSCTX_LOCAL_SERVER, CLSIDFromProgID, COINIT_APARTMENTTHREADED, CoCreateInstance,
     CoInitializeEx, CoUninitialize, DISPATCH_FLAGS, DISPATCH_METHOD, DISPATCH_PROPERTYGET,
@@ -19,8 +19,8 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::System::Threading::{
-    OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
-    QueryFullProcessImageNameW, TerminateProcess,
+    GetExitCodeProcess, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+    PROCESS_TERMINATE, QueryFullProcessImageNameW, TerminateProcess,
 };
 use windows::Win32::System::Variant::{
     VAR_CHANGE_FLAGS, VARENUM, VARIANT, VT_BSTR, VT_I4, VariantChangeType,
@@ -469,6 +469,14 @@ pub fn end_process_named(pid: u32, exe_name: &str) -> Result<bool, ComError> {
 }
 
 fn end_if_named(handle: HANDLE, pid: u32, exe_name: &str) -> Result<bool, ComError> {
+    // A process that has ended can still be opened while another program holds
+    // a handle to it, and then its image name cannot be read.
+    let mut code = 0_u32;
+    // SAFETY: `handle` is an open process handle with the query right, and
+    // `code` is valid for writes.
+    if unsafe { GetExitCodeProcess(handle, &mut code) }.is_ok() && code != STILL_ACTIVE.0 as u32 {
+        return Ok(false);
+    }
     let mut buffer = vec![0_u16; 1024];
     let mut length = u32::try_from(buffer.len()).expect("a small buffer");
     // SAFETY: `buffer` is valid for `length` wide characters, and `length` is

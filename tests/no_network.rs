@@ -113,3 +113,47 @@ fn the_check_finds_a_client_when_there_is_one() {
         .collect();
     assert_eq!(forbidden_in(&packages), vec!["reqwest"]);
 }
+
+/// The program makes no socket itself: no `std::net` type is used anywhere in
+/// `src/` (a connection made with the standard library would not be in the
+/// dependency graph, so the two tests above cannot see it).
+#[test]
+fn the_source_makes_no_socket() {
+    const NAMES: &[&str] = &[
+        "std::net",
+        "core::net",
+        "TcpStream",
+        "TcpListener",
+        "UdpSocket",
+        "ToSocketAddrs",
+    ];
+    fn rust_files(dir: &std::path::Path, found: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                rust_files(&path, found);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                found.push(path);
+            }
+        }
+    }
+    let mut files = Vec::new();
+    rust_files(&manifest_path("src"), &mut files);
+    assert!(
+        files.len() > 40,
+        "the source tree was read: {}",
+        files.len()
+    );
+    let mut hits = Vec::new();
+    for file in &files {
+        let text = std::fs::read_to_string(file).unwrap();
+        for (number, line) in text.lines().enumerate() {
+            for name in NAMES {
+                if line.contains(name) {
+                    hits.push(format!("{}:{}: {name}", file.display(), number + 1));
+                }
+            }
+        }
+    }
+    assert!(hits.is_empty(), "the source uses a socket type: {hits:#?}");
+}

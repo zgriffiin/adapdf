@@ -85,3 +85,13 @@ pub fn structure_elements(pdf: &[u8], kind: &str) -> usize {
         })
         .count()
 }
+
+/// The text of all pages of a PDF, read with `lopdf` (it decodes the font maps
+/// that Word writes). Words that are on a line of their own come out one per line.
+pub fn page_text(pdf: &[u8]) -> String {
+    let document = lopdf::Document::load_mem(pdf).expect("a PDF that lopdf can read");
+    let pages: Vec<u32> = document.get_pages().keys().copied().collect();
+    document
+        .extract_text(&pages)
+        .expect("the text of the pages")
+}

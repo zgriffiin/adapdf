@@ -72,8 +72,17 @@ const START_GRACE: Duration = Duration::from_secs(60);
 /// After the end of Word, how long the caller waits for the worker thread.
 const END_GRACE: Duration = Duration::from_secs(15);
 
-/// A function that runs on the Word thread with the id of the tool's Word.
-type Hook = Arc<dyn Fn(u32) + Send + Sync>;
+/// What a test hook is told when the document is open in the tool's Word.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OpenDocument {
+    /// The id of the tool's Word process.
+    pub pid: u32,
+    /// Word's `Document.ReadOnly` for the open document (spec 02: read-only).
+    pub read_only: bool,
+}
+
+/// A function that runs on the Word thread when the document is open.
+type Hook = Arc<dyn Fn(OpenDocument) + Send + Sync>;
 
 /// What the caller can choose.
 #[derive(Clone)]
@@ -81,7 +90,8 @@ pub struct ExportOptions {
     /// How long Word has for the document. The default is [`DEFAULT_TIMEOUT`].
     pub timeout: Duration,
     /// For tests. It runs on the Word thread when the document is open, before
-    /// the fields are updated, with the id of the tool's Word process. A hook
+    /// the fields are updated, with the id of the tool's Word process and
+    /// whether the document is read-only. A hook
     /// that does not return makes the export hang, which is how a test makes a
     /// timeout happen at a known place.
     pub after_open: Option<Hook>,
@@ -290,7 +300,10 @@ fn run_word(
                 let build = app.build()?;
                 let document = app.open_read_only(&docx)?;
                 if let Some(hook) = &hook {
-                    hook(app.pid());
+                    hook(OpenDocument {
+                        pid: app.pid(),
+                        read_only: document.is_read_only()?,
+                    });
                 }
                 let fields = document.update_fields()?;
                 document.export(&temp, &ExportParameters::SPEC)?;
@@ -355,7 +368,7 @@ fn wait_for_word(
 }
 
 /// An existing PDF must be free to replace: nobody else has it open.
-fn ensure_not_locked(pdf: &Path) -> Result<(), ExportError> {
+pub(crate) fn ensure_not_locked(pdf: &Path) -> Result<(), ExportError> {
     if !pdf.exists() {
         return Ok(());
     }
@@ -373,15 +386,15 @@ fn ensure_not_locked(pdf: &Path) -> Result<(), ExportError> {
 
 /// The temporary file that Word writes to, in the folder of the PDF. It is
 /// removed when the value is dropped, unless it was moved into place.
-struct TempPdf {
-    path: PathBuf,
+pub(crate) struct TempPdf {
+    pub(crate) path: PathBuf,
 }
 
 static TEMP_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 impl TempPdf {
     /// Makes an empty file, which also shows that the folder takes new files.
-    fn create(pdf: &Path) -> Result<TempPdf, ExportError> {
+    pub(crate) fn create(pdf: &Path) -> Result<TempPdf, ExportError> {
         let folder = match pdf.parent() {
             Some(folder) if !folder.as_os_str().is_empty() => folder,
             _ => Path::new("."),
@@ -424,7 +437,7 @@ impl TempPdf {
     }
 
     /// Replaces `pdf` with the file. If this fails, `pdf` is as it was.
-    fn move_over(&self, pdf: &Path) -> Result<(), ExportError> {
+    pub(crate) fn move_over(&self, pdf: &Path) -> Result<(), ExportError> {
         fs::rename(&self.path, pdf).map_err(|source| {
             let file = pdf.to_path_buf();
             if pdf.exists() {

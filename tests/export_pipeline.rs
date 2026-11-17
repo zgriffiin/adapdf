@@ -12,9 +12,11 @@
 
 mod pdf_support;
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::fs;
+use std::os::windows::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::time::Duration;
 
 use adapdf::export::{ExportError, ExportParameters, ExportResult, FieldUpdate};
@@ -140,9 +142,52 @@ fn fixture(rule: RuleId, fails: bool) -> Vec<u8> {
         .bytes
 }
 
+/// What an earlier run left next to the .docx. A new run must replace these
+/// only when it has a verdict, so a tool failure must leave them as they are.
+const OLD_PDF: &[u8] = b"%PDF-1.4 the PDF of an earlier run";
+const OLD_HTML: &[u8] = b"<html>the report of an earlier run</html>";
+const OLD_JSON: &[u8] = b"{\"the\": \"report of an earlier run\"}";
+
+/// Runs the export in a folder that already has an earlier `Guide.pdf` and
+/// earlier reports.
+fn run_over_earlier_outputs(stages: &Fake) -> (TempDir, PathBuf, Run) {
+    let dir = TempDir::new("pipeline-earlier");
+    let docx = dir.write("Guide.docx", &clean().build());
+    dir.write("Guide.pdf", OLD_PDF);
+    dir.write("Guide.accessibility.html", OLD_HTML);
+    dir.write("Guide.accessibility.json", OLD_JSON);
+    let run = export_docx(&docx, stages, &FixtureFonts, now());
+    (dir, docx, run)
+}
+
+/// The folder is exactly as `run_over_earlier_outputs` made it: the same four
+/// files with the same bytes, and no temporary file.
+fn assert_earlier_outputs_untouched(dir: &TempDir) {
+    assert_eq!(
+        dir.names(),
+        [
+            "Guide.accessibility.html",
+            "Guide.accessibility.json",
+            "Guide.docx",
+            "Guide.pdf"
+        ]
+    );
+    let read = |name: &str| fs::read(dir.path().join(name)).unwrap();
+    assert_eq!(read("Guide.pdf"), OLD_PDF);
+    assert_eq!(read("Guide.accessibility.html"), OLD_HTML);
+    assert_eq!(read("Guide.accessibility.json"), OLD_JSON);
+}
+
 /// A tool failure: exit 2, a message that names the file, nothing on stdout,
 /// no report and no change to files that were not written by the run.
 fn assert_tool_failure(run: &Run, docx: &Path, expected: &str) {
+    assert_failed_run(run, docx, expected);
+    let (_dir, html, json) = output_paths(docx);
+    assert!(!html.exists() && !json.exists(), "no report is written");
+}
+
+/// The exit code, the empty stdout, the message and no report in the result.
+fn assert_failed_run(run: &Run, docx: &Path, expected: &str) {
     assert_eq!(run.exit, Exit::ToolFailure, "{}", run.stdout);
     assert_eq!(run.exit.code(), 2);
     assert!(run.stdout.is_empty(), "stdout: {}", run.stdout);
@@ -158,8 +203,6 @@ fn assert_tool_failure(run: &Run, docx: &Path, expected: &str) {
         "stderr should contain {expected:?}: {}",
         run.stderr
     );
-    let (_dir, html, json) = output_paths(docx);
-    assert!(!html.exists() && !json.exists(), "no report is written");
 }
 
 // C-05 (without Word), S6-09
@@ -394,13 +437,15 @@ fn pipeline_exit_1_for_an_untagged_pdf() {
         let bytes = pdf.build();
         let kept = bytes.clone();
         let fake = Fake::exporting(move || bytes.clone());
-        let (_dir, docx, run) = run(&fake);
+        // An untagged PDF has a verdict (Fail), so it replaces the old PDF.
+        let (dir, docx, run) = run_over_earlier_outputs(&fake);
         let (pdf_path, html, _) = output_paths(&docx);
         assert_eq!(run.exit, Exit::ErrorsFound, "{name}: {}", run.stdout);
         assert_eq!(run.exit.code(), 1);
         // Nothing was added to the file (spec 02: the tags are not fixed), and
         // the file stays where Word wrote it.
         assert_eq!(fs::read(pdf_path).unwrap(), kept, "{name}");
+        assert_eq!(dir.names().len(), 4, "{name}: no temporary file stays");
         let report = run.report.unwrap();
         assert_eq!(report.summary.verdict, Verdict::Fail, "{name}");
         assert!(report.summary.errors >= 1);
@@ -433,6 +478,38 @@ fn pipeline_exit_1_on_a_verapdf_failure() {
     assert!(output_paths(&docx).0.exists());
 }
 
+// C-06 and S5-08: a veraPDF failure is a verdict (Fail), not a tool failure, so
+// the new PDF replaces the old one and the Fail report replaces the old reports.
+#[test]
+fn a_verapdf_failure_replaces_the_old_pdf_and_the_old_reports() {
+    let new_pdf = Pdf::complete().build();
+    let expected = new_pdf.clone();
+    let mut fake = Fake::exporting(move || new_pdf.clone());
+    fake.validate = Box::new(|_| Ok(validation(UA1_FAIL)));
+    let (dir, docx, run) = run_over_earlier_outputs(&fake);
+    assert_eq!(run.exit, Exit::ErrorsFound, "{}", run.stdout);
+    assert_eq!(
+        dir.names(),
+        [
+            "Guide.accessibility.html",
+            "Guide.accessibility.json",
+            "Guide.docx",
+            "Guide.pdf"
+        ],
+        "no temporary file stays"
+    );
+    let (pdf, html, json) = output_paths(&docx);
+    assert_eq!(fs::read(pdf).unwrap(), expected, "the new PDF is in place");
+    assert!(
+        fs::read_to_string(html)
+            .unwrap()
+            .contains("Result: <strong>Fail</strong>")
+    );
+    let json: Value = serde_json::from_str(&fs::read_to_string(json).unwrap()).unwrap();
+    assert_eq!(json["summary"]["verdict"], "fail");
+    assert_eq!(json["summary"]["pdf"], "Guide.pdf");
+}
+
 // S5-05 and S5-08: WCAG warnings are warnings and do not change a pass.
 #[test]
 fn pipeline_wcag_results_are_warnings_and_do_not_fail_the_run() {
@@ -460,9 +537,10 @@ fn pipeline_wcag_results_are_warnings_and_do_not_fail_the_run() {
 #[test]
 fn pipeline_exit_2_when_word_is_missing() {
     let fake = Fake::word_fails(|| ExportError::Word(WordError::NotInstalled));
-    let (_dir, docx, run) = run(&fake);
-    assert_tool_failure(&run, &docx, "Microsoft Word is not installed");
+    let (dir, docx, run) = run_over_earlier_outputs(&fake);
+    assert_failed_run(&run, &docx, "Microsoft Word is not installed");
     assert_eq!(fake.calls(), [1, 1, 0]);
+    assert_earlier_outputs_untouched(&dir);
 }
 
 // C-07 and S3-06: the timeout.
@@ -473,8 +551,9 @@ fn pipeline_exit_2_on_a_timeout() {
         pid: Some(4242),
         ended: true,
     });
-    let (_dir, docx, run) = run(&fake);
-    assert_tool_failure(&run, &docx, "did not finish the export within 5 minutes");
+    let (dir, docx, run) = run_over_earlier_outputs(&fake);
+    assert_failed_run(&run, &docx, "did not finish the export within 5 minutes");
+    assert_earlier_outputs_untouched(&dir);
 }
 
 // C-07 and S3-04: Word cannot open the file.
@@ -486,8 +565,9 @@ fn pipeline_exit_2_when_word_rejects_the_file() {
             reason: "The file appears to be corrupted".to_string(),
         })
     });
-    let (_dir, docx, run) = run(&fake);
-    assert_tool_failure(&run, &docx, "The file appears to be corrupted");
+    let (dir, docx, run) = run_over_earlier_outputs(&fake);
+    assert_failed_run(&run, &docx, "The file appears to be corrupted");
+    assert_earlier_outputs_untouched(&dir);
 }
 
 // C-07 and decided point 6: a locked PDF names the PDF.
@@ -497,8 +577,67 @@ fn pipeline_exit_2_for_a_locked_pdf_names_the_pdf() {
         file: "C:/g/Guide.pdf".into(),
         source: std::io::Error::other("in use"),
     });
-    let (_dir, docx, run) = run(&fake);
-    assert_tool_failure(&run, &docx, "C:/g/Guide.pdf");
+    let (dir, docx, run) = run_over_earlier_outputs(&fake);
+    assert_failed_run(&run, &docx, "C:/g/Guide.pdf");
+    assert_earlier_outputs_untouched(&dir);
+}
+
+// C-07 and decided point 6: another program holds the old `Guide.pdf` before the
+// run. The pipeline finds it before Word starts, and nothing changes.
+#[test]
+fn a_locked_pdf_is_found_before_word_starts() {
+    let dir = TempDir::new("pipeline-locked");
+    let docx = dir.write("Guide.docx", &clean().build());
+    let old = dir.write("Guide.pdf", OLD_PDF);
+    dir.write("Guide.accessibility.html", OLD_HTML);
+    dir.write("Guide.accessibility.json", OLD_JSON);
+    let held = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .share_mode(0)
+        .open(&old)
+        .unwrap();
+    let fake = Fake::passing();
+    let run = export_docx(&docx, &fake, &FixtureFonts, now());
+    drop(held);
+    assert_failed_run(&run, &docx, "Guide.pdf");
+    assert!(run.stderr.contains("cannot be replaced"), "{}", run.stderr);
+    assert_eq!(fake.calls(), [1, 0, 0], "Word is not started");
+    assert_earlier_outputs_untouched(&dir);
+}
+
+// C-07 and decided point 6: the lock comes after the check of the PDF, while
+// the new PDF is ready. The old PDF stays, the new one is thrown away, and the
+// old reports are not replaced.
+#[test]
+fn a_pdf_that_is_locked_at_the_end_changes_nothing() {
+    let dir = TempDir::new("pipeline-locked-late");
+    let docx = dir.write("Guide.docx", &clean().build());
+    let old = dir.write("Guide.pdf", OLD_PDF);
+    dir.write("Guide.accessibility.html", OLD_HTML);
+    dir.write("Guide.accessibility.json", OLD_JSON);
+    // Another program opens `Guide.pdf` while veraPDF works.
+    let held = Rc::new(RefCell::new(None));
+    let mut fake = Fake::passing();
+    fake.validate = Box::new({
+        let held = Rc::clone(&held);
+        let old = old.clone();
+        move |_| {
+            let file = fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .share_mode(0)
+                .open(&old)
+                .unwrap();
+            *held.borrow_mut() = Some(file);
+            Ok(validation(UA1_PASS))
+        }
+    });
+    let run = export_docx(&docx, &fake, &FixtureFonts, now());
+    drop(held.borrow_mut().take());
+    assert_failed_run(&run, &docx, "Guide.pdf");
+    assert_eq!(fake.calls(), [1, 1, 1]);
+    assert_earlier_outputs_untouched(&dir);
 }
 
 // C-07 and S5-06: veraPDF or Java missing, found before Word starts.
@@ -522,8 +661,8 @@ fn verapdf_missing_gives_exit_2() {
                 _ => unreachable!(),
             })
         });
-        let (dir, docx, run) = run(&fake);
-        assert_tool_failure(
+        let (dir, docx, run) = run_over_earlier_outputs(&fake);
+        assert_failed_run(
             &run,
             &docx,
             if name == "java" {
@@ -533,7 +672,7 @@ fn verapdf_missing_gives_exit_2() {
             },
         );
         assert_eq!(fake.calls(), [1, 0, 0], "Word is not started");
-        assert!(!dir.names().contains(&"Guide.pdf".to_string()));
+        assert_earlier_outputs_untouched(&dir);
     }
 }
 
@@ -550,8 +689,11 @@ fn verapdf_crash_or_bad_output_is_exit_2() {
     ] {
         let mut fake = Fake::passing();
         fake.validate = Box::new(move |_| Err(error()));
-        let (_dir, docx, run) = run(&fake);
-        assert_tool_failure(&run, &docx, "The PDF could not be checked");
+        let (dir, docx, run) = run_over_earlier_outputs(&fake);
+        assert_failed_run(&run, &docx, "The PDF could not be checked");
+        assert_eq!(fake.calls(), [1, 1, 1]);
+        // The new PDF was made, and it is thrown away: it has no verdict.
+        assert_earlier_outputs_untouched(&dir);
     }
 }
 
@@ -559,9 +701,10 @@ fn verapdf_crash_or_bad_output_is_exit_2() {
 #[test]
 fn a_pdf_that_cannot_be_read_is_exit_2() {
     let fake = Fake::exporting(|| b"%PDF-1.4\nnot really a pdf\n%%EOF\n".to_vec());
-    let (_dir, docx, run) = run(&fake);
-    assert_tool_failure(&run, &docx, "The PDF metadata could not be checked");
+    let (dir, docx, run) = run_over_earlier_outputs(&fake);
+    assert_failed_run(&run, &docx, "The PDF metadata could not be checked");
     assert_eq!(fake.calls(), [1, 1, 0], "veraPDF is not run");
+    assert_earlier_outputs_untouched(&dir);
 }
 
 // C-07: the .docx cannot be read.
@@ -575,19 +718,105 @@ fn an_unreadable_docx_is_exit_2() {
     assert_tool_failure(&run, &missing, "cannot be read");
 }
 
-// C-07: the report cannot be written (a folder has its name).
+// C-07, C-11: a report that cannot be written changes nothing. The name of the
+// document is so long that the final names of the PDF and the reports are
+// allowed (a file name has at most 255 characters) but the temporary name of the
+// HTML report (the final name and `.adapdf-<process>-<n>.tmp`) is not. The
+// first temporary file that cannot be made stops the run before anything is
+// moved, and the temporary PDF is removed.
 #[test]
 fn a_report_that_cannot_be_written_is_exit_2() {
-    let dir = TempDir::new("report-blocked");
-    let docx = dir.write("Guide.docx", &clean().build());
-    fs::create_dir(dir.path().join("Guide.accessibility.html")).unwrap();
+    let stem = "G".repeat(225);
+    let dir = TempDir::new("report-not-written");
+    let docx = dir.write(&format!("{stem}.docx"), &clean().build());
+    dir.write(&format!("{stem}.pdf"), OLD_PDF);
+    dir.write(&format!("{stem}.accessibility.html"), OLD_HTML);
+    dir.write(&format!("{stem}.accessibility.json"), OLD_JSON);
     let run = export_docx(&docx, &Fake::passing(), &FixtureFonts, now());
-    assert_eq!(run.exit, Exit::ToolFailure);
-    assert!(run.stdout.is_empty());
+    assert_failed_run(&run, &docx, &format!("{stem}.accessibility.html"));
+    assert!(run.stderr.contains("cannot be written"), "{}", run.stderr);
+    assert_eq!(
+        dir.names(),
+        [
+            format!("{stem}.accessibility.html"),
+            format!("{stem}.accessibility.json"),
+            format!("{stem}.docx"),
+            format!("{stem}.pdf"),
+        ],
+        "no new or temporary file"
+    );
+    let read = |name: String| fs::read(dir.path().join(name)).unwrap();
+    assert_eq!(read(format!("{stem}.pdf")), OLD_PDF);
+    assert_eq!(read(format!("{stem}.accessibility.html")), OLD_HTML);
+    assert_eq!(read(format!("{stem}.accessibility.json")), OLD_JSON);
+}
+
+// C-07, C-11: the reports are written, but the name of the HTML report is a
+// folder, so it cannot be replaced. This comes after the PDF was moved (rare):
+// the new PDF is in place, the message says so and names the report, and no
+// temporary file stays. The JSON of the earlier run is not replaced either,
+// because the HTML report comes first.
+#[test]
+fn a_report_that_cannot_be_replaced_leaves_the_new_pdf_and_says_so() {
+    let dir = TempDir::new("report-not-replaced");
+    let docx = dir.write("Guide.docx", &clean().build());
+    dir.write("Guide.pdf", OLD_PDF);
+    dir.write("Guide.accessibility.json", OLD_JSON);
+    fs::create_dir(dir.path().join("Guide.accessibility.html")).unwrap();
+    let expected = Pdf::complete().build();
+    let run = export_docx(&docx, &Fake::passing(), &FixtureFonts, now());
+    assert_failed_run(&run, &docx, "Guide.accessibility.html");
+    assert!(run.stderr.contains("cannot be replaced"), "{}", run.stderr);
     assert!(
-        run.stderr.contains("Guide.accessibility.html"),
+        run.stderr.contains("new PDF") && run.stderr.contains("already in place"),
         "{}",
         run.stderr
+    );
+    assert_eq!(
+        dir.names(),
+        [
+            "Guide.accessibility.html",
+            "Guide.accessibility.json",
+            "Guide.docx",
+            "Guide.pdf"
+        ],
+        "no temporary file"
+    );
+    assert!(dir.path().join("Guide.accessibility.html").is_dir());
+    assert_eq!(fs::read(dir.path().join("Guide.pdf")).unwrap(), expected);
+    assert_eq!(
+        fs::read(dir.path().join("Guide.accessibility.json")).unwrap(),
+        OLD_JSON
+    );
+}
+
+// Decided point 7 with the temporary files: a blocked export writes its Fail
+// report the same way, leaves no temporary file, and leaves an older PDF alone.
+#[test]
+fn a_blocked_export_writes_its_reports_without_leaving_temporary_files() {
+    let dir = TempDir::new("blocked-temp");
+    let docx = dir.write("Guide.docx", &fixture(RuleId::Hdg002, true));
+    dir.write("Guide.pdf", OLD_PDF);
+    dir.write("Guide.accessibility.html", OLD_HTML);
+    dir.write("Guide.accessibility.json", OLD_JSON);
+    let run = export_docx(&docx, &Fake::passing(), &FixtureFonts, now());
+    assert_eq!(run.exit, Exit::ErrorsFound);
+    assert_eq!(
+        dir.names(),
+        [
+            "Guide.accessibility.html",
+            "Guide.accessibility.json",
+            "Guide.docx",
+            "Guide.pdf"
+        ]
+    );
+    let read = |name: &str| fs::read(dir.path().join(name)).unwrap();
+    assert_eq!(read("Guide.pdf"), OLD_PDF, "an older PDF stays");
+    assert_ne!(read("Guide.accessibility.html"), OLD_HTML);
+    assert!(
+        String::from_utf8(read("Guide.accessibility.json"))
+            .unwrap()
+            .contains("\"verdict\": \"fail\"")
     );
 }
 

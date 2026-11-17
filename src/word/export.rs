@@ -6,6 +6,7 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 
 use serde::Serialize;
+use windows::Win32::System::Variant::VARIANT;
 use windows::core::BSTR;
 
 use super::{Result, WORD_EXE, WordDocument, WordSession, com};
@@ -89,23 +90,30 @@ impl WordDocument<'_> {
         output: &Path,
         parameters: &ExportParameters,
     ) -> Result<()> {
-        let output = std::path::absolute(output).unwrap_or_else(|_| output.to_path_buf());
-        let output = BSTR::from_wide(&output.as_os_str().encode_wide().collect::<Vec<u16>>());
-        let args = vec![
-            ("OutputFileName", output.into()),
-            ("ExportFormat", parameters.export_format.into()),
-            ("OpenAfterExport", parameters.open_after_export.into()),
-            ("OptimizeFor", parameters.optimize_for.into()),
-            ("Item", parameters.item.into()),
-            ("IncludeDocProps", parameters.include_doc_props.into()),
-            ("CreateBookmarks", parameters.create_bookmarks.into()),
-            ("DocStructureTags", parameters.doc_structure_tags.into()),
-            ("BitmapMissingFonts", parameters.bitmap_missing_fonts.into()),
-            ("UseISO19005_1", parameters.use_iso19005_1.into()),
-        ];
+        let args = export_arguments(output, parameters);
         self.document().call("ExportAsFixedFormat", args)?;
         Ok(())
     }
+}
+
+/// The arguments of `ExportAsFixedFormat`, by name and in the order of the
+/// table in spec 02. A test reads them, because only the real Word would show
+/// a wrong name or value that it ignores.
+fn export_arguments(output: &Path, parameters: &ExportParameters) -> Vec<(&'static str, VARIANT)> {
+    let output = std::path::absolute(output).unwrap_or_else(|_| output.to_path_buf());
+    let output = BSTR::from_wide(&output.as_os_str().encode_wide().collect::<Vec<u16>>());
+    vec![
+        ("OutputFileName", output.into()),
+        ("ExportFormat", parameters.export_format.into()),
+        ("OpenAfterExport", parameters.open_after_export.into()),
+        ("OptimizeFor", parameters.optimize_for.into()),
+        ("Item", parameters.item.into()),
+        ("IncludeDocProps", parameters.include_doc_props.into()),
+        ("CreateBookmarks", parameters.create_bookmarks.into()),
+        ("DocStructureTags", parameters.doc_structure_tags.into()),
+        ("BitmapMissingFonts", parameters.bitmap_missing_fonts.into()),
+        ("UseISO19005_1", parameters.use_iso19005_1.into()),
+    ]
 }
 
 /// Reads and edits that the export tests use to stand in for a person's Word:
@@ -129,6 +137,11 @@ impl WordSession {
 }
 
 impl WordDocument<'_> {
+    /// Whether Word has the document open read-only (Word's `ReadOnly`).
+    pub fn is_read_only(&self) -> Result<bool> {
+        Ok(self.document().get_i32("ReadOnly")? != 0)
+    }
+
     /// Whether the document has no unsaved change (Word's `Saved`).
     pub fn is_saved(&self) -> Result<bool> {
         Ok(self.document().get_i32("Saved")? != 0)
@@ -150,4 +163,155 @@ impl WordDocument<'_> {
 /// process that the tool started itself.
 pub fn end_word_process(pid: u32) -> Result<bool> {
     Ok(com::end_process_named(pid, WORD_EXE)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use windows::Win32::System::Variant::{VT_BOOL, VT_BSTR, VT_I4};
+
+    use super::*;
+
+    /// The names, the types and the values that `ExportAsFixedFormat` gets are
+    /// the rows of the table in spec 02, in its order. `OptimizeFor`, `Item` and
+    /// `BitmapMissingFonts` are not seen in a PDF, so this is their only check.
+    #[test]
+    fn the_export_arguments_are_the_spec_table() {
+        let spec = include_str!("../../docs/specs/02-pipeline.md");
+        let table: Vec<(String, String)> = spec
+            .lines()
+            .skip_while(|line| !line.starts_with("| Parameter |"))
+            .skip(2)
+            .take_while(|line| line.starts_with('|'))
+            .map(|row| {
+                let cells: Vec<&str> = row.split('|').map(|c| c.trim().trim_matches('`')).collect();
+                (cells[1].to_string(), cells[2].to_string())
+            })
+            .collect();
+        assert_eq!(table.len(), 10, "the table has 10 rows: {table:?}");
+
+        let args = export_arguments(Path::new("C:/g/Guide.pdf"), &ExportParameters::SPEC);
+        assert_eq!(args.len(), table.len());
+        for ((name, variant), (spec_name, spec_value)) in args.iter().zip(&table) {
+            assert_eq!(name, spec_name);
+            // The output path is a text; the real exports show that it is used.
+            let value = match variant.vt() {
+                VT_BSTR => continue,
+                VT_I4 => i32::try_from(variant).unwrap().to_string(),
+                VT_BOOL => bool::try_from(variant).unwrap().to_string(),
+                other => panic!("{name} has the type {other:?}"),
+            };
+            assert_eq!(&value, spec_value, "{name}");
+        }
+        // The types that Word expects: numbers for the enumerations, Booleans
+        // for the switches.
+        let kinds: Vec<_> = args.iter().map(|(name, v)| (*name, v.vt())).collect();
+        assert_eq!(
+            kinds,
+            [
+                ("OutputFileName", VT_BSTR),
+                ("ExportFormat", VT_I4),
+                ("OpenAfterExport", VT_BOOL),
+                ("OptimizeFor", VT_I4),
+                ("Item", VT_I4),
+                ("IncludeDocProps", VT_BOOL),
+                ("CreateBookmarks", VT_I4),
+                ("DocStructureTags", VT_BOOL),
+                ("BitmapMissingFonts", VT_BOOL),
+                ("UseISO19005_1", VT_BOOL),
+            ]
+        );
+    }
+
+    /// Each field of [`ExportParameters`] reaches the argument of its own name
+    /// and no other: the spec values alone cannot show a swap (several are 0 or
+    /// true).
+    #[test]
+    fn each_parameter_goes_to_its_own_argument() {
+        let spec = ExportParameters::SPEC;
+        let changes: [(&str, ExportParameters); 9] = [
+            (
+                "ExportFormat",
+                ExportParameters {
+                    export_format: 99,
+                    ..spec
+                },
+            ),
+            (
+                "OpenAfterExport",
+                ExportParameters {
+                    open_after_export: !spec.open_after_export,
+                    ..spec
+                },
+            ),
+            (
+                "OptimizeFor",
+                ExportParameters {
+                    optimize_for: 99,
+                    ..spec
+                },
+            ),
+            ("Item", ExportParameters { item: 99, ..spec }),
+            (
+                "IncludeDocProps",
+                ExportParameters {
+                    include_doc_props: !spec.include_doc_props,
+                    ..spec
+                },
+            ),
+            (
+                "CreateBookmarks",
+                ExportParameters {
+                    create_bookmarks: 99,
+                    ..spec
+                },
+            ),
+            (
+                "DocStructureTags",
+                ExportParameters {
+                    doc_structure_tags: !spec.doc_structure_tags,
+                    ..spec
+                },
+            ),
+            (
+                "BitmapMissingFonts",
+                ExportParameters {
+                    bitmap_missing_fonts: !spec.bitmap_missing_fonts,
+                    ..spec
+                },
+            ),
+            (
+                "UseISO19005_1",
+                ExportParameters {
+                    use_iso19005_1: !spec.use_iso19005_1,
+                    ..spec
+                },
+            ),
+        ];
+        let output = Path::new("C:/g/Guide.pdf");
+        // The value of an argument as text (the output path is not compared).
+        let values = |parameters: &ExportParameters| -> Vec<(&'static str, String)> {
+            export_arguments(output, parameters)
+                .into_iter()
+                .filter(|(_, v)| v.vt() != VT_BSTR)
+                .map(|(name, v)| {
+                    let value = if v.vt() == VT_I4 {
+                        i32::try_from(&v).unwrap().to_string()
+                    } else {
+                        bool::try_from(&v).unwrap().to_string()
+                    };
+                    (name, value)
+                })
+                .collect()
+        };
+        let base = values(&spec);
+        for (name, changed) in &changes {
+            let differing: Vec<&str> = base
+                .iter()
+                .zip(values(changed))
+                .filter(|(before, after)| **before != *after)
+                .map(|(before, _)| before.0)
+                .collect();
+            assert_eq!(differing, [*name], "changing {name}");
+        }
+    }
 }

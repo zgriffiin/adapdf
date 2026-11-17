@@ -70,13 +70,16 @@ Word and never uses a Word window that you have open. For `export`:
   timed out (5 minutes), `Guide.pdf` is locked by another program, or a file
   cannot be read or written. Then the message is on stderr, stdout is empty, and
   no report is written.
-- An existing `Guide.pdf` is replaced. The tool does not change the .docx. The
-  report names the newest `Guide.backup-*.docx` next to it, if there is one.
+- An existing `Guide.pdf` is replaced, but only after the new PDF has been
+  checked. If a tool fails after the export (exit 2), the folder is left as it
+  was. The tool does not change the .docx. The report names the newest
+  `Guide.backup-*.docx` next to it, if there is one.
 - The HTML report is an accessible page that works with no script: the checklist
   of the person who reviews the PDF, the place to record the PAC result, and the
   sign-off are form fields on the page.
-- `ADAPDF_VENDOR` names another `vendor` folder (with `jre/` and `verapdf/`). When
-  it is set, only that folder is used.
+- `ADAPDF_VENDOR` names another `vendor` folder (with `jre/` and `verapdf/`). It
+  is for developers: only a debug build (and the tests) reads it, and then only
+  that folder is used. A release build ignores it and uses its own `vendor/`.
 
 `fix` asks its questions on stderr and reads the answers from stdin. It does not
 write while Word has the file open (the `~$` lock file, or a file that cannot

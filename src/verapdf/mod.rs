@@ -108,11 +108,19 @@ impl Tool {
     /// source tree (for development). When neither has the tools, the result is
     /// the folder next to the program, so that [`Tool::check`] names it.
     ///
-    /// The environment variable `ADAPDF_VENDOR` names another `vendor` folder.
-    /// When it is set, it is the only place that is used, so that a wrong path
-    /// is an error that names it and not a silent use of another copy.
+    /// In a debug build (and so in the tests), the environment variable
+    /// `ADAPDF_VENDOR` names another `vendor` folder. When it is set, it is the
+    /// only place that is used, so that a wrong path is an error that names it
+    /// and not a silent use of another copy. A release build ignores the
+    /// variable: the installed program always uses its own bundled `vendor/`.
     pub fn locate() -> Tool {
-        if let Some(folder) = std::env::var_os("ADAPDF_VENDOR").filter(|v| !v.is_empty()) {
+        Tool::locate_with(std::env::var_os("ADAPDF_VENDOR"), cfg!(debug_assertions))
+    }
+
+    /// [`Tool::locate`] with the value of `ADAPDF_VENDOR` and the kind of build
+    /// given, so that a test can try a release build.
+    fn locate_with(vendor_override: Option<OsString>, debug_build: bool) -> Tool {
+        if let Some(folder) = vendor_override.filter(|v| debug_build && !v.is_empty()) {
             return Tool::in_vendor(Path::new(&folder));
         }
         let mut candidates: Vec<PathBuf> = Vec::new();
@@ -379,4 +387,34 @@ fn run_profile(
         });
     }
     parse(&output.stdout, profile)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // I-05: the shipped program uses its bundled `vendor/`, and the developer
+    // override is for debug builds and tests only.
+    #[test]
+    fn a_release_build_ignores_adapdf_vendor() {
+        let elsewhere = OsString::from("C:/somewhere/else/vendor");
+        let released = Tool::locate_with(Some(elsewhere.clone()), false);
+        assert!(
+            !released.java.starts_with("C:/somewhere/else"),
+            "{:?}",
+            released.java
+        );
+        assert_eq!(released, Tool::locate_with(None, false));
+        // A debug build honours it, and only it.
+        let debug = Tool::locate_with(Some(elsewhere), true);
+        assert_eq!(
+            debug,
+            Tool::in_vendor(Path::new("C:/somewhere/else/vendor"))
+        );
+        // An empty value is not a folder.
+        assert_eq!(
+            Tool::locate_with(Some(OsString::new()), true),
+            Tool::locate_with(None, true)
+        );
+    }
 }

@@ -111,6 +111,10 @@ impl Drop for FakeApp {
 }
 
 impl WordDoc for FakeDoc {
+    fn is_read_only(&self) -> crate::word::Result<bool> {
+        Ok(true)
+    }
+
     fn update_fields(&self) -> crate::word::Result<FieldUpdate> {
         record(&self.calls, Call::UpdateFields);
         Ok(FieldUpdate {

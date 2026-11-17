@@ -25,7 +25,8 @@ use adapdf::findings::{RuleId, Severity};
 use adapdf::fixtures::{FixtureFonts, Para, TOC_INSTRUCTION_NO_LINKS, catalogue, clean};
 use adapdf::word::{WordError, WordSession};
 use export_support::{
-    assert_tagged, contains, count, fingerprint, names, structure_elements, without_content_types,
+    assert_tagged, contains, count, fingerprint, names, page_text, structure_elements,
+    without_content_types,
 };
 use word_support::{TempDir, exclusive, wait_for_word_pids, word_pids};
 
@@ -98,8 +99,10 @@ fn export_starts_its_own_hidden_word() {
     let seen_in_hook = Arc::clone(&seen);
     let options = ExportOptions {
         timeout: LONG,
-        after_open: Some(Arc::new(move |pid| {
-            *seen_in_hook.lock().unwrap() = Some((pid, word_pids().contains(&pid)));
+        after_open: Some(Arc::new(move |opened| {
+            let pid = opened.pid;
+            *seen_in_hook.lock().unwrap() =
+                Some((pid, word_pids().contains(&pid), opened.read_only));
         })),
     };
     export_pdf(
@@ -109,8 +112,10 @@ fn export_starts_its_own_hidden_word() {
         &options,
     )
     .unwrap();
-    let (pid, alive) = seen.lock().unwrap().expect("the hook ran");
+    let (pid, alive, read_only) = seen.lock().unwrap().expect("the hook ran");
     assert!(alive, "the process {pid} was running during the export");
+    // Spec 02, stage 3: the document is opened read-only (Word's `ReadOnly`).
+    assert!(read_only, "Word has the document open read-only");
     assert!(!before.contains(&pid), "{pid} is a new process");
     assert_eq!(wait_for_word_pids(&before), before);
 
@@ -337,7 +342,8 @@ fn export_times_out_and_closes_only_its_own_word() {
     let hook_pid_seen = Arc::clone(&hook_pid);
     let options = ExportOptions {
         timeout: Duration::from_secs(15),
-        after_open: Some(Arc::new(move |pid| {
+        after_open: Some(Arc::new(move |opened| {
+            let pid = opened.pid;
             hook_pid_seen.store(pid, Ordering::SeqCst);
             let give_up = Instant::now() + Duration::from_secs(100);
             while word_pids().contains(&pid) && Instant::now() < give_up {
@@ -448,6 +454,15 @@ fn export_updates_fields_before_exporting() {
         "the table of contents has an entry for each of the 4 headings, not the 1 it had"
     );
     assert_eq!(count(&pdf, b"/Subtype/Link"), 0, "no link annotations");
+    // The text of the entries: each heading is in the table and in the text.
+    let text = page_text(&pdf);
+    for heading in ["Setup steps", "Cleaning up"] {
+        assert_eq!(
+            text.matches(heading).count(),
+            2,
+            "{heading} is an entry of the table and a heading: {text}"
+        );
+    }
     assert_eq!(fingerprint(&docx), before, "the .docx on disk is unchanged");
     let docx = dir.write("UpToDate.docx", &up_to_date);
     let fresh_path = dir.path().join("UpToDate.pdf");
@@ -462,13 +477,20 @@ fn export_updates_fields_before_exporting() {
     }
 
     // The fixture of TXT-004: a heading renamed after the table was made. The
-    // text of the entry is not read from the PDF (see "Known gaps in M4a").
+    // table has the new name, and no longer the old one.
     let renamed = dir.write("Renamed.docx", &fixture(RuleId::Txt004, true));
     let result = export(&renamed, &dir.path().join("Renamed.pdf")).unwrap();
     assert_eq!(result.fields.tables_of_contents, 1);
     let pdf = fs::read(dir.path().join("Renamed.pdf")).unwrap();
     assert_eq!(structure_elements(&pdf, "Link"), 2);
     assert_eq!(count(&pdf, b"/Subtype/Link"), 0, "no link annotations");
+    let text = page_text(&pdf);
+    assert_eq!(text.matches("Installation").count(), 2, "{text}");
+    assert_eq!(
+        text.matches("Setup").count(),
+        0,
+        "the old name is gone: {text}"
+    );
 }
 
 // S3-12 with the real Word

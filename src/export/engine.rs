@@ -19,6 +19,8 @@ pub(super) trait WordApp {
 }
 
 pub(super) trait WordDoc {
+    /// Word's `Document.ReadOnly`.
+    fn is_read_only(&self) -> Result<bool>;
     fn update_fields(&self) -> Result<FieldUpdate>;
     fn export(&self, output: &Path, parameters: &ExportParameters) -> Result<()>;
     /// Closes the document without saving.
@@ -67,6 +69,10 @@ impl WordApp for RealApp {
 struct RealDoc<'session>(WordDocument<'session>);
 
 impl WordDoc for RealDoc<'_> {
+    fn is_read_only(&self) -> Result<bool> {
+        self.0.is_read_only()
+    }
+
     fn update_fields(&self) -> Result<FieldUpdate> {
         self.0.update_fields()
     }

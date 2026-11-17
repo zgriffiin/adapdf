@@ -53,6 +53,40 @@ fn long() -> WordOnly {
     })
 }
 
+/// Writes the PDF and the reports of an earlier run next to `Guide.docx`.
+fn write_earlier_outputs(dir: &TempDir) {
+    dir.write("Guide.pdf", b"%PDF-1.4 an earlier export");
+    dir.write(
+        "Guide.accessibility.html",
+        b"<html>an earlier report</html>",
+    );
+    dir.write("Guide.accessibility.json", b"{\"an\": \"earlier report\"}");
+}
+
+/// After a tool failure the folder is as `write_earlier_outputs` left it.
+fn assert_earlier_outputs_untouched(dir: &TempDir) {
+    assert_eq!(
+        names(dir.path()),
+        [
+            "Guide.accessibility.html",
+            "Guide.accessibility.json",
+            "Guide.docx",
+            "Guide.pdf"
+        ],
+        "no new or temporary file"
+    );
+    let read = |name: &str| fs::read(dir.path().join(name)).unwrap();
+    assert_eq!(read("Guide.pdf"), b"%PDF-1.4 an earlier export");
+    assert_eq!(
+        read("Guide.accessibility.html"),
+        b"<html>an earlier report</html>"
+    );
+    assert_eq!(
+        read("Guide.accessibility.json"),
+        b"{\"an\": \"earlier report\"}"
+    );
+}
+
 fn fixture(rule: RuleId, fails: bool) -> Vec<u8> {
     catalogue()
         .into_iter()
@@ -68,16 +102,13 @@ fn pipeline_word_exit_2_when_word_cannot_open_the_file() {
     let before = word_pids();
     let dir = TempDir::new("pipeline-word-open");
     let docx = dir.write("Guide.docx", &without_content_types(&clean().build()));
+    write_earlier_outputs(&dir);
     let run = export_docx(&docx, &long(), &FixtureFonts, Timestamp::now());
     assert_eq!(run.exit, Exit::ToolFailure, "{}", run.stdout);
     assert!(run.stdout.is_empty());
     assert!(run.stderr.contains("Guide.docx"), "{}", run.stderr);
     assert!(run.stderr.contains("corrupted"), "{}", run.stderr);
-    assert_eq!(
-        names(dir.path()),
-        ["Guide.docx"],
-        "no PDF, report or temporary file"
-    );
+    assert_earlier_outputs_untouched(&dir);
     assert_eq!(wait_for_word_pids(&before), before);
 }
 
@@ -88,6 +119,7 @@ fn pipeline_word_exit_2_on_a_timeout() {
     let before = word_pids();
     let dir = TempDir::new("pipeline-word-timeout");
     let docx = dir.write("Guide.docx", &clean().build());
+    write_earlier_outputs(&dir);
     let stages = WordOnly(ExportOptions {
         timeout: Duration::from_millis(1),
         after_open: None,
@@ -104,7 +136,7 @@ fn pipeline_word_exit_2_on_a_timeout() {
         run.stderr
             .contains("ended the copy of Word that it had started")
     );
-    assert_eq!(names(dir.path()), ["Guide.docx"]);
+    assert_earlier_outputs_untouched(&dir);
     assert_eq!(
         wait_for_word_pids(&before),
         before,

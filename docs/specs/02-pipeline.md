@@ -21,6 +21,8 @@ source without first writing a backup.
 
 - An existing `Guide.pdf` is replaced. If another program has it locked, the
   tool stops with exit code 2 and says which file is locked.
+- The new `Guide.pdf` replaces the old one only after it has been checked. If
+  the tool fails after the export, the folder is left as it was.
 - When stage 1 finds errors, the tool still writes the report. The report
   says "Fail" and lists the errors. It does not write a PDF.
 - A PDF that Word exported without tags (stage 4) is an error finding, so

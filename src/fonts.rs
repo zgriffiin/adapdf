@@ -226,7 +226,9 @@ mod tests {
 
     impl TempFolder {
         fn new(name: &str, fonts: &[(&str, &str, u16)]) -> TempFolder {
-            let dir = std::env::temp_dir().join("adapdf-tests").join(name);
+            // One folder for each test and process, removed in `drop`: nothing stays.
+            let dir =
+                std::env::temp_dir().join(format!("adapdf-fonts-{name}-{}", std::process::id()));
             let _ = fs::remove_dir_all(&dir);
             fs::create_dir_all(dir.join("sub")).unwrap();
             for (file, family, fs_type) in fonts {
