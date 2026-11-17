@@ -57,7 +57,9 @@ fn fixture(rule: RuleId, fails: bool) -> Vec<u8> {
 fn leftovers(folder: &Path) -> Vec<String> {
     names(folder)
         .into_iter()
-        .filter(|name| name.starts_with("~$") || name.contains(".adapdf-"))
+        .filter(|name| {
+            name.starts_with("~$") || name.starts_with("~adapdf-") || name.contains(".adapdf-")
+        })
         .collect()
 }
 

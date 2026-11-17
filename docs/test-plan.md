@@ -229,8 +229,14 @@ temporary files before anything is moved: C-11) touched only `src/pipeline.rs` a
 `tests/export_pipeline.rs`; after it `cargo test` and `cargo test --features verapdf`
 were run again (the first two rows below), and `cargo test --features windows_word
 --test export_pipeline_word` (4 passed, 46 seconds). The two Word rows were
-measured before that change and not run again: the change adds 2 tests that need no
-Word, so they would be 798 and 812. Windows only: two tests of M3b (the held file handle in
+measured before that change. The independent review of M4 (round 2, commit
+`0ac5bc8`) then ran `cargo test --features windows_word,verapdf --no-fail-fast` on
+the final tree: 812 passed, 0 failed, 27 minutes 14 seconds including a fresh build,
+with no `WINWORD.EXE` before or after. The `windows_word` row (798) is derived from
+that run (812 less the 6 of `export_verapdf` and the 8 of `verapdf_real`), not
+measured on its own. After that review the temporary PDF got a short name
+(`~adapdf-<process>-<n>.pdf`); `cargo test` (769) and the real-Word files
+`export_word` (14) and `export_pipeline_word` (4) were run again and passed. Windows only: two tests of M3b (the held file handle in
 S2-03 and the folder with the name of the backup in S2-06), `the_production_clock_is_local_time`
 (S2-07), the 21 unit tests of `src/export/`, the 2 unit tests of `src/word/export.rs`,
 the 3 tests of `tests/verapdf_parse.rs` in its `process` module, `tests/word_end_process.rs`,
@@ -241,8 +247,8 @@ and all tests of `tests/export_pipeline.rs` and `tests/cli_export.rs` (they use
 |---|---|---|---|
 | `cargo test` | 769 | 0 | 41 seconds (the build was cached) |
 | `cargo test --features verapdf` | 777 | 0 | 70 seconds (cached) |
-| `cargo test --features windows_word` | 796 (measured before the second change; 798 expected) | 0 | 11 minutes 19 seconds |
-| `cargo test --features windows_word,verapdf --no-fail-fast` | 810 (measured before the second change; 812 expected) | 0 | 25 minutes 27 seconds |
+| `cargo test --features windows_word` | 798 (derived from the next row; 796 measured before the second change) | 0 | 11 minutes 19 seconds (the 796 run) |
+| `cargo test --features windows_word,verapdf --no-fail-fast` | 812 (measured by the review, commit `0ac5bc8`) | 0 | 27 minutes 14 seconds, fresh build |
 
 (Without `--no-fail-fast`, cargo stops at the first test file that has a failure,
 so the files after it do not run; use the flag to get all counts. The counts before
@@ -265,7 +271,7 @@ plus 3 unit, 5 pipeline, 1 no network and 1 guard test is 769.
 
 **`--features verapdf`: 777.** The 769 and the 8 of `tests/verapdf_real.rs`.
 
-**`--features windows_word`: 796 when measured (798 now).** The 767 of that time and 29 more: 5 in `tests/word.rs`, 1 in
+**`--features windows_word`: 796 when measured (798 now, derived).** The 767 of that time and 29 more: 5 in `tests/word.rs`, 1 in
 `tests/word_table_styles.rs`, 4 in `tests/fix_word.rs`, 14 in `tests/export_word.rs`,
 1 in `tests/export_fixtures.rs` (35 exports) and 4 in
 `tests/export_pipeline_word.rs` (the exit codes with the real Word); the guard test of
@@ -274,7 +280,7 @@ seconds, `export_word` 193 seconds, `fix_word` 53 seconds, `export_pipeline_word
 seconds). Before and after the run the list of `WINWORD.EXE` processes was the same
 (empty).
 
-**`--features windows_word,verapdf`: 810 when measured (812 now).** The 796, the 8 of
+**`--features windows_word,verapdf`: 810 when measured, 812 measured by the review.** The 796, the 8 of
 `tests/verapdf_real.rs` and 6 in `tests/export_verapdf.rs`
 (`cli_export_exit_0_on_a_pass`, `verapdf_zero_failures_on_pass_fixtures`,
 `verapdf_zero_failures_on_the_picture_pass_fixtures`,
@@ -1467,7 +1473,7 @@ M4c) does that.
   them). Word is not started, nothing is written. A file that stage 1 cannot read
   is `ExportError::Check`. (2) The target is checked: an existing PDF must not be
   held by another program (an exclusive open, as stage 2 does for the .docx), and
-  the tool makes an empty temporary file `Guide.adapdf-<process>-<n>.pdf` in the
+  the tool makes an empty temporary file `~adapdf-<process>-<n>.pdf` (a short name, so long document names stay inside the path limit) in the
   target folder, which also shows that the folder takes new files
   (`OutputFolder` otherwise). (3) The Word part (below). (4) The temporary file
   must start with `%PDF-` (`NoPdf` otherwise), and it is moved over `Guide.pdf`
@@ -1594,7 +1600,7 @@ the text for stdout and stderr. The order is:
    gets its Fail report on a machine that has no veraPDF.
 3. The check that an existing `Guide.pdf` is not locked by another program
    (`ensure_not_locked`; exit 2 naming `Guide.pdf`), and an empty temporary file
-   `Guide.adapdf-<process>-<n>.pdf` in the folder (`TempPdf`, the type that
+   `~adapdf-<process>-<n>.pdf` (a short name, so long document names stay inside the path limit) in the folder (`TempPdf`, the type that
    `export_pdf` uses; it also shows that the folder takes new files).
 4. Stage 3, `export_pdf` to the temporary path (it runs stage 1 again; an
    `ExportError::Blocked` from it gives the same Fail report). Any other

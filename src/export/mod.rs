@@ -399,12 +399,12 @@ impl TempPdf {
             Some(folder) if !folder.as_os_str().is_empty() => folder,
             _ => Path::new("."),
         };
-        let stem = pdf
-            .file_stem()
-            .map_or_else(|| "export".into(), |s| s.to_string_lossy());
+        // A short name that does not repeat the PDF's own name, so a long
+        // document name leaves room for it (and for a nested temporary file)
+        // inside the Windows path limit.
         loop {
             let n = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-            let path = folder.join(format!("{stem}.adapdf-{}-{n}.pdf", std::process::id()));
+            let path = folder.join(format!("~adapdf-{}-{n}.pdf", std::process::id()));
             match fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
