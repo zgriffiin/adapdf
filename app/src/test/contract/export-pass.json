@@ -1,0 +1,116 @@
+{
+  "exit_code": 0,
+  "view": {
+    "report": {
+      "schema_version": 1,
+      "summary": {
+        "verdict": "pass",
+        "errors": 0,
+        "warnings": 0,
+        "reason": null,
+        "tool": "adapdf",
+        "tool_version": "0.1.0",
+        "generated_local": "2026-03-05 10:15:30",
+        "document": "Guide.docx",
+        "pdf": "Guide.pdf"
+      },
+      "export": {
+        "word_build": "16.0.20527.20000",
+        "parameters": [
+          {
+            "name": "ExportFormat",
+            "value": "wdExportFormatPDF"
+          }
+        ],
+        "fields_updated": 2,
+        "tables_of_contents_updated": 1,
+        "first_failed_field": null,
+        "seconds": 1.5
+      },
+      "precheck": [],
+      "fixes": {
+        "applied": [],
+        "backup": null
+      },
+      "pdf_metadata": {
+        "status": "done",
+        "changes": [
+          {
+            "field": "info-title",
+            "what": "title in the document information (Title)",
+            "old": null,
+            "new": "Guide"
+          }
+        ],
+        "issues": []
+      },
+      "verapdf": {
+        "status": "ran",
+        "verapdf_version": "1.28.2",
+        "validation": {
+          "ua1": {
+            "profile": "ua1",
+            "profile_name": "PDF/UA-1 validation profile",
+            "failed_rules": 0,
+            "failed_checks": 0,
+            "passed_rules": 106,
+            "passed_checks": 22,
+            "findings": [],
+            "verapdf_version": "1.28.2"
+          },
+          "wcag": {
+            "status": "not-available"
+          }
+        }
+      },
+      "pac": {
+        "report_file": null,
+        "pac_version": null,
+        "result": null
+      },
+      "checklist": {
+        "items": [
+          {
+            "text": "Each piece of alt text describes what the image shows, for the guide's purpose.",
+            "done": false
+          },
+          {
+            "text": "Images marked decorative really are decorative.",
+            "done": false
+          },
+          {
+            "text": "The reading order makes sense when read aloud. Check with the PAC screen-reader preview.",
+            "done": false
+          },
+          {
+            "text": "Colour is not the only way information is shown.",
+            "done": false
+          },
+          {
+            "text": "Link text makes sense out of context.",
+            "done": false
+          },
+          {
+            "text": "Headings describe their section.",
+            "done": false
+          },
+          {
+            "text": "Tables are data tables, not layout.",
+            "done": false
+          }
+        ],
+        "name": null,
+        "date": null
+      }
+    },
+    "report_json": "C:\\Docs\\Guide.accessibility.json",
+    "report_html": "C:\\Docs\\Guide.accessibility.html",
+    "pdf": "C:\\Docs\\Guide.pdf"
+  },
+  "console": "Guide.docx: result\n",
+  "files": [
+    "C:\\Docs\\Guide.pdf",
+    "C:\\Docs\\Guide.accessibility.html",
+    "C:\\Docs\\Guide.accessibility.json"
+  ]
+}

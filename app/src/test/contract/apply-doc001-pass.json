@@ -1,0 +1,10 @@
+{
+  "backup": null,
+  "applied": [],
+  "at_export": [],
+  "refused": [],
+  "findings": [],
+  "errors": 0,
+  "warnings": 0,
+  "exit_code": 0
+}

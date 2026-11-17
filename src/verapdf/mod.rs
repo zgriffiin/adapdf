@@ -77,6 +77,17 @@ fn fmt_detail(stderr: &str) -> String {
     line.map_or_else(String::new, |l| format!(": {}", l.trim()))
 }
 
+/// The folders that may have the tools, in the order they are tried: `vendor/`
+/// next to the program, and, in a debug build only, `vendor/` at the root of the
+/// source tree.
+fn vendor_folders(exe_dir: Option<&Path>, debug_build: bool) -> Vec<PathBuf> {
+    let mut folders: Vec<PathBuf> = exe_dir.map(|dir| dir.join("vendor")).into_iter().collect();
+    if debug_build {
+        folders.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("vendor"));
+    }
+    folders
+}
+
 /// Where veraPDF and its Java runtime are.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tool {
@@ -104,15 +115,16 @@ impl Tool {
         )
     }
 
-    /// Looks for `vendor/` next to the program, and then at the root of the
-    /// source tree (for development). When neither has the tools, the result is
-    /// the folder next to the program, so that [`Tool::check`] names it.
+    /// Looks for `vendor/` next to the program. A debug build (and so the tests)
+    /// also looks at the root of the source tree. When no place has the tools, the
+    /// result is the folder next to the program, so that [`Tool::check`] names it.
     ///
-    /// In a debug build (and so in the tests), the environment variable
-    /// `ADAPDF_VENDOR` names another `vendor` folder. When it is set, it is the
-    /// only place that is used, so that a wrong path is an error that names it
-    /// and not a silent use of another copy. A release build ignores the
-    /// variable: the installed program always uses its own bundled `vendor/`.
+    /// In a debug build, the environment variable `ADAPDF_VENDOR` names another
+    /// `vendor` folder. When it is set, it is the only place that is used, so that
+    /// a wrong path is an error that names it and not a silent use of another
+    /// copy. A release build ignores the variable and does not look in the source
+    /// tree (the path of the build machine is in the program otherwise): the
+    /// installed program always uses its own bundled `vendor/`.
     pub fn locate() -> Tool {
         Tool::locate_with(std::env::var_os("ADAPDF_VENDOR"), cfg!(debug_assertions))
     }
@@ -123,15 +135,13 @@ impl Tool {
         if let Some(folder) = vendor_override.filter(|v| debug_build && !v.is_empty()) {
             return Tool::in_vendor(Path::new(&folder));
         }
-        let mut candidates: Vec<PathBuf> = Vec::new();
-        if let Some(dir) = std::env::current_exe()
+        let exe_dir = std::env::current_exe()
             .ok()
-            .and_then(|exe| exe.parent().map(Path::to_path_buf))
-        {
-            candidates.push(dir.join("vendor"));
-        }
-        candidates.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("vendor"));
-        let tools: Vec<Tool> = candidates.iter().map(|v| Tool::in_vendor(v)).collect();
+            .and_then(|exe| exe.parent().map(Path::to_path_buf));
+        let tools: Vec<Tool> = vendor_folders(exe_dir.as_deref(), debug_build)
+            .iter()
+            .map(|v| Tool::in_vendor(v))
+            .collect();
         tools
             .iter()
             .find(|t| t.check().is_ok())
@@ -415,6 +425,36 @@ mod tests {
         assert_eq!(
             Tool::locate_with(Some(OsString::new()), true),
             Tool::locate_with(None, true)
+        );
+    }
+
+    // I-05 and I-10: a release build looks only next to the program. The path of
+    // the source tree of the build machine is not tried (it would find tools on a
+    // machine that has the source tree, and hide a missing `vendor/` in the
+    // installer).
+    #[test]
+    fn a_release_build_looks_only_next_to_the_program() {
+        let exe_dir = Path::new("C:/Users/a/AppData/Local/Adapdf");
+        let source_tree = Path::new(env!("CARGO_MANIFEST_DIR")).join("vendor");
+        assert_eq!(
+            vendor_folders(Some(exe_dir), false),
+            [exe_dir.join("vendor")]
+        );
+        assert_eq!(
+            vendor_folders(Some(exe_dir), true),
+            [exe_dir.join("vendor"), source_tree.clone()]
+        );
+        // No program folder: a release build has nothing to try, and says `vendor`.
+        assert!(vendor_folders(None, false).is_empty());
+        assert_eq!(vendor_folders(None, true), [source_tree]);
+        // The tool that a release build gives when nothing is there names the
+        // folder next to the program, so that `check` can say where it looked.
+        let tool = Tool::locate_with(None, false);
+        let exe = std::env::current_exe().unwrap();
+        assert!(
+            tool.java.starts_with(exe.parent().unwrap().join("vendor")),
+            "{:?}",
+            tool.java
         );
     }
 }

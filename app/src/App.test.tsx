@@ -550,12 +550,12 @@ describe("the sign-off (A-04, A-08)", () => {
   it("shows the message of the tool when the sign-off cannot be saved", async () => {
     const { user } = await openResult(viewOf(), {
       save_signoff: () => {
-        throw { message: "The report Guide.accessibility.html cannot be replaced (access denied). The sign-off was not saved." };
+        throw { message: "The report Guide.accessibility.json cannot be replaced (access denied). The sign-off was not saved." };
       },
     });
     await user.type(within(form()).getByRole("textbox", { name: "Your name" }), "A. Reviewer");
     await user.click(within(form()).getByRole("button", { name: "Save sign-off" }));
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("The sign-off was not saved."));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("The sign-off could not be saved in full."));
     expect(screen.getByRole("status")).toHaveTextContent("access denied");
     // What the person typed is still there.
     expect(within(form()).getByRole("textbox", { name: "Your name" })).toHaveValue("A. Reviewer");
@@ -601,11 +601,19 @@ describe("the sign-off (A-04, A-08)", () => {
     expect(heading()).toHaveTextContent("Choose a Word document");
   });
 
-  it("has no WCAG 2.1 A or AA violation, with an empty or a signed form, and with an error", async () => {
+  it("has no WCAG 2.1 A or AA violation, with an empty form, with an error and with a filled-in form", async () => {
     await openResult(viewOf());
     expect(await wcagViolations(form())).toEqual([]);
     const user = userEvent.setup();
     await user.click(within(form()).getByRole("button", { name: "Save sign-off" }));
+    expect(await wcagViolations(document.body)).toEqual([]);
+    // Filled in: five items ticked, a name and a date typed, not yet saved.
+    for (const box of within(form()).getAllByRole("checkbox").slice(0, 5)) {
+      await user.click(box);
+    }
+    await user.type(within(form()).getByRole("textbox", { name: "Your name" }), "A. Reviewer");
+    await user.type(within(form()).getByLabelText("Date"), "2026-03-06");
+    expect(within(form()).getByText("5 of 7 checks are ticked.")).toBeInTheDocument();
     expect(await wcagViolations(document.body)).toEqual([]);
   });
 

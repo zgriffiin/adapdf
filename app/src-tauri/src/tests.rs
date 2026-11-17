@@ -147,13 +147,31 @@ fn app_commands_match_the_cli_check() {
 /// the answers `y` (or the typed text) given to `adapdf fix`.
 #[test]
 fn app_commands_match_the_cli() {
-    // Fixtures whose fixes the person only confirms or types text for.
-    for (rule, answer_line) in [
-        (RuleId::Txb004, "y"),
-        (RuleId::Lst002, "y"),
-        (RuleId::Tbl001, "y"),
-        (RuleId::Doc001, "A title typed by a person"),
-        (RuleId::Doc002, "y"),
+    // The fixes of fixtures, with what the person gives in the app for a fix that
+    // asks (`ask`) and what is typed at the command line for the same fix.
+    let text = |text: &str| Answer::Text {
+        text: text.to_string(),
+    };
+    for (rule, ask, cli) in [
+        (RuleId::Txb004, Answer::Confirm, "y"),
+        (RuleId::Lst002, Answer::Confirm, "y"),
+        (RuleId::Tbl001, Answer::Confirm, "y"),
+        (
+            RuleId::Doc001,
+            text("A title typed by a person"),
+            "A title typed by a person",
+        ),
+        (RuleId::Doc002, Answer::Confirm, "y"),
+        // A picture: "Mark as decorative", and then alt text typed instead.
+        (RuleId::Img001, Answer::Decorative, "y"),
+        (
+            RuleId::Img001,
+            text("A red arrow"),
+            "n
+A red arrow",
+        ),
+        // The question about arrows and boxes: yes.
+        (RuleId::Img007, Answer::Confirm, "y"),
     ] {
         let bytes = fixture(rule, true);
         let a = TempDir::new("a07-app");
@@ -181,13 +199,7 @@ fn app_commands_match_the_cli() {
             .map(|o| Choice {
                 rule_id: o.finding.rule_id,
                 position: o.position,
-                input: if o.ask {
-                    Answer::Text {
-                        text: answer_line.to_string(),
-                    }
-                } else {
-                    Answer::Confirm
-                },
+                input: if o.ask { ask.clone() } else { Answer::Confirm },
             })
             .collect();
         assert!(!choices.is_empty(), "{rule}");
@@ -197,7 +209,7 @@ fn app_commands_match_the_cli() {
         let answers: String = offers
             .iter()
             .map(|o| match o.availability {
-                Availability::Ready => format!("{answer_line}\n"),
+                Availability::Ready => format!("{cli}\n"),
                 _ => String::new(),
             })
             .collect();
@@ -328,11 +340,15 @@ mod export {
     use super::*;
     use adapdf::export::{ExportError, ExportResult};
     use adapdf::pipeline::{Exit, Stages, export_docx, output_paths};
+
+    fn name_of_file(path: &Path) -> String {
+        path.file_name().unwrap().to_string_lossy().into_owned()
+    }
     use adapdf::verapdf::{Validation, VeraPdfError};
 
     /// Stages that fail the test when they are used: Word and veraPDF must not
     /// be asked for.
-    struct NoStages;
+    pub(super) struct NoStages;
 
     impl Stages for NoStages {
         fn check_tools(&self) -> Result<(), VeraPdfError> {
@@ -400,52 +416,90 @@ mod export {
         assert!(dir.names().is_empty(), "no report for a tool failure");
     }
 
-    /// The real Word and the real veraPDF, as `adapdf export` runs them. Needs
-    /// desktop Word and the bundled veraPDF (set `ADAPDF_VENDOR` when `vendor/` is
-    /// not in the source tree).
+    /// The real Word and the real veraPDF. The app and `adapdf export` (its code,
+    /// `pipeline::export_docx`, which `main.rs` calls with the same stages) run the
+    /// same pass fixture, each in its own folder: the same exit code, the same
+    /// files, the same text and the same report, except the values that depend on
+    /// the clock (the time of the run and the seconds Word took). Needs desktop
+    /// Word and the bundled veraPDF (set `ADAPDF_VENDOR` when `vendor/` is not in
+    /// the source tree).
     #[cfg(all(feature = "windows_word", feature = "verapdf"))]
     #[test]
-    fn app_export_with_word_matches_the_cli() {
-        let dir = TempDir::new("a07-export-word");
-        let docx = dir.write("Guide.docx", &fixture(RuleId::Doc001, false));
-        let result = commands::export_with_word(&docx, &FixtureFonts).unwrap();
-        assert_eq!(result.exit_code, 0, "{}", result.console);
-        let report = &result.view.report;
-        assert_eq!(report.summary.verdict, report::Verdict::Pass);
-        assert_eq!(report.summary.pdf.as_deref(), Some("Guide.pdf"));
+    fn app_export_with_word_matches_the_cli_export() {
+        use adapdf::fonts::SystemFonts;
+        use adapdf::pipeline::RealStages;
+
+        let a = TempDir::new("a07-word-app");
+        let b = TempDir::new("a07-word-cli");
+        let bytes = fixture(RuleId::Doc001, false);
+        let app_docx = a.write("Guide.docx", &bytes);
+        let cli_docx = b.write("Guide.docx", &bytes);
+
+        let app = commands::export_with_word(&app_docx, &SystemFonts::from_environment()).unwrap();
+        let fonts = SystemFonts::from_environment();
+        let stages = RealStages {
+            fonts: &fonts,
+            tool: adapdf::verapdf::Tool::locate(),
+            options: adapdf::export::ExportOptions::default(),
+        };
+        let cli = export_docx(&cli_docx, &stages, &fonts, Timestamp::now());
+
+        // The exit code, the folder and the files that the run wrote.
+        assert_eq!(cli.exit, Exit::Pass, "{}{}", cli.stdout, cli.stderr);
+        assert_eq!(app.exit_code, cli.exit.code(), "{}", app.console);
+        let expected = [
+            "Guide.accessibility.html",
+            "Guide.accessibility.json",
+            "Guide.docx",
+            "Guide.pdf",
+        ];
+        assert_eq!(a.names(), expected);
+        assert_eq!(b.names(), expected);
+        let names = |files: &[String]| -> Vec<String> {
+            files
+                .iter()
+                .map(|f| name_of_file(Path::new(f)))
+                .collect::<Vec<_>>()
+        };
+        let cli_files: Vec<String> = cli.files.iter().map(|f| f.display().to_string()).collect();
+        assert_eq!(names(&app.files), names(&cli_files));
+        assert_eq!(app.files.len(), 3);
+
+        // The report, without what depends on the clock.
+        let clockless = |report: &Report| -> Report {
+            let mut report = report.clone();
+            report.summary.generated_local = String::new();
+            if let Some(export) = report.export.as_mut() {
+                export.seconds = 0.0;
+            }
+            report
+        };
+        let cli_report = cli.report.clone().unwrap();
+        assert_eq!(clockless(&app.view.report), clockless(&cli_report));
+        assert_eq!(app.view.report.summary.verdict, report::Verdict::Pass);
+        assert_eq!(app.view.report.summary.pdf.as_deref(), Some("Guide.pdf"));
+        assert_eq!(
+            app.view.pdf,
+            Some(a.path().join("Guide.pdf").display().to_string())
+        );
+
+        // The text that the command prints (with the folder and the time left out).
+        let plain = |text: &str, dir: &TempDir, report: &Report| {
+            text.replace(&dir.path().display().to_string(), "<dir>")
+                .replace(&report.summary.generated_local, "<time>")
+        };
+        assert_eq!(
+            plain(&app.console, &a, &app.view.report),
+            plain(&cli.stdout, &b, &cli_report)
+        );
         assert!(
-            result
-                .console
+            app.console
                 .starts_with("Guide.docx: Pass (0 errors, 0 warnings).")
         );
-        assert_eq!(
-            dir.names(),
-            [
-                "Guide.accessibility.html",
-                "Guide.accessibility.json",
-                "Guide.docx",
-                "Guide.pdf"
-            ]
-        );
-        assert_eq!(
-            result.view.pdf,
-            Some(dir.path().join("Guide.pdf").display().to_string())
-        );
-        assert_eq!(result.files.len(), 3);
+
         // The report that was written is the report that came back.
-        assert_eq!(
-            read_report(&dir.path().join("Guide.accessibility.json")).unwrap(),
-            result.view
-        );
-        assert_eq!(
-            report.console_summary(&[]),
-            result
-                .console
-                .lines()
-                .take_while(|l| !l.starts_with("Wrote "))
-                .map(|l| format!("{l}\n"))
-                .collect::<String>()
-        );
+        let json = a.path().join("Guide.accessibility.json");
+        assert_eq!(read_report(&json).unwrap(), app.view);
     }
 }
 
@@ -679,22 +733,27 @@ fn an_empty_name_or_a_bad_request_is_refused_and_nothing_changes() {
     assert_eq!(saved.dir.names().len(), 3);
 }
 
-/// The files are written under temporary names and then moved. A move that fails
-/// leaves the old files as they were and no temporary file. Here the page cannot
-/// be replaced because a folder has its name.
+/// The files are written under temporary names and then moved, the JSON first.
+/// When the first move fails, the old files are as they were and no temporary file
+/// is left. Here the JSON cannot be replaced because it is read-only.
 #[test]
 fn a_failed_move_leaves_the_old_report_and_no_temporary_file() {
     let saved = saved_report();
     let json_before = fs::read(&saved.json).unwrap();
-    fs::remove_file(&saved.html).unwrap();
-    fs::create_dir(&saved.html).unwrap();
+    let html_before = fs::read(&saved.html).unwrap();
+    let writable = fs::metadata(&saved.json).unwrap().permissions();
+    let mut read_only = writable.clone();
+    read_only.set_readonly(true);
+    fs::set_permissions(&saved.json, read_only).unwrap();
     let error = save_signoff(&saved.json, &five_of_seven("A. Reviewer", "2026-03-06")).unwrap_err();
+    fs::set_permissions(&saved.json, writable).unwrap();
     assert!(
-        error.message.contains("Guide.accessibility.html"),
+        error.message.contains("Guide.accessibility.json"),
         "{error}"
     );
     assert!(error.message.contains("not saved"), "{error}");
     assert_eq!(fs::read(&saved.json).unwrap(), json_before);
+    assert_eq!(fs::read(&saved.html).unwrap(), html_before);
     assert_eq!(
         saved.dir.names(),
         [
@@ -702,6 +761,46 @@ fn a_failed_move_leaves_the_old_report_and_no_temporary_file() {
             "Guide.accessibility.json",
             "Guide.pdf"
         ]
+    );
+}
+
+/// The second move fails (here a folder has the name of the page): the JSON, the
+/// record, has the sign-off, the page is as it was, no temporary file is left,
+/// and the message says what was saved and what was not.
+#[test]
+fn a_half_saved_signoff_says_what_was_saved() {
+    let saved = saved_report();
+    fs::remove_file(&saved.html).unwrap();
+    fs::create_dir(&saved.html).unwrap();
+    let error = save_signoff(&saved.json, &five_of_seven("A. Reviewer", "2026-03-06")).unwrap_err();
+    let message = &error.message;
+    assert!(
+        message.contains("sign-off is saved in")
+            && message.contains("Guide.accessibility.json")
+            && message.contains("Guide.accessibility.html")
+            && message.contains("does not show the sign-off yet")
+            && message.contains("save the sign-off again"),
+        "{error}"
+    );
+    // The record has it, and the app reads it back.
+    let again = read_report(&saved.json).unwrap();
+    assert_eq!(again.report.checklist.name.as_deref(), Some("A. Reviewer"));
+    assert_eq!(again.report.checklist.date.as_deref(), Some("2026-03-06"));
+    assert!(saved.html.is_dir(), "the page was not replaced");
+    assert_eq!(
+        saved.dir.names(),
+        [
+            "Guide.accessibility.html",
+            "Guide.accessibility.json",
+            "Guide.pdf"
+        ]
+    );
+    // The person closes what held the page and saves again: both files agree.
+    fs::remove_dir(&saved.html).unwrap();
+    let view = save_signoff(&saved.json, &five_of_seven("A. Reviewer", "2026-03-06")).unwrap();
+    assert_eq!(
+        fs::read_to_string(&saved.html).unwrap(),
+        html::render(&view.report)
     );
 }
 
@@ -747,3 +846,5 @@ fn a_signoff_does_not_change_the_verdict() {
         (saved.report.summary.errors, saved.report.summary.warnings)
     );
 }
+
+mod contract;

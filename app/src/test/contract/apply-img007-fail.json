@@ -1,0 +1,15 @@
+{
+  "backup": "Guide.backup-20260305-101530.docx",
+  "applied": [
+    {
+      "rule_id": "IMG-007",
+      "summary": "Marked 3 arrow(s) or box(es) on the screenshot in paragraph 3 as decorative."
+    }
+  ],
+  "at_export": [],
+  "refused": [],
+  "findings": [],
+  "errors": 0,
+  "warnings": 0,
+  "exit_code": 0
+}

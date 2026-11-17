@@ -1,0 +1,98 @@
+{
+  "exit_code": 1,
+  "view": {
+    "report": {
+      "schema_version": 1,
+      "summary": {
+        "verdict": "fail",
+        "errors": 1,
+        "warnings": 0,
+        "reason": "The report has 1 error found by the pre-check of the Word document.",
+        "tool": "adapdf",
+        "tool_version": "0.1.0",
+        "generated_local": "2026-03-05 10:15:30",
+        "document": "Guide.docx",
+        "pdf": null
+      },
+      "export": null,
+      "precheck": [
+        {
+          "rule_id": "DOC-001",
+          "severity": "error",
+          "message": "The document has no title in its properties. PDF viewers show this title in the window bar, and screen readers read it out.",
+          "how_to_fix": "In Word, choose File > Info and type a title in the Title box.",
+          "location": {
+            "heading": null,
+            "snippet": null,
+            "paragraph_index": null,
+            "part": "docProps/core.xml"
+          },
+          "fix": {
+            "kind": "ask",
+            "id": "set-title"
+          },
+          "suggestion": "Test guide"
+        }
+      ],
+      "fixes": {
+        "applied": [],
+        "backup": null
+      },
+      "pdf_metadata": {
+        "status": "not-run",
+        "reason": "Not run. No PDF was made, because the document has errors that must be fixed first (see the pre-check findings)."
+      },
+      "verapdf": {
+        "status": "not-run",
+        "reason": "Not run. No PDF was made, because the document has errors that must be fixed first (see the pre-check findings)."
+      },
+      "pac": {
+        "report_file": null,
+        "pac_version": null,
+        "result": null
+      },
+      "checklist": {
+        "items": [
+          {
+            "text": "Each piece of alt text describes what the image shows, for the guide's purpose.",
+            "done": false
+          },
+          {
+            "text": "Images marked decorative really are decorative.",
+            "done": false
+          },
+          {
+            "text": "The reading order makes sense when read aloud. Check with the PAC screen-reader preview.",
+            "done": false
+          },
+          {
+            "text": "Colour is not the only way information is shown.",
+            "done": false
+          },
+          {
+            "text": "Link text makes sense out of context.",
+            "done": false
+          },
+          {
+            "text": "Headings describe their section.",
+            "done": false
+          },
+          {
+            "text": "Tables are data tables, not layout.",
+            "done": false
+          }
+        ],
+        "name": null,
+        "date": null
+      }
+    },
+    "report_json": "C:\\Docs\\Guide.accessibility.json",
+    "report_html": "C:\\Docs\\Guide.accessibility.html",
+    "pdf": null
+  },
+  "console": "Guide.docx: Fail (1 error, 0 warnings).\nThe report has 1 error found by the pre-check of the Word document.\n- [DOC-001] The document has no title in its properties. PDF viewers show this title in the window bar, and screen readers read it out.\nWrote C:\\Docs\\Guide.accessibility.html\nWrote C:\\Docs\\Guide.accessibility.json\n",
+  "files": [
+    "C:\\Docs\\Guide.accessibility.html",
+    "C:\\Docs\\Guide.accessibility.json"
+  ]
+}

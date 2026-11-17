@@ -1,0 +1,28 @@
+[
+  {
+    "finding": {
+      "rule_id": "TXT-004",
+      "severity": "warning",
+      "message": "The table of contents is out of date: entry 2 is \"Setup\" but the heading is \"Installation\". A reader who follows it can land in the wrong place.",
+      "how_to_fix": "In Word, click in the table of contents and choose Update Table, then Update entire table (or press F9). Adapdf can also update the fields when it exports the PDF.",
+      "location": {
+        "heading": null,
+        "snippet": "Test guide 1",
+        "paragraph_index": 0,
+        "part": "word/document.xml"
+      },
+      "fix": {
+        "kind": "auto",
+        "id": "update-fields"
+      },
+      "suggestion": null
+    },
+    "position": 0,
+    "fix": "update-fields",
+    "ask": false,
+    "description": "Update the table of contents and other fields. Word does this when the PDF is exported.",
+    "availability": {
+      "status": "at-export"
+    }
+  }
+]

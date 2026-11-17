@@ -1,0 +1,28 @@
+[
+  {
+    "finding": {
+      "rule_id": "IMG-007",
+      "severity": "error",
+      "message": "This screenshot has 3 arrows or boxes drawn on it in Word. Screen readers cannot read them, and they have no alt text.",
+      "how_to_fix": "Choose one way to fix it. (a) Make sure the alt text of the screenshot says what the arrows and boxes point to, for example \"The Save dialog. A red box shows the File name field.\" Then mark each arrow and box as decorative: right-click it, choose Edit Alt Text, and select Mark as decorative. (b) Select the screenshot and the arrows and boxes, right-click, and choose Group. Give the group alt text that describes the screenshot and what is highlighted, then set the group to In Line with Text. The tool can mark the arrows and boxes as decorative for you, but only after you confirm that the alt text of the screenshot describes what they highlight.",
+      "location": {
+        "heading": "Test guide",
+        "snippet": "",
+        "paragraph_index": 2,
+        "part": "word/document.xml"
+      },
+      "fix": {
+        "kind": "ask",
+        "id": "mark-annotations-decorative"
+      },
+      "suggestion": null
+    },
+    "position": 0,
+    "fix": "mark-annotations-decorative",
+    "ask": true,
+    "description": "Mark the arrows and boxes drawn on this screenshot as decorative.",
+    "availability": {
+      "status": "ready"
+    }
+  }
+]

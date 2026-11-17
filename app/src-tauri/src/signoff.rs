@@ -7,8 +7,9 @@
 //! files are written again from the same value (the HTML with
 //! `adapdf::report::html::render`). Nothing else in the report changes, and the
 //! PDF is never opened. Both files are written to temporary files next to the
-//! report first, and then moved over the old ones, so a failure leaves the old
-//! files as they were.
+//! report first, and then moved over the old ones (the JSON first). A failure of
+//! the first move leaves the old files as they were. A failure of the second leaves
+//! the JSON signed and the page as it was, and the message says so.
 
 use std::fs;
 use std::io::{self, Write};
@@ -150,14 +151,18 @@ pub fn save_signoff(report_json: &Path, signoff: &Signoff) -> CommandResult<Repo
         .map_err(|e| write_error(&json_path, "written", e))?;
     let temp_html = TempFile::write(&html_path, &html::render(&view.report))
         .map_err(|e| write_error(&html_path, "written", e))?;
-    // The page is moved first: a person can have it open, and then it is the file
-    // that is likely to be refused. When it is refused, nothing was replaced.
-    temp_html
-        .move_to(&html_path)
-        .map_err(|e| write_error(&html_path, "replaced", e))?;
-    temp_json.move_to(&json_path).map_err(|e| {
+    // The JSON is moved first. It is the record: `read_report` and the app read it.
+    // When the first move fails, nothing was replaced. When the second move fails
+    // (the page is open in a program that holds it), the record has the sign-off
+    // and the page does not, and the message says so: a page that is behind
+    // understates the sign-off, and a page that is ahead of the record would claim
+    // a sign-off that the record does not have.
+    temp_json
+        .move_to(&json_path)
+        .map_err(|e| write_error(&json_path, "replaced", e))?;
+    temp_html.move_to(&html_path).map_err(|e| {
         CommandError::new(format!(
-            "The report {} cannot be replaced ({e}). The page {} already has the sign-off. Run the sign-off again.",
+            "The sign-off is saved in {}, but the page {} cannot be replaced ({e}), so it does not show the sign-off yet. Close the page if it is open, then save the sign-off again.",
             json_path.display(),
             html_path.display()
         ))

@@ -13,6 +13,14 @@ rust-version = "1.88"
 description = "Checks Word training guides for accessibility problems before PDF export."
 publish = false
 
+# Smaller build output (disk space). Our own crate keeps file and line numbers for
+# backtraces; the dependencies keep no debug information.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [lints.rust]
 # No unsafe code, except in `src/word` (Windows COM) and `src/fix/local_time.rs`
 # (one call, `GetLocalTime`), which allow it for themselves.

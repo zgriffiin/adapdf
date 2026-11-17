@@ -1,0 +1,25 @@
+{
+  "file": "C:\\Docs\\Guide.docx",
+  "errors": 1,
+  "warnings": 0,
+  "exit_code": 1,
+  "findings": [
+    {
+      "rule_id": "IMG-001",
+      "severity": "error",
+      "message": "A picture has no alt text and is not marked decorative. Screen reader users get nothing for it.",
+      "how_to_fix": "Right-click it and choose View Alt Text. Describe what it shows, for the purpose of this guide. If it adds no information, select Mark as decorative.",
+      "location": {
+        "heading": "Test guide",
+        "snippet": "",
+        "paragraph_index": 2,
+        "part": "word/document.xml"
+      },
+      "fix": {
+        "kind": "ask",
+        "id": "set-alt-text"
+      },
+      "suggestion": null
+    }
+  ]
+}

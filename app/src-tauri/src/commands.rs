@@ -343,8 +343,14 @@ pub fn read_report(report_json: &Path) -> CommandResult<ReportView> {
 }
 
 /// Checks that a path may be opened as a report in the browser: the HTML file of
-/// a report, on a local drive, that exists. The page cannot ask the app to open
-/// any other file or address.
+/// a report, with an absolute path that is not a network path (`\\server\share`),
+/// that exists. The page cannot ask the app to open any other file or address.
+///
+/// A network drive that is mapped to a letter (`Z:`) is not told from a local
+/// drive: that needs `GetDriveTypeW`, and so a new dependency (`windows`) for the
+/// app. The file is one that the app wrote next to the person's document, or one
+/// that the person chose, so this is a limit and not a way in (see the known gaps
+/// of M5a in the test plan).
 pub fn check_report_html(path: &Path) -> CommandResult<PathBuf> {
     let name = name_of(path);
     if !name.ends_with(HTML_SUFFIX) || name.len() == HTML_SUFFIX.len() {

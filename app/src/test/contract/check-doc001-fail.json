@@ -1,0 +1,25 @@
+{
+  "file": "C:\\Docs\\Guide.docx",
+  "errors": 1,
+  "warnings": 0,
+  "exit_code": 1,
+  "findings": [
+    {
+      "rule_id": "DOC-001",
+      "severity": "error",
+      "message": "The document has no title in its properties. PDF viewers show this title in the window bar, and screen readers read it out.",
+      "how_to_fix": "In Word, choose File > Info and type a title in the Title box.",
+      "location": {
+        "heading": null,
+        "snippet": null,
+        "paragraph_index": null,
+        "part": "docProps/core.xml"
+      },
+      "fix": {
+        "kind": "ask",
+        "id": "set-title"
+      },
+      "suggestion": "Test guide"
+    }
+  ]
+}

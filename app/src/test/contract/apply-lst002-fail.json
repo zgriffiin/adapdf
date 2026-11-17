@@ -1,0 +1,15 @@
+{
+  "backup": "Guide.backup-20260305-101530.docx",
+  "applied": [
+    {
+      "rule_id": "LST-001",
+      "summary": "Removed the typed \"3.\" from paragraph 5 and applied the style List Number."
+    }
+  ],
+  "at_export": [],
+  "refused": [],
+  "findings": [],
+  "errors": 0,
+  "warnings": 0,
+  "exit_code": 0
+}

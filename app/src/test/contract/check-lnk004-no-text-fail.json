@@ -1,0 +1,25 @@
+{
+  "file": "C:\\Docs\\Guide.docx",
+  "errors": 1,
+  "warnings": 0,
+  "exit_code": 1,
+  "findings": [
+    {
+      "rule_id": "LNK-004",
+      "severity": "error",
+      "message": "This link has no ScreenTip. Screen readers need a description of each link in the PDF, and Word adds it to the PDF only from the ScreenTip.",
+      "how_to_fix": "Right-click the link, choose Edit Hyperlink, choose ScreenTip, and type a short description of where the link goes. The tool can copy the link text into the ScreenTip for you.",
+      "location": {
+        "heading": "Test guide",
+        "snippet": "",
+        "paragraph_index": 2,
+        "part": "word/document.xml"
+      },
+      "fix": {
+        "kind": "auto",
+        "id": "add-screen-tip"
+      },
+      "suggestion": null
+    }
+  ]
+}

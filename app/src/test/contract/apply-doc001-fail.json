@@ -1,0 +1,15 @@
+{
+  "backup": "Guide.backup-20260305-101530.docx",
+  "applied": [
+    {
+      "rule_id": "DOC-001",
+      "summary": "Set the document title."
+    }
+  ],
+  "at_export": [],
+  "refused": [],
+  "findings": [],
+  "errors": 0,
+  "warnings": 0,
+  "exit_code": 0
+}

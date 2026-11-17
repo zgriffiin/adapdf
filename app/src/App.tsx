@@ -261,7 +261,7 @@ export function App() {
           subtitle: "The name, the date and the checklist are in the report (the .html and the .json). The PDF was not changed.",
         });
       } catch (error) {
-        setStatus({ kind: "error", title: "The sign-off was not saved.", subtitle: messageOf(error) });
+        setStatus({ kind: "error", title: "The sign-off could not be saved in full.", subtitle: messageOf(error) });
       }
       setFocusKey((key) => key + 1);
     });

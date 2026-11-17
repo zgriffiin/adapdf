@@ -100,6 +100,8 @@ cargo test --features verapdf          # needs vendor/ (see "Bundled tools"); ru
 cargo test --features windows_word,verapdf   # also runs the real `export` (long: about 25 minutes)
 ```
 
+Debug builds keep only line tables for our own crate and no debug information for the dependencies (`[profile.dev]` in `Cargo.toml`, to save disk space); backtraces still show file and line for our code.
+
 ## The app
 
 The app is a Tauri 2 window with a page made with IBM Carbon. It calls the same

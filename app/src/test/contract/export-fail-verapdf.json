@@ -1,0 +1,139 @@
+{
+  "exit_code": 1,
+  "view": {
+    "report": {
+      "schema_version": 1,
+      "summary": {
+        "verdict": "fail",
+        "errors": 2,
+        "warnings": 0,
+        "reason": "The report has 1 error in the PDF metadata or tags, 1 failed rule of the PDF/UA-1 check (veraPDF).",
+        "tool": "adapdf",
+        "tool_version": "0.1.0",
+        "generated_local": "2026-03-05 10:15:30",
+        "document": "Guide.docx",
+        "pdf": "Guide.pdf"
+      },
+      "export": {
+        "word_build": "16.0.20527.20000",
+        "parameters": [
+          {
+            "name": "ExportFormat",
+            "value": "wdExportFormatPDF"
+          }
+        ],
+        "fields_updated": 2,
+        "tables_of_contents_updated": 1,
+        "first_failed_field": null,
+        "seconds": 1.5
+      },
+      "precheck": [],
+      "fixes": {
+        "applied": [],
+        "backup": null
+      },
+      "pdf_metadata": {
+        "status": "done",
+        "changes": [
+          {
+            "field": "info-title",
+            "what": "title in the document information (Title)",
+            "old": null,
+            "new": "Guide"
+          }
+        ],
+        "issues": [
+          {
+            "kind": "no-title-to-copy",
+            "severity": "error",
+            "message": "The PDF has no title, and the Word document has none to copy.",
+            "how_to_fix": "Type a title in the document properties in Word."
+          }
+        ]
+      },
+      "verapdf": {
+        "status": "ran",
+        "verapdf_version": "1.28.2",
+        "validation": {
+          "ua1": {
+            "profile": "ua1",
+            "profile_name": "PDF/UA-1 validation profile",
+            "failed_rules": 1,
+            "failed_checks": 1,
+            "passed_rules": 105,
+            "passed_checks": 35,
+            "findings": [
+              {
+                "profile": "ua1",
+                "severity": "error",
+                "specification": "ISO 14289-1:2014",
+                "clause": "7.3",
+                "test_number": 1,
+                "description": "Figure tags shall include an alternative representation or replacement text that represents the contents marked with the Figure tag as noted in ISO 32000-1:2008, 14.7.2, Table 323",
+                "failed_checks": 1,
+                "context": "root/document[0]/StructTreeRoot[0](4 0 obj PDStructTreeRoot)/K[0](5 0 obj SEDocument Document)/K[0](6 0 obj SEFigure Figure)",
+                "error_message": "Figure structure element neither has an alternate description nor a replacement text",
+                "message": "A figure (picture, chart, shape or drawing) has no alternative text.",
+                "how_to_fix": "In Word, right-click the picture, choose Edit Alt Text, and describe it, or mark it as decorative. Then export again.",
+                "pre_check": "IMG-001",
+                "mapped": true
+              }
+            ],
+            "verapdf_version": "1.28.2"
+          },
+          "wcag": {
+            "status": "not-available"
+          }
+        }
+      },
+      "pac": {
+        "report_file": null,
+        "pac_version": null,
+        "result": null
+      },
+      "checklist": {
+        "items": [
+          {
+            "text": "Each piece of alt text describes what the image shows, for the guide's purpose.",
+            "done": false
+          },
+          {
+            "text": "Images marked decorative really are decorative.",
+            "done": false
+          },
+          {
+            "text": "The reading order makes sense when read aloud. Check with the PAC screen-reader preview.",
+            "done": false
+          },
+          {
+            "text": "Colour is not the only way information is shown.",
+            "done": false
+          },
+          {
+            "text": "Link text makes sense out of context.",
+            "done": false
+          },
+          {
+            "text": "Headings describe their section.",
+            "done": false
+          },
+          {
+            "text": "Tables are data tables, not layout.",
+            "done": false
+          }
+        ],
+        "name": null,
+        "date": null
+      }
+    },
+    "report_json": "C:\\Docs\\Guide.accessibility.json",
+    "report_html": "C:\\Docs\\Guide.accessibility.html",
+    "pdf": "C:\\Docs\\Guide.pdf"
+  },
+  "console": "Guide.docx: result\n",
+  "files": [
+    "C:\\Docs\\Guide.pdf",
+    "C:\\Docs\\Guide.accessibility.html",
+    "C:\\Docs\\Guide.accessibility.json"
+  ]
+}

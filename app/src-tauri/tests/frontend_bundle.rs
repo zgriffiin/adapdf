@@ -139,6 +139,27 @@ fn frontend_bundle_has_no_remote_urls() {
     assert!(!index.contains("<link rel=\"preconnect\"") && !index.contains("dns-prefetch"));
 }
 
+/// WCAG 3.1.1 and 2.4.2: the page names its language and has a title (a screen
+/// reader reads both when the window opens). Checked in the built page and in the
+/// source that it is built from.
+#[test]
+fn the_page_has_a_language_and_a_title() {
+    for index in [dist().join("index.html"), app_dir().join("index.html")] {
+        let html = fs::read_to_string(&index).unwrap();
+        let name = index.display();
+        assert!(
+            html.contains("<html lang=\"en\">"),
+            "{name} has no <html lang=\"en\">"
+        );
+        let title = html
+            .split("<title>")
+            .nth(1)
+            .and_then(|rest| rest.split("</title>").next())
+            .unwrap_or_else(|| panic!("{name} has no <title>"));
+        assert!(!title.trim().is_empty(), "{name} has an empty <title>");
+    }
+}
+
 /// The scanner itself: it finds an address that is not allowed, and it lets the
 /// allowed ones through.
 #[test]
@@ -316,6 +337,20 @@ fn the_capabilities_are_minimal() {
             "core:event:allow-unlisten",
             "dialog:allow-open"
         ]
+    );
+    // `default.json` is the only capability: a second file in the folder, or a
+    // capability written inline in `tauri.conf.json`, would add permissions that
+    // this test does not read.
+    let mut capability_files: Vec<String> =
+        fs::read_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+    capability_files.sort();
+    assert_eq!(capability_files, ["default.json"]);
+    assert!(
+        config()["app"]["security"].get("capabilities").is_none(),
+        "tauri.conf.json has inline capabilities"
     );
     assert_eq!(capability["windows"], serde_json::json!(["main"]));
     assert!(
