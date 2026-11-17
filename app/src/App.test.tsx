@@ -555,7 +555,7 @@ describe("the sign-off (A-04, A-08)", () => {
     });
     await user.type(within(form()).getByRole("textbox", { name: "Your name" }), "A. Reviewer");
     await user.click(within(form()).getByRole("button", { name: "Save sign-off" }));
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("The sign-off could not be saved in full."));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("The sign-off was not saved as asked."));
     expect(screen.getByRole("status")).toHaveTextContent("access denied");
     // What the person typed is still there.
     expect(within(form()).getByRole("textbox", { name: "Your name" })).toHaveValue("A. Reviewer");

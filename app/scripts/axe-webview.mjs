@@ -386,7 +386,9 @@ try {
 
 const violations = results.reduce((n, r) => n + r.violations.length, 0);
 const contrast = results.reduce((n, r) => n + r.contrastViolations, 0);
+// A contrast check that axe could not decide is not a pass.
+const undecided = results.reduce((n, r) => n + r.contrastIncomplete.length, 0);
 console.log(
-  `\n${results.length} screens, ${violations} violations in all, ${contrast} of them color-contrast.`,
+  `\n${results.length} screens, ${violations} violations in all, ${contrast} of them color-contrast, ${undecided} contrast checks undecided.`,
 );
-process.exit(failed || violations > 0 ? 1 : 0);
+process.exit(failed || violations > 0 || undecided > 0 ? 1 : 0);

@@ -145,7 +145,7 @@ only download in the project. The finished program makes no network calls.
 Licences are in [THIRD-PARTY.md](THIRD-PARTY.md).
 
 At run time the tool looks for `vendor/jre` and `vendor/verapdf` next to the
-program, and then at the root of the source tree. `cargo test` does not need
+program, and then (debug builds only) at the root of the source tree. `cargo test` does not need
 `vendor/`; only the tests of the feature `verapdf` do.
 
 ## First step

@@ -341,6 +341,7 @@ mod export {
     use adapdf::export::{ExportError, ExportResult};
     use adapdf::pipeline::{Exit, Stages, export_docx, output_paths};
 
+    #[cfg(all(feature = "windows_word", feature = "verapdf"))]
     fn name_of_file(path: &Path) -> String {
         path.file_name().unwrap().to_string_lossy().into_owned()
     }

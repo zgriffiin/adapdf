@@ -194,7 +194,7 @@ describe("the fix flow, from what `fix_offers` and `apply_fixes` gave", () => {
     const region = await screen.findByRole("status");
     await waitFor(() => expect(region).toHaveTextContent("The fixes were applied."));
     expect(region).toHaveTextContent(`Backup: ${applied.backup}.`);
-    expect(region).toHaveTextContent(applied.applied[0]!.summary.length > 0 ? "1 fix applied." : "");
+    expect(region).toHaveTextContent("1 fix applied.");
     expect(backend.calls.find((c) => c.command === "apply_fixes")?.args).toEqual({
       path: DOCX,
       choices: [{ rule_id: "LST-001", position: 0, input: { kind: "confirm" } }],
