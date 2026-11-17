@@ -1,2 +1,4 @@
 # The fixture test compares these files byte for byte, so git must not change line endings.
 *.docx binary
+# The contract test compares these files byte for byte with what Rust writes.
+app/src/test/contract/*.json text eol=lf
