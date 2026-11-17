@@ -30,6 +30,8 @@ const FIXED_RULES: &[RuleId] = &[
     RuleId::Tbl005,
     RuleId::Tbl006,
     RuleId::Txt002,
+    RuleId::Lnk004,
+    RuleId::Lnk005,
 ];
 
 const DOCUMENT: &str = "word/document.xml";
@@ -188,6 +190,25 @@ fn expected_edits() -> Vec<(RuleId, &'static str, Vec<Edit>)> {
             DOCUMENT,
             vec![edit(r#"<w:jc w:val="both"/>"#, r#"<w:jc w:val="left"/>"#)],
         ),
+        (
+            // The ScreenTip is the text of the link, and nothing else changes.
+            RuleId::Lnk004,
+            DOCUMENT,
+            vec![edit(
+                r#""><w:r><w:t xml:space="preserve">parking policy</w:t>"#,
+                r#"" w:tooltip="parking policy"><w:r><w:t xml:space="preserve">parking policy</w:t>"#,
+            )],
+        ),
+        (
+            // Only ` \h` goes. The quote marks of the field keep the way the
+            // file wrote them (`&quot;`).
+            RuleId::Lnk005,
+            DOCUMENT,
+            vec![edit(
+                r#"\o &quot;1-3&quot; \h \z \u </w:instrText>"#,
+                r#"\o &quot;1-3&quot; \z \u </w:instrText>"#,
+            )],
+        ),
     ]
 }
 
@@ -285,6 +306,7 @@ fn every_auto_problem() -> DocxBuilder {
         .paragraph(Para::new("1. Open the lid."))
         .paragraph(Para::new("2. Remove the tape."))
         .paragraph(Para::new("A justified paragraph.").justify())
+        .paragraph(Para::new("See ").hyperlink("the parking policy", "https://example.org/p"))
         .heading(2, "")
         .paragraph(Para::empty())
         .paragraph(Para::empty())
@@ -324,6 +346,7 @@ fn fix_reruns_stage_1_with_every_auto_problem_in_one_document() {
         RuleId::Tbl006,
         RuleId::Txt002,
         RuleId::Txt004,
+        RuleId::Lnk004,
     ] {
         // TXT-004 needs a table of contents. The others are in this document.
         if rule != RuleId::Txt004 {

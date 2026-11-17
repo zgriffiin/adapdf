@@ -14,7 +14,8 @@
 //!
 //! - Auto: `SetDefaultLanguage`, `ApplyHeadingStyle`, `DeleteEmptyHeading`,
 //!   `ApplyListStyle`, `MakeImageInline`, `DeleteEmptyParagraphs`,
-//!   `MarkHeaderRow`, `DeleteEmptyRow`, `DisallowRowBreak`, `AlignLeft`.
+//!   `MarkHeaderRow`, `DeleteEmptyRow`, `DisallowRowBreak`, `AlignLeft`,
+//!   `AddScreenTip`, `RemoveTocLinks`.
 //!   `UpdateFields` writes nothing: Word updates the fields at export (M4).
 //! - Ask: `SetTitle` and `SetAltText` take the text the user typed.
 //!   `MarkAnnotationsDecorative` takes the user's confirmation. The tool never
@@ -36,6 +37,7 @@ use crate::rules;
 
 mod drawings;
 pub mod interactive;
+mod links;
 #[cfg(windows)]
 #[allow(unsafe_code)]
 mod local_time;
@@ -236,6 +238,12 @@ pub fn describe(fix: FixId, options: &FixOptions) -> String {
         FixId::DeleteEmptyRow => "Delete the empty rows.".to_string(),
         FixId::DisallowRowBreak => "Do not allow rows to break across pages.".to_string(),
         FixId::AlignLeft => "Align this paragraph to the left.".to_string(),
+        FixId::AddScreenTip => {
+            "Copy the link text into the ScreenTip of this link (the description that Word writes into the PDF).".to_string()
+        }
+        FixId::RemoveTocLinks => {
+            "Make the table of contents without links: remove the \\h switch from its field. Word makes the table again when the PDF is exported.".to_string()
+        }
         FixId::UpdateFields => {
             "Update the table of contents and other fields. Word does this when the PDF is exported.".to_string()
         }
@@ -355,6 +363,8 @@ impl<'a> Engine<'a> {
             FixId::MarkHeaderRow => self.mark_header_row(position)?,
             FixId::DeleteEmptyRow => self.delete_empty_rows(position)?,
             FixId::DisallowRowBreak => self.disallow_row_break(position)?,
+            FixId::AddScreenTip => self.add_screen_tip(position)?,
+            FixId::RemoveTocLinks => self.remove_toc_links(position)?,
             FixId::AlignLeft => self.align_left(finding)?,
             FixId::UpdateFields => return Ok(Outcome::AtExport),
         };

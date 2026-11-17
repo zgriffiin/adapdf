@@ -128,6 +128,26 @@ decorative (IMG-007).
   reports text in the shapes of a group or canvas (TXB-001). A flowchart
   saved as a picture does not have this problem.
 
+### Links and the table of contents
+
+Word writes a link into the PDF with a description only when the link has a
+ScreenTip, and veraPDF fails a link without one (PDF/UA-1 7.18.1-2 and
+7.18.5-2; see LNK-004 and LNK-005 in [03-precheck-rules](03-precheck-rules.md)).
+
+- **Links get a ScreenTip.** Select the link text, choose Insert > Link, choose
+  ScreenTip, and type a short description of where the link goes. The Author
+  Quick Guide shows this. The tool can copy the link text into the ScreenTip
+  (LNK-004), but a description that says more than the link text is better.
+- **The table of contents is made without hyperlinks.** The template's table of
+  contents (a Quick Part) is a Table of Contents content control whose field is
+  `TOC \o "1-3" \z \u`, with no `\h` switch. In Word: References > Table of
+  Contents > Custom Table of Contents, clear "Use hyperlinks instead of page
+  numbers". Word makes the links of a table of contents again at each update,
+  without ScreenTips, so a ScreenTip cannot be kept on them. Readers still
+  move through the PDF with its bookmarks and headings.
+- Link text says where the link goes (LNK-001), and a long web address is not
+  used as link text (LNK-002).
+
 ## Headers, footers and cover
 
 - Header: the guide title, from a `TITLE` field so it matches the
@@ -156,7 +176,7 @@ decorative (IMG-007).
 - Title: empty, so the pre-check (DOC-001) asks for it. It must not hold
   the template's own name.
 - Language: en-US.
-- "Mark as decorative" and alt-text guidance appear in the Author Quick
+- "Mark as decorative", alt-text and ScreenTip guidance appear in the Author Quick
   Guide.
 - Formatting restriction (Review > Restrict Editing > "Limit formatting to a
   selection of styles"): **not set by default**. Decide with Q4.
@@ -178,7 +198,8 @@ decorative (IMG-007).
 The template is done when:
 
 1. `sample-all-styles.docx` uses every style, callout, Quick Part, a Quick
-   Table, a captioned screenshot, a TOC, links, a 3-level heading structure
+   Table, a captioned screenshot, a TOC without hyperlinks, links with
+   ScreenTips, a 3-level heading structure
    and both list types.
 2. The Adapdf pre-check reports 0 errors and 0 warnings on it (DOC-004
    aside, until that rule can recognise the template).

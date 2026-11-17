@@ -26,7 +26,11 @@ use adapdf::word::{WordDocument, WordSession};
 use fix_support::{
     confirm_one, findings, fix_file, fix_file_with, fixture, of, replace_part, requests_for,
 };
+
 use word_support::{TempDir, exclusive, wait_for_word_pids, within, word_pids};
+
+/// The text of a link that has quote marks, a backslash and XML characters.
+const AWKWARD_LINK: &str = r#"Say "stop" & <go> C:\temp é 日本"#;
 
 /// The names of the files in a folder, sorted.
 fn names(folder: &Path) -> Vec<String> {
@@ -423,6 +427,23 @@ fn word_check_for(rule: RuleId) -> Option<Check> {
             }
             Ok(())
         },
+        RuleId::Lnk004 => |original, fixed| {
+            same("links", fixed.hyperlink_count()?, 1)?;
+            same(
+                "ScreenTip before",
+                original.hyperlink_screen_tip(0)?,
+                String::new(),
+            )?;
+            same(
+                "ScreenTip after",
+                fixed.hyperlink_screen_tip(0)?,
+                "parking policy".to_string(),
+            )
+        },
+        RuleId::Lnk005 => |original, fixed| {
+            same("links before", original.toc_uses_hyperlinks(0)?, true)?;
+            same("links after", fixed.toc_uses_hyperlinks(0)?, false)
+        },
         RuleId::Txt002 => |original, fixed| {
             same(
                 "alignment before",
@@ -507,6 +528,115 @@ fn cases() -> Vec<Case> {
             has_table: false,
         });
     }
+
+    // A ScreenTip on each way that Word writes a link. Word reads the ScreenTip
+    // back as the text of the link, also when the text has quote marks, a
+    // backslash and characters that XML escapes.
+    let url = "https://example.org/parking";
+    let escaped = AWKWARD_LINK
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    let pieces = format!(
+        r#"<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> HYPERLINK </w:instrText></w:r><w:r><w:instrText xml:space="preserve">"{url}"</w:instrText></w:r><w:r><w:instrText xml:space="preserve">  </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>{escaped}</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>"#
+    );
+    let field = format!(r#"HYPERLINK "{url}""#);
+    let tip_is_the_text: Check = |_, fixed| {
+        same("links", fixed.hyperlink_count()?, 1)?;
+        same(
+            "ScreenTip",
+            fixed.hyperlink_screen_tip(0)?,
+            AWKWARD_LINK.to_string(),
+        )
+    };
+    for (name, original) in [
+        (
+            "w:hyperlink",
+            clean()
+                .paragraph(Para::empty().hyperlink(AWKWARD_LINK, url))
+                .build(),
+        ),
+        (
+            "complex field",
+            clean()
+                .paragraph(Para::empty().field(&field, AWKWARD_LINK))
+                .build(),
+        ),
+        (
+            "simple field",
+            clean()
+                .paragraph(Para::empty().simple_field(&field, AWKWARD_LINK))
+                .build(),
+        ),
+        (
+            "field with its instruction in pieces",
+            clean().paragraph(Para::empty().raw_run(&pieces)).build(),
+        ),
+    ] {
+        cases.push(Case {
+            name: format!("LNK-004 on a {name}"),
+            requests: requests_for(&findings(&original), RuleId::Lnk004, ""),
+            original,
+            check: Some(tip_is_the_text),
+            has_table: false,
+        });
+    }
+
+    // A link text of 299 characters, more than the 260 of Word's own ScreenTip
+    // box. The tool copies it whole. Word 16.0.20527 reads the `w:tooltip` of a
+    // `w:hyperlink` cut at 260 characters, and the `\o` text of a field whole.
+    let long_text = adapdf::fixtures::words(60);
+    let long_tip_in_an_element: Check = |_, fixed| {
+        same(
+            "ScreenTip",
+            fixed.hyperlink_screen_tip(0)?,
+            adapdf::fixtures::words(60).chars().take(260).collect(),
+        )
+    };
+    let long_tip_in_a_field: Check = |_, fixed| {
+        same(
+            "ScreenTip",
+            fixed.hyperlink_screen_tip(0)?,
+            adapdf::fixtures::words(60),
+        )
+    };
+    for (name, original, check) in [
+        (
+            "w:hyperlink",
+            clean()
+                .paragraph(Para::empty().hyperlink(&long_text, url))
+                .build(),
+            long_tip_in_an_element,
+        ),
+        (
+            "complex field",
+            clean()
+                .paragraph(Para::empty().field(&field, &long_text))
+                .build(),
+            long_tip_in_a_field,
+        ),
+    ] {
+        cases.push(Case {
+            name: format!("LNK-004 on a {name} of 299 characters"),
+            requests: requests_for(&findings(&original), RuleId::Lnk004, ""),
+            original,
+            check: Some(check),
+            has_table: false,
+        });
+    }
+
+    // A table of contents in a content control, with other switches around `\h`.
+    let original = clean()
+        .toc_content_control(&[("Test guide", 1)], false)
+        .paragraph(Para::new("Test guide").style("Heading1").bookmark("_Toc1"))
+        .build();
+    cases.push(Case {
+        name: "LNK-005 in a content control".to_string(),
+        requests: requests_for(&findings(&original), RuleId::Lnk005, ""),
+        original,
+        check: word_check_for(RuleId::Lnk005),
+        has_table: false,
+    });
 
     // "Mark as decorative".
     let original = fixture(RuleId::Img001, true);

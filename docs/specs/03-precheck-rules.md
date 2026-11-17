@@ -109,6 +109,45 @@ Notes on the image rules:
 | LNK-001 | The link text is vague: "click here", "here", "link", "more", "read more". | warning | manual | 2.4.4 |
 | LNK-002 | The link text is a bare URL longer than 40 characters. | warning | manual | 2.4.4 |
 | LNK-003 | An internal link points to a bookmark that does not exist. | error | manual | 2.4.4 |
+| LNK-004 | A link has no ScreenTip. | error | auto (copy the link's own text into the ScreenTip, after the user confirms) | 2.4.4, 1.1.1, UA |
+| LNK-005 | The table of contents is made of links: its `TOC` field has the `\h` switch. | error | auto (remove the `\h` switch from the field, after the user confirms) | 2.4.4, 1.1.1, UA |
+
+Notes on the link rules (decided 2026-11-16, from the S5-10 result in the
+[test plan](../test-plan.md#s5-10-result)):
+
+- **Why LNK-004 and LNK-005 exist.** Word writes a PDF link annotation without
+  `/Contents` (the description of the link) unless the link has a ScreenTip.
+  veraPDF then fails PDF/UA-1 7.18.1-2 and 7.18.5-2. Seen with Word 16.0.20527
+  and veraPDF 1.28.2 on every pass fixture that had a link, and on a
+  table of contents with `\h`. A ScreenTip makes Word write `/Contents`; the
+  table of contents is the exception, because Word makes its links again at each
+  update, without ScreenTips. Whether PAC also fails these links is to be
+  confirmed in Phase 0. The rules follow veraPDF until then.
+- **LNK-004** reports a `w:hyperlink` element or a `HYPERLINK` field (simple or
+  complex) with no ScreenTip, or one that is empty or only spaces. The ScreenTip
+  is `w:tooltip` on a `w:hyperlink`, or the `\o "text"` switch of a field. It
+  does not report a link that is an entry of a table of contents (in a `TOC`
+  field result, or in a "Table of Contents" content control): LNK-005 covers
+  those.
+- **The LNK-004 fix** copies the link's own visible text into its ScreenTip, with
+  runs of spaces, tabs and line breaks made into one space. This is the
+  author's own text, not invented content. A link with no text, or only spaces,
+  is refused with a message, and the user types a ScreenTip in Word. LNK-001 and
+  LNK-002 still report a vague or a bare-address link text; copying it does not
+  make it better. The fix does not change a field that already has an empty `\o`
+  switch. Word cuts a `w:tooltip` at 260 characters (the length of its own
+  ScreenTip box), so a very long link text gives a ScreenTip that is the start of
+  the text.
+- **LNK-005** reports a `TOC` field (also inside a "Table of Contents" content
+  control) whose instruction has the `\h` switch, for example
+  `TOC \o "1-3" \h \z \u`. **The fix** removes the `\h` switch from the field
+  instruction and nothing else. Stage 3 updates the table of contents before
+  the export, and Word then makes it without links. Readers still move through
+  the PDF with its bookmarks (`CreateBookmarks`) and its headings. In Word the
+  same change is References > Table of Contents > Custom Table of Contents, then
+  clear "Use hyperlinks instead of page numbers".
+- Neither fix changes the PDF. Stage 4 still writes only document-level
+  metadata.
 
 ## Colour and text
 

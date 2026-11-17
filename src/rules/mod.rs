@@ -52,6 +52,8 @@ pub const RULES: &[(RuleId, Rule)] = &[
     (RuleId::Lnk001, links::lnk_001),
     (RuleId::Lnk002, links::lnk_002),
     (RuleId::Lnk003, links::lnk_003),
+    (RuleId::Lnk004, links::lnk_004),
+    (RuleId::Lnk005, links::lnk_005),
     (RuleId::Clr001, colour::clr_001),
     (RuleId::Clr002, colour::clr_002),
     (RuleId::Txt001, text::txt_001),

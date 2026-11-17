@@ -441,6 +441,24 @@ impl WordDocument<'_> {
         Ok(item(&self.document().get_object("InlineShapes")?, n)?.get_string("AlternativeText")?)
     }
 
+    /// How many links Word counts in the main text (`Hyperlinks`): `w:hyperlink`
+    /// elements and `HYPERLINK` fields.
+    pub fn hyperlink_count(&self) -> Result<u32> {
+        self.count_of("Hyperlinks")
+    }
+
+    /// The ScreenTip of link `n`, counting from 0.
+    pub fn hyperlink_screen_tip(&self, n: usize) -> Result<String> {
+        Ok(item(&self.document().get_object("Hyperlinks")?, n)?.get_string("ScreenTip")?)
+    }
+
+    /// Whether the entries of table of contents `n` (counting from 0) are
+    /// links: "Use hyperlinks instead of page numbers" (`UseHyperlinks`).
+    pub fn toc_uses_hyperlinks(&self, n: usize) -> Result<bool> {
+        let toc = item(&self.document().get_object("TablesOfContents")?, n)?;
+        Ok(toc.get_i32("UseHyperlinks")? != 0)
+    }
+
     /// How many rows table `table` has (counting from 0).
     pub fn row_count(&self, table: usize) -> Result<u32> {
         let count = self.table(table)?.get_object("Rows")?.get_i32("Count")?;

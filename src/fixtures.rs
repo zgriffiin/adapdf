@@ -19,8 +19,8 @@ mod media;
 mod objects;
 use links_colour_text::shd_xml;
 pub use links_colour_text::{
-    TEST_THEME, TOC_INSTRUCTION, complex_field_xml, page_x_of_y_xml, raw_docx, simple_field_xml,
-    text_paragraph_xml,
+    TEST_THEME, TOC_INSTRUCTION, TOC_INSTRUCTION_NO_LINKS, complex_field_xml, page_x_of_y_xml,
+    raw_docx, simple_field_xml, text_paragraph_xml,
 };
 pub use objects::{
     Image, Table, alt_of_length, equation, ole_object, split_runs, text_box, vml_text_box,

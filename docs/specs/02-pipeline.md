@@ -115,7 +115,9 @@ are needed.
   PAC.
 - Changes each failed rule into a finding with a plain-language message. Keep
   a table that links common veraPDF rule IDs to the likely cause in Word and
-  the fix (for example, "Figure without alt text → IMG-001").
+  the fix (for example, "Figure without alt text → IMG-001", and "link without
+  a description → LNK-004": Word writes a link's description only from its
+  ScreenTip).
 - Any failure means the PDF does not pass.
 
 ## Stage 6 — Report

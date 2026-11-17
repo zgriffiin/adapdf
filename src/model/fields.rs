@@ -5,6 +5,8 @@
 //! Field codes are read in document order with a stack, because a field can
 //! span several paragraphs (a table of contents does) and fields can nest.
 
+use std::ops::Range;
+
 use roxmltree::Node;
 
 use super::R_NS;
@@ -24,6 +26,16 @@ pub enum LinkTarget {
     Internal(String),
 }
 
+/// Where a link is in `word/document.xml`, for a fix that changes it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LinkSource {
+    /// The byte range of the `w:hyperlink` or `w:fldSimple` element.
+    Element(Range<usize>),
+    /// The byte ranges of the `w:instrText` elements of a complex field, in
+    /// order.
+    Field(Vec<Range<usize>>),
+}
+
 /// A link in the body: a `w:hyperlink` element or a `HYPERLINK` field.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Link {
@@ -32,6 +44,22 @@ pub struct Link {
     /// The visible text of the link.
     pub text: String,
     pub target: LinkTarget,
+    /// The ScreenTip as written: `w:tooltip` on a `w:hyperlink`, or the `\o`
+    /// switch of a `HYPERLINK` field. `None` when there is none.
+    pub screen_tip: Option<String>,
+    /// The link is an entry of a table of contents: it is in the result of a
+    /// `TOC` field or in a "Table of Contents" content control.
+    pub in_toc: bool,
+    pub source: LinkSource,
+}
+
+impl Link {
+    /// The link has a ScreenTip that is not empty and not only spaces.
+    pub fn has_screen_tip(&self) -> bool {
+        self.screen_tip
+            .as_deref()
+            .is_some_and(|tip| !tip.trim().is_empty())
+    }
 }
 
 /// A table of contents: a `TOC` field, or a content control (`w:sdt`) whose
@@ -43,6 +71,9 @@ pub struct Toc {
     /// The field instruction, for example `TOC \o "1-3" \h \z \u`. Empty
     /// when a content control holds no `TOC` field.
     pub instruction: String,
+    /// The byte ranges of the `w:instrText` elements that make the
+    /// instruction, in order. Empty when `instruction` is.
+    pub instruction_ranges: Vec<Range<usize>>,
     /// The field is marked dirty (`w:dirty`): Word has not updated it since it
     /// was changed.
     pub dirty: bool,
@@ -94,30 +125,57 @@ pub fn keyword(instruction: &str) -> String {
 struct Token {
     text: String,
     quoted: bool,
+    /// The byte range in the instruction. A quoted word includes its quotes.
+    start: usize,
+    end: usize,
 }
 
-/// Splits a field instruction into words. A quoted string is one word.
-fn tokens(instruction: &str) -> Vec<Token> {
+/// Splits a field instruction into words. A quoted string is one word. In a
+/// quoted string, `\"` is a quote mark and `\\` is a backslash; any other
+/// backslash stays as it is. The flag is true when a quoted string is not
+/// closed.
+fn scan(instruction: &str) -> (Vec<Token>, bool) {
     let mut out = Vec::new();
     let mut current = String::new();
+    let mut start = 0;
     let mut in_quotes = false;
-    for c in instruction.chars() {
-        if c == '"' {
-            if in_quotes || !current.is_empty() {
+    let mut chars = instruction.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        if in_quotes && c == '\\' && matches!(chars.peek(), Some((_, '"' | '\\'))) {
+            current.extend(chars.next().map(|(_, escaped)| escaped));
+        } else if c == '"' {
+            if in_quotes {
                 out.push(Token {
                     text: std::mem::take(&mut current),
-                    quoted: in_quotes,
+                    quoted: true,
+                    start,
+                    end: i + 1,
+                });
+            } else if !current.is_empty() {
+                out.push(Token {
+                    text: std::mem::take(&mut current),
+                    quoted: false,
+                    start,
+                    end: i,
                 });
             }
             in_quotes = !in_quotes;
+            if in_quotes {
+                start = i;
+            }
         } else if c.is_whitespace() && !in_quotes {
             if !current.is_empty() {
                 out.push(Token {
                     text: std::mem::take(&mut current),
                     quoted: false,
+                    start,
+                    end: i,
                 });
             }
         } else {
+            if current.is_empty() && !in_quotes {
+                start = i;
+            }
             current.push(c);
         }
     }
@@ -125,9 +183,45 @@ fn tokens(instruction: &str) -> Vec<Token> {
         out.push(Token {
             text: current,
             quoted: in_quotes,
+            start,
+            end: instruction.len(),
         });
     }
+    (out, in_quotes)
+}
+
+fn tokens(instruction: &str) -> Vec<Token> {
+    scan(instruction).0
+}
+
+/// True when the instruction ends inside a quoted string that is not closed.
+pub fn has_open_quote(instruction: &str) -> bool {
+    scan(instruction).1
+}
+
+/// The text as one quoted word of a field instruction, with `\` and `"`
+/// written as `\\` and `\"`. [`switch_arg`] reads it back as the same text.
+pub fn quoted(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for c in text.chars() {
+        if matches!(c, '"' | '\\') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push('"');
     out
+}
+
+/// The byte range to delete to remove the first switch of that name: the switch
+/// and the spaces before it. For `TOC \o "1-3" \h \z` and `h` it is the range of
+/// ` \h`. `None` when the instruction has no such switch.
+pub fn switch_span(instruction: &str, name: &str) -> Option<Range<usize>> {
+    let all = tokens(instruction);
+    let token = all.iter().find(|t| is_switch(t, name))?;
+    let before = instruction[..token.start].trim_end_matches(char::is_whitespace);
+    Some(before.len()..token.end)
 }
 
 fn is_switch(token: &Token, name: &str) -> bool {
@@ -183,6 +277,7 @@ fn hyperlink_target(instruction: &str) -> Option<LinkTarget> {
 #[derive(Default)]
 struct OpenField {
     instruction: String,
+    instruction_ranges: Vec<Range<usize>>,
     dirty: bool,
     in_result: bool,
     text: String,
@@ -191,6 +286,7 @@ struct OpenField {
 
 struct ClosedField {
     instruction: String,
+    instruction_ranges: Vec<Range<usize>>,
     dirty: bool,
     text: String,
     start_paragraph: usize,
@@ -212,9 +308,11 @@ impl FieldStack {
         });
     }
 
-    fn instruction(&mut self, text: &str) {
+    /// Adds the text of a `w:instrText` element, and its byte range.
+    fn instruction(&mut self, text: &str, range: Range<usize>) {
         if let Some(field) = self.open.last_mut().filter(|f| !f.in_result) {
             field.instruction.push_str(text);
+            field.instruction_ranges.push(range);
         }
     }
 
@@ -228,6 +326,7 @@ impl FieldStack {
         let field = self.open.pop()?;
         Some(ClosedField {
             instruction: field.instruction,
+            instruction_ranges: field.instruction_ranges,
             dirty: field.dirty,
             text: field.text,
             start_paragraph: field.start_paragraph,
@@ -285,7 +384,7 @@ fn feed_run(
                 _ => {}
             }
         } else if child.is_w("instrText") {
-            stack.instruction(child.text().unwrap_or(""));
+            stack.instruction(child.text().unwrap_or(""), child.range());
         } else if child.is_w("t") {
             let text = child.text().unwrap_or("");
             stack.visible(text);
@@ -316,6 +415,18 @@ fn is_toc_content_control(sdt: Node) -> bool {
         .is_some_and(|v| v.eq_ignore_ascii_case("Table of Contents"))
 }
 
+/// True when `node` is an entry of a table of contents: it is in a "Table of
+/// Contents" content control, or in the result of a `TOC` field that is open.
+fn in_toc(node: Node, stack: &FieldStack) -> bool {
+    stack
+        .open
+        .iter()
+        .any(|f| f.in_result && keyword(&f.instruction) == "TOC")
+        || node
+            .ancestors()
+            .any(|a| a.is_w("sdt") && is_toc_content_control(a))
+}
+
 /// True for the built-in styles TOC 1 to TOC 9 (not TOC Heading).
 fn is_toc_entry_style(name: &str) -> bool {
     name.to_ascii_lowercase()
@@ -328,6 +439,7 @@ fn make_toc(
     first: usize,
     last: usize,
     instruction: String,
+    instruction_ranges: Vec<Range<usize>>,
     dirty: bool,
 ) -> Toc {
     let entries = paragraphs[first..=last.min(paragraphs.len() - 1)]
@@ -338,6 +450,7 @@ fn make_toc(
     Toc {
         first_paragraph: first,
         instruction,
+        instruction_ranges,
         dirty,
         entries,
     }
@@ -397,6 +510,9 @@ pub(super) fn scan_body(
                         paragraph: index,
                         text: visible_text(node, p),
                         target,
+                        screen_tip: node.w_attr("tooltip").map(str::to_string),
+                        in_toc: in_toc(node, &stack),
+                        source: LinkSource::Element(node.range()),
                     });
                 }
             } else if node.is_w("fldSimple") {
@@ -408,6 +524,9 @@ pub(super) fn scan_body(
                         paragraph: index,
                         text: visible_text(node, p),
                         target,
+                        screen_tip: switch_arg(instruction, "o"),
+                        in_toc: in_toc(node, &stack),
+                        source: LinkSource::Element(node.range()),
                     });
                 }
             } else if node.is_w("r") && !is_alternative_content(node) {
@@ -419,6 +538,9 @@ pub(super) fn scan_body(
                                     paragraph: field.start_paragraph,
                                     text: field.text,
                                     target,
+                                    screen_tip: switch_arg(&field.instruction, "o"),
+                                    in_toc: in_toc(node, &stack),
+                                    source: LinkSource::Field(field.instruction_ranges),
                                 });
                             }
                         }
@@ -457,6 +579,9 @@ pub(super) fn scan_body(
             first,
             last,
             field.map(|f| f.instruction.clone()).unwrap_or_default(),
+            field
+                .map(|f| f.instruction_ranges.clone())
+                .unwrap_or_default(),
             marked_dirty || field.is_some_and(|f| f.dirty),
         ));
         covered.push(first..=last);
@@ -468,6 +593,7 @@ pub(super) fn scan_body(
                 field.start_paragraph,
                 field.end_paragraph,
                 field.instruction,
+                field.instruction_ranges,
                 field.dirty,
             ));
         }
@@ -787,5 +913,188 @@ mod tests {
         assert!(!is_toc_entry_style("TOC Heading"));
         assert!(!is_toc_entry_style("toc 10"));
         assert!(!is_toc_entry_style("Normal"));
+    }
+
+    #[test]
+    fn quoted_words_read_escaped_quotes_and_backslashes() {
+        let i = r#"HYPERLINK \l "Top" \o "The \"top\" of C:\\dir""#;
+        assert_eq!(
+            switch_arg(i, "o").as_deref(),
+            Some(r#"The "top" of C:\dir"#)
+        );
+        // The target is still the bookmark, not a word of the ScreenTip.
+        assert_eq!(
+            hyperlink_target(i),
+            Some(LinkTarget::Internal("Top".to_string()))
+        );
+        // A backslash before any other character stays (a path).
+        assert_eq!(
+            hyperlink_target(r#"HYPERLINK "C:\dir\f.docx" \o "tip""#),
+            Some(LinkTarget::External(r"C:\dir\f.docx".to_string()))
+        );
+        assert!(!has_open_quote(i));
+        assert!(has_open_quote(r#"HYPERLINK "https://example.org"#));
+        assert!(has_open_quote(r#"HYPERLINK \o "a \" b"#));
+    }
+
+    #[test]
+    fn quoted_text_is_read_back_as_the_same_text() {
+        for text in [
+            "Parking policy",
+            r#"He said "stop" & left <now>"#,
+            r"C:\temp\file.docx",
+            r#"ends with a backslash\"#,
+            r#"\"#,
+            "é 日本 \u{1F600}",
+            "",
+        ] {
+            let instruction = format!(r#"HYPERLINK \l "Top" \o {}"#, quoted(text));
+            assert_eq!(
+                switch_arg(&instruction, "o").as_deref(),
+                Some(text),
+                "{instruction}"
+            );
+            assert!(!has_open_quote(&instruction), "{instruction}");
+            assert_eq!(
+                hyperlink_target(&instruction),
+                Some(LinkTarget::Internal("Top".to_string())),
+                "{instruction}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_switch_span_covers_the_switch_and_the_spaces_before_it() {
+        let cut = |i: &str, name: &str| {
+            switch_span(i, name).map(|s| format!("{}{}", &i[..s.start], &i[s.end..]))
+        };
+        let i = r#" TOC \o "1-3" \h \z \u "#;
+        assert_eq!(cut(i, "h").as_deref(), Some(r#" TOC \o "1-3" \z \u "#));
+        assert_eq!(cut(r"TOC \h", "h").as_deref(), Some("TOC"));
+        assert_eq!(cut(r"TOC   \h   \z", "H").as_deref(), Some(r"TOC   \z"));
+        assert_eq!(cut(i, "n"), None);
+        // Only a switch counts: not a word in quotes, not a longer switch.
+        assert_eq!(cut(r#"TOC \t "a \h b""#, "h"), None);
+        assert_eq!(cut(r"TOC \hz", "h"), None);
+        // The first one only.
+        assert_eq!(cut(r"TOC \h \h", "h").as_deref(), Some(r"TOC \h"));
+    }
+
+    #[test]
+    fn links_keep_their_screen_tip_source_and_place_in_a_toc() {
+        let body = format!(
+            r#"<w:p><w:hyperlink r:id="rId5" w:tooltip="Parking page">{}</w:hyperlink></w:p><w:p><w:hyperlink w:anchor="Intro">{}</w:hyperlink></w:p><w:p><w:fldSimple w:instr=' HYPERLINK \l "Top" \o "Back" '>{}</w:fldSimple></w:p><w:p>{}{}{}{}{}</w:p>"#,
+            run("Parking"),
+            run("Intro"),
+            run("Up"),
+            fld("begin"),
+            instr(r#"HYPERLINK "https://example.org""#),
+            fld("separate"),
+            run("Example"),
+            fld("end"),
+        );
+        let rels = r#"<Relationship Id="rId5" Type="x/hyperlink" Target="https://example.org/p" TargetMode="External"/>"#;
+        let document = format!("<w:document {NS}><w:body>{body}</w:body></w:document>");
+        let doc = load(&body, rels);
+        let tips: Vec<Option<&str>> = doc.links.iter().map(|l| l.screen_tip.as_deref()).collect();
+        assert_eq!(tips, [Some("Parking page"), None, Some("Back"), None]);
+        let has: Vec<bool> = doc.links.iter().map(Link::has_screen_tip).collect();
+        assert_eq!(has, [true, false, true, false]);
+        assert!(doc.links.iter().all(|l| !l.in_toc));
+        // The ranges point at the elements in the text of the part.
+        let text_of = |range: &Range<usize>| &document[range.clone()];
+        match &doc.links[0].source {
+            LinkSource::Element(r) => assert!(text_of(r).starts_with("<w:hyperlink r:id=")),
+            other => panic!("{other:?}"),
+        }
+        match &doc.links[2].source {
+            LinkSource::Element(r) => assert!(text_of(r).starts_with("<w:fldSimple")),
+            other => panic!("{other:?}"),
+        }
+        match &doc.links[3].source {
+            LinkSource::Field(ranges) => {
+                assert_eq!(ranges.len(), 1);
+                assert!(text_of(&ranges[0]).starts_with("<w:instrText"));
+                assert!(text_of(&ranges[0]).contains("HYPERLINK"));
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_blank_screen_tip_is_not_a_screen_tip() {
+        let body = format!(
+            r#"<w:p><w:hyperlink w:anchor="a" w:tooltip="">{}</w:hyperlink><w:hyperlink w:anchor="b" w:tooltip="  ">{}</w:hyperlink></w:p>"#,
+            run("A"),
+            run("B")
+        );
+        let doc = load(&body, "");
+        assert_eq!(doc.links[0].screen_tip.as_deref(), Some(""));
+        assert!(doc.links.iter().all(|l| !l.has_screen_tip()));
+    }
+
+    #[test]
+    fn links_in_a_toc_field_result_or_content_control_are_toc_entries() {
+        let toc_begin = format!(
+            "{}{}{}",
+            fld("begin"),
+            instr(r#"TOC \o "1-3" \h"#),
+            fld("separate")
+        );
+        let body = format!(
+            r#"<w:p>{toc_begin}<w:hyperlink w:anchor="_Toc1">{}</w:hyperlink></w:p><w:p>{}{}{}{}{}{}</w:p><w:p>{}</w:p><w:p><w:hyperlink w:anchor="Later">{}</w:hyperlink></w:p><w:sdt><w:sdtPr><w:docPartObj><w:docPartGallery w:val="Table of Contents"/></w:docPartObj></w:sdtPr><w:sdtContent><w:p><w:hyperlink w:anchor="_Toc2">{}</w:hyperlink></w:p></w:sdtContent></w:sdt>"#,
+            run("One"),
+            fld("begin"),
+            instr(r#"HYPERLINK \l "_Toc2""#),
+            fld("separate"),
+            run("Two"),
+            fld("end"),
+            "",
+            fld("end"),
+            run("After"),
+            run("Three"),
+        );
+        let doc = load(&body, "");
+        let seen: Vec<(&str, bool)> = doc
+            .links
+            .iter()
+            .map(|l| (l.text.as_str(), l.in_toc))
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                ("One", true),
+                ("Two", true),
+                ("After", false),
+                ("Three", true)
+            ]
+        );
+        // The field, and the content control that holds no field.
+        assert_eq!(doc.tocs.len(), 2);
+        assert_eq!(doc.tocs[0].instruction_ranges.len(), 1);
+        assert!(doc.tocs[1].instruction_ranges.is_empty());
+    }
+
+    #[test]
+    fn a_toc_keeps_the_ranges_of_its_instruction() {
+        let body = format!(
+            "<w:p>{}{}{}{}{}</w:p>",
+            fld("begin"),
+            r#"<w:r><w:instrText xml:space="preserve"> TOC \o "1-3" </w:instrText></w:r>"#,
+            r#"<w:r><w:instrText xml:space="preserve">\h \z</w:instrText></w:r>"#,
+            fld("separate"),
+            fld("end"),
+        );
+        let document = format!("<w:document {NS}><w:body>{body}</w:body></w:document>");
+        let doc = load(&body, "");
+        assert_eq!(doc.tocs[0].instruction, r#" TOC \o "1-3" \h \z"#);
+        let pieces: Vec<&str> = doc.tocs[0]
+            .instruction_ranges
+            .iter()
+            .map(|r| &document[r.clone()])
+            .collect();
+        assert_eq!(pieces.len(), 2);
+        assert!(pieces[0].ends_with(r#"</w:instrText>"#) && pieces[0].contains(r#""1-3""#));
+        assert!(pieces[1].contains(r"\h \z"));
     }
 }

@@ -30,17 +30,18 @@ use adapdf::fixtures::{FixtureFonts, catalogue, clean};
 use adapdf::pipeline::{Exit, RealStages, Run, export_docx, output_paths};
 use adapdf::report::VeraPdfSection;
 use adapdf::verapdf::Tool;
-use export_support::{contains, names};
+use export_support::{contains, count, names};
 use serde_json::Value;
 use word_support::{TempDir, exclusive, wait_for_word_pids, word_pids};
 
-/// The 33 pass fixtures of S5-10: no picture, except IMG-006 (an equation).
-const S5_10: [RuleId; 33] = {
+/// The 35 pass fixtures of S5-10: no picture, except IMG-006 (an equation).
+const S5_10: [RuleId; 35] = {
     use RuleId::*;
     [
         Doc001, Doc002, Doc003, Doc004, Doc005, Doc006, Hdg001, Hdg002, Hdg003, Hdg004, Hdg006,
         Lst001, Lst002, Txb001, Txb002, Txb003, Txb004, Tbl001, Tbl002, Tbl003, Tbl004, Tbl005,
-        Tbl006, Lnk001, Lnk002, Lnk003, Clr001, Clr002, Txt001, Txt002, Txt003, Txt004, Img006,
+        Tbl006, Lnk001, Lnk002, Lnk003, Lnk004, Lnk005, Clr001, Clr002, Txt001, Txt002, Txt003,
+        Txt004, Img006,
     ]
 };
 
@@ -345,5 +346,103 @@ fn pdfmeta_on_a_real_word_export() {
             "{name}: stage 4 is stable"
         );
     }
+    assert_eq!(wait_for_word_pids(&before), before);
+}
+
+// S5-12: the exit criterion for links. A guide with links that have no ScreenTip
+// (the three ways that Word writes a link) and a table of contents made of links
+// is refused by stage 1 (LNK-004, LNK-005). After `adapdf fix` has done both
+// fixes, `adapdf export` gives a PDF that veraPDF passes.
+#[test]
+fn verapdf_zero_failures_after_the_link_fixes() {
+    use std::io::Write;
+    use std::process::Stdio;
+
+    let _lock = exclusive();
+    let before = word_pids();
+    let dir = TempDir::new("s5-12");
+    let url = "https://example.org/parking";
+    let original = adapdf::fixtures::DocxBuilder::new()
+        .title("Adapdf test guide")
+        .language("en-US")
+        .template(adapdf::rules::document::TEMPLATE_FILE_NAME)
+        .toc(&[("Test guide", 1)], false)
+        .paragraph(
+            adapdf::fixtures::Para::new("Test guide")
+                .style("Heading1")
+                .bookmark("_Toc1"),
+        )
+        .paragraph(adapdf::fixtures::Para::new("Read the ").hyperlink("parking policy", url))
+        .paragraph(
+            adapdf::fixtures::Para::empty()
+                .field(&format!(r#"HYPERLINK "{url}""#), "the same policy"),
+        )
+        .paragraph(
+            adapdf::fixtures::Para::empty()
+                .simple_field(&format!(r#"HYPERLINK "{url}""#), "and again"),
+        )
+        .build();
+    let docx = dir.write("Guide.docx", &original);
+
+    // Before: stage 1 refuses the export, with the two new rules.
+    let run = run_real(&docx);
+    assert_eq!(run.exit, Exit::ErrorsFound, "{}", run.stderr);
+    assert!(run.report.as_ref().unwrap().summary.pdf.is_none());
+    assert!(!dir.path().join("Guide.pdf").exists());
+    let rules: Vec<RuleId> = adapdf::check_bytes(&original, &FixtureFonts)
+        .unwrap()
+        .iter()
+        .map(|f| f.rule_id)
+        .collect();
+    assert_eq!(
+        rules,
+        [
+            RuleId::Lnk004,
+            RuleId::Lnk004,
+            RuleId::Lnk004,
+            RuleId::Lnk005
+        ]
+    );
+
+    // `adapdf fix`, with a yes for each of the 4 fixes.
+    let mut child = Command::new(env!("CARGO_BIN_EXE_adapdf"))
+        .arg("fix")
+        .arg(&docx)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"y\ny\ny\ny\n")
+        .unwrap();
+    let fixed = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&fixed.stdout);
+    assert_eq!(fixed.status.code(), Some(0), "{stdout}");
+    assert!(stdout.contains("Fixes applied (4):"), "{stdout}");
+
+    // After: Word makes the PDF and veraPDF passes it.
+    let run = run_real(&docx);
+    let failed = failed_rules(&run);
+    eprintln!("S5-12: exit {} failed rules {failed:?}", run.exit.code());
+    assert_eq!(run.exit, Exit::Pass, "{failed:?} {}", run.stderr);
+    assert!(failed.is_empty(), "{failed:?}");
+    let pdf = fs::read(output_paths(&docx).0).unwrap();
+    assert_eq!(
+        count(&pdf, b"/Subtype/Link"),
+        3,
+        "the 3 links of the text; the table of contents has none"
+    );
+    assert_eq!(
+        count(&pdf, b"/Contents("),
+        3,
+        "each link has its description"
+    );
+    assert!(contains(&pdf, b"/Contents(parking policy)"));
+    assert!(contains(&pdf, b"/Contents(the same policy)"));
+    assert!(contains(&pdf, b"/Contents(and again)"));
     assert_eq!(wait_for_word_pids(&before), before);
 }

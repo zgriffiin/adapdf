@@ -27,6 +27,8 @@ fn severities_and_fixes_match_spec_03() {
         (Lnk001, Severity::Warning, FixKind::Manual),
         (Lnk002, Severity::Warning, FixKind::Manual),
         (Lnk003, Severity::Error, FixKind::Manual),
+        (Lnk004, Severity::Error, FixKind::Auto(AddScreenTip)),
+        (Lnk005, Severity::Error, FixKind::Auto(RemoveTocLinks)),
         (Clr001, Severity::Error, FixKind::Manual),
         (Clr002, Severity::Warning, FixKind::Manual),
         (Txt001, Severity::Warning, FixKind::Manual),
@@ -291,4 +293,281 @@ fn lnk_003_the_links_in_a_table_of_contents_need_their_bookmarks() {
 fn links_in_a_clean_document_make_no_findings() {
     let all = common::check(&clean());
     assert!(all.is_empty(), "{all:#?}");
+}
+
+// ---- LNK-004 -------------------------------------------------------------
+
+const TIP: &str = "Parking policy page";
+
+/// The paragraphs of a table of contents field with one entry (XML). The field
+/// starts in the first paragraph and ends in a paragraph of its own.
+fn toc_with_entry_xml(instruction: &str, entry_xml: &str) -> Vec<Para> {
+    let begin = format!(
+        r#"<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> {instruction} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>"#
+    );
+    vec![
+        Para::empty()
+            .style("TOC1")
+            .raw_run(&begin)
+            .raw_run(entry_xml),
+        Para::empty().raw_run(r#"<w:r><w:fldChar w:fldCharType="end"/></w:r>"#),
+    ]
+}
+
+#[test]
+fn lnk_004_fails_on_a_link_without_a_screen_tip() {
+    let f = the_failing_finding(RuleId::Lnk004);
+    assert_eq!(f.severity, Severity::Error);
+    assert_eq!(f.fix, FixKind::Auto(FixId::AddScreenTip));
+    assert_location(
+        &f,
+        "word/document.xml",
+        Some(2),
+        Some("Read the parking policy"),
+        Some("Test guide"),
+    );
+    assert!(f.message.contains("\"parking policy\""), "{}", f.message);
+    assert!(f.message.contains("ScreenTip"), "{}", f.message);
+    assert!(f.how_to_fix.contains("ScreenTip"), "{}", f.how_to_fix);
+}
+
+#[test]
+fn lnk_004_passes_with_a_screen_tip() {
+    assert!(of(&fixture_findings(RuleId::Lnk004, false), RuleId::Lnk004).is_empty());
+}
+
+#[test]
+fn lnk_004_reads_the_tooltip_of_a_hyperlink_element() {
+    let internal = |tip: Option<&str>| {
+        let link = match tip {
+            Some(tip) => Para::empty().internal_link_tip("See setup", "_top", tip),
+            None => Para::empty().internal_link("See setup", "_top"),
+        };
+        rule_findings(&clean().paragraph(link), RuleId::Lnk004).len()
+    };
+    assert_eq!(internal(None), 1, "an internal link needs one too");
+    assert_eq!(internal(Some("Back to the top")), 0);
+    // An empty ScreenTip, or one of spaces, is no ScreenTip.
+    assert_eq!(internal(Some("")), 1);
+    assert_eq!(internal(Some("   ")), 1);
+}
+
+#[test]
+fn lnk_004_reads_the_o_switch_of_a_simple_field() {
+    let field = |instruction: &str| {
+        let builder = clean().paragraph(Para::empty().simple_field(instruction, "Example"));
+        rule_findings(&builder, RuleId::Lnk004).len()
+    };
+    assert_eq!(field(r#"HYPERLINK "https://example.org""#), 1);
+    assert_eq!(
+        field(r#"HYPERLINK "https://example.org" \o "Example site""#),
+        0
+    );
+    assert_eq!(field(r#"HYPERLINK \l "_top" \o "Top of the page""#), 0);
+    assert_eq!(field(r#"HYPERLINK "https://example.org" \o """#), 1);
+    assert_eq!(field(r#"HYPERLINK "https://example.org" \t "_blank""#), 1);
+    // A quote mark in the ScreenTip does not end the switch.
+    assert_eq!(
+        field(r#"HYPERLINK \l "_top" \o "The \"top\" of the page""#),
+        0
+    );
+}
+
+#[test]
+fn lnk_004_reads_the_o_switch_of_a_complex_field() {
+    let field = |instruction: &str| {
+        let builder = clean().paragraph(Para::empty().field(instruction, "Example"));
+        rule_findings(&builder, RuleId::Lnk004).len()
+    };
+    assert_eq!(field(r#"HYPERLINK "https://example.org""#), 1);
+    assert_eq!(
+        field(r#"HYPERLINK "https://example.org" \o "Example site""#),
+        0
+    );
+    assert_eq!(field(r#"HYPERLINK "https://example.org" \o "  ""#), 1);
+    // Not a link, so not reported.
+    assert_eq!(field("PAGE"), 0);
+}
+
+#[test]
+fn lnk_004_reports_each_link_in_order() {
+    let builder = clean()
+        .paragraph(
+            Para::new("One ")
+                .hyperlink("first", URL)
+                .hyperlink_tip("second", URL, TIP),
+        )
+        .paragraph(Para::empty().simple_field(r#"HYPERLINK "https://example.org""#, "third"));
+    let found = rule_findings(&builder, RuleId::Lnk004);
+    assert_eq!(found.len(), 2);
+    assert!(
+        found[0].message.contains("\"first\""),
+        "{}",
+        found[0].message
+    );
+    assert!(
+        found[1].message.contains("\"third\""),
+        "{}",
+        found[1].message
+    );
+    assert_eq!(found[0].location.paragraph_index, Some(2));
+    assert_eq!(found[1].location.paragraph_index, Some(3));
+}
+
+#[test]
+fn lnk_004_a_link_with_no_text_is_still_reported() {
+    let builder = clean().paragraph(Para::empty().hyperlink("", URL));
+    let found = rule_findings(&builder, RuleId::Lnk004);
+    assert_eq!(found.len(), 1);
+    assert!(found[0].message.starts_with("This link has no ScreenTip"));
+}
+
+#[test]
+fn lnk_004_the_entries_of_a_table_of_contents_are_left_to_lnk_005() {
+    let entries = [("Test guide", 1), ("Setup", 2)];
+    let headings = |b: DocxBuilder| {
+        b.paragraph(Para::new("Test guide").style("Heading1").bookmark("_Toc1"))
+            .paragraph(Para::new("Setup").style("Heading2").bookmark("_Toc2"))
+    };
+    // A table of contents field.
+    let field = headings(DocxBuilder::new().toc(&entries, false));
+    assert!(rule_findings(&field, RuleId::Lnk004).is_empty());
+    assert_eq!(rule_findings(&field, RuleId::Lnk005).len(), 1);
+    // A "Table of Contents" content control.
+    let control = headings(DocxBuilder::new().toc_content_control(&entries, false));
+    assert!(rule_findings(&control, RuleId::Lnk004).is_empty());
+    // A complex HYPERLINK field in the result of a TOC field.
+    let link = adapdf::fixtures::complex_field_xml(r#"HYPERLINK \l "_Toc1""#, "Test guide");
+    let nested = headings(
+        DocxBuilder::new()
+            .custom_style("TOC1", "toc 1", None)
+            .paragraphs(toc_with_entry_xml(r#"TOC \o "1-3" \h \z \u"#, &link)),
+    );
+    assert!(rule_findings(&nested, RuleId::Lnk004).is_empty());
+    // The entries stay links when the field has lost its \h switch and the
+    // table has not been updated yet: still not LNK-004.
+    let stale = headings(
+        DocxBuilder::new()
+            .custom_style("TOC1", "toc 1", None)
+            .paragraphs(toc_with_entry_xml(
+                r#"TOC \o "1-3" \z \u"#,
+                r#"<w:hyperlink w:anchor="_Toc1"><w:r><w:t>Test guide</w:t></w:r></w:hyperlink>"#,
+            )),
+    );
+    assert!(rule_findings(&stale, RuleId::Lnk004).is_empty());
+    // A link outside the table, before and after it, is reported.
+    let around = headings(
+        DocxBuilder::new()
+            .paragraph(Para::empty().hyperlink("before", URL))
+            .toc(&entries, false)
+            .paragraph(Para::empty().hyperlink("after", URL)),
+    );
+    let found = rule_findings(&around, RuleId::Lnk004);
+    assert_eq!(found.len(), 2, "{found:#?}");
+}
+
+#[test]
+fn lnk_004_does_not_read_links_in_headers() {
+    let header =
+        r#"<w:p><w:hyperlink w:anchor="_top"><w:r><w:t>Top</w:t></w:r></w:hyperlink></w:p>"#;
+    let builder = clean().header_xml(header);
+    assert!(rule_findings(&builder, RuleId::Lnk004).is_empty());
+}
+
+// ---- LNK-005 -------------------------------------------------------------
+
+/// A document with a table of contents field of this instruction, and the
+/// headings that it lists.
+fn toc_document(instruction: &str) -> DocxBuilder {
+    DocxBuilder::new()
+        .toc_with(instruction, &[("Test guide", 1), ("Setup", 2)], false)
+        .paragraph(Para::new("Test guide").style("Heading1").bookmark("_Toc1"))
+        .paragraph(Para::new("Setup").style("Heading2").bookmark("_Toc2"))
+}
+
+#[test]
+fn lnk_005_fails_when_the_table_of_contents_has_the_h_switch() {
+    let f = the_failing_finding(RuleId::Lnk005);
+    assert_eq!(f.severity, Severity::Error);
+    assert_eq!(f.fix, FixKind::Auto(FixId::RemoveTocLinks));
+    // The first paragraph of the table of contents.
+    assert_location(&f, "word/document.xml", Some(0), Some("Test guide 1"), None);
+    assert!(f.message.contains("\\h"), "{}", f.message);
+    assert!(
+        f.how_to_fix
+            .contains("Use hyperlinks instead of page numbers"),
+        "{}",
+        f.how_to_fix
+    );
+}
+
+#[test]
+fn lnk_005_passes_without_the_h_switch() {
+    assert!(of(&fixture_findings(RuleId::Lnk005, false), RuleId::Lnk005).is_empty());
+}
+
+#[test]
+fn lnk_005_finds_the_h_switch_among_other_switches() {
+    for instruction in [
+        r#"TOC \o "1-3" \h \z \u"#,
+        r#"TOC \h"#,
+        r#"TOC \h \o "1-3""#,
+        r#"toc \o "1-3" \H"#,
+        r#"TOC \o "1-3" \t "Callout title,2" \h \z"#,
+    ] {
+        let found = rule_findings(&toc_document(instruction), RuleId::Lnk005);
+        assert_eq!(found.len(), 1, "{instruction}");
+    }
+}
+
+#[test]
+fn lnk_005_needs_the_h_switch_itself() {
+    for instruction in [
+        r#"TOC \o "1-3" \z \u"#,
+        r#"TOC \o "1-3""#,
+        r#"TOC \n"#,
+        // \h in a quoted word is not a switch, and neither is \hz.
+        r#"TOC \o "1-3" \t "Style \h,1""#,
+        r#"TOC \o "1-3" \hz"#,
+    ] {
+        let found = rule_findings(&toc_document(instruction), RuleId::Lnk005);
+        assert!(found.is_empty(), "{instruction}: {found:#?}");
+    }
+}
+
+#[test]
+fn lnk_005_reads_a_table_of_contents_in_a_content_control() {
+    let entries = [("Test guide", 1)];
+    let heading = Para::new("Test guide").style("Heading1").bookmark("_Toc1");
+    let with = DocxBuilder::new()
+        .toc_content_control(&entries, false)
+        .paragraph(heading.clone());
+    assert_eq!(
+        rule_findings(&with, RuleId::Lnk005).len(),
+        1,
+        "one finding, not one for the control and one for the field"
+    );
+    let without = DocxBuilder::new()
+        .toc_content_control_with(adapdf::fixtures::TOC_INSTRUCTION_NO_LINKS, &entries, false)
+        .paragraph(heading);
+    assert!(rule_findings(&without, RuleId::Lnk005).is_empty());
+}
+
+#[test]
+fn lnk_005_reports_each_table_of_contents_with_the_switch() {
+    let builder = DocxBuilder::new()
+        .toc_with(r#"TOC \o "1-3" \h"#, &[("One", 1)], false)
+        .toc_with(r#"TOC \o "1-3""#, &[("Two", 1)], false)
+        .toc_with(r#"TOC \h"#, &[("Three", 1)], false);
+    let found = rule_findings(&builder, RuleId::Lnk005);
+    assert_eq!(found.len(), 2);
+    assert_ne!(
+        found[0].location.paragraph_index,
+        found[1].location.paragraph_index
+    );
+}
+
+#[test]
+fn lnk_005_a_document_without_a_table_of_contents_has_no_finding() {
+    assert!(rule_findings(&clean(), RuleId::Lnk005).is_empty());
 }

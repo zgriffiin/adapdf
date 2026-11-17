@@ -284,7 +284,7 @@ fn pipeline_writes_no_pdf_when_stage_1_has_errors() {
         .into_iter()
         .filter(|f| f.fails && f.rule.severity() == Severity::Error)
         .collect();
-    assert_eq!(errors.len(), 15);
+    assert_eq!(errors.len(), 17);
     for fixture in errors {
         let fake = Fake::passing();
         let (dir, docx, run) = run_with("Guide.docx", &fixture.bytes, &fake);

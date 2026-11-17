@@ -1,4 +1,4 @@
-//! Link rules LNK-001 to LNK-003.
+//! Link rules LNK-001 to LNK-005.
 //!
 //! A link is a `w:hyperlink` element or a `HYPERLINK` field in the body
 //! ([`Document::links`]). Its text is the text that shows. Links in headers,
@@ -6,9 +6,9 @@
 
 use std::collections::HashSet;
 
-use crate::findings::{Finding, Location, RuleId};
+use crate::findings::{Finding, Location, RuleId, snippet};
 use crate::model::Document;
-use crate::model::fields::{Link, LinkTarget};
+use crate::model::fields::{Link, LinkTarget, Toc, has_switch};
 
 /// LNK-001: link texts that do not say where the link goes. The whole text
 /// must match, ignoring case, spaces and punctuation at either end.
@@ -109,6 +109,58 @@ pub fn lnk_003(doc: &Document) -> Vec<Finding> {
         .collect()
 }
 
+/// The links that LNK-004 reports, in document order: links that have no
+/// ScreenTip and are not entries of a table of contents (LNK-005 covers those).
+/// The fix uses the same list, so the position of a finding is the position
+/// here.
+pub fn links_without_screen_tip(doc: &Document) -> impl Iterator<Item = &Link> {
+    doc.links
+        .iter()
+        .filter(|l| !l.in_toc && !l.has_screen_tip())
+}
+
+/// LNK-004: a link has no ScreenTip. Word writes the ScreenTip into the PDF as
+/// the description of the link, and writes no description for a link without
+/// one (test plan, "S5-10 result").
+pub fn lnk_004(doc: &Document) -> Vec<Finding> {
+    links_without_screen_tip(doc)
+        .map(|l| {
+            let text = snippet(&l.text);
+            let which = if text.is_empty() {
+                "This link".to_string()
+            } else {
+                format!("The link \"{text}\"")
+            };
+            Finding::new(
+                RuleId::Lnk004,
+                format!("{which} has no ScreenTip. Screen readers need a description of each link in the PDF, and Word adds it to the PDF only from the ScreenTip."),
+                "Right-click the link, choose Edit Hyperlink, choose ScreenTip, and type a short description of where the link goes. The tool can copy the link text into the ScreenTip for you.",
+                at(doc, l),
+            )
+        })
+        .collect()
+}
+
+/// The tables of contents that LNK-005 reports, in document order: a `TOC`
+/// field with the `\h` switch. The fix uses the same list.
+pub fn tocs_made_of_links(doc: &Document) -> impl Iterator<Item = &Toc> {
+    doc.tocs.iter().filter(|t| has_switch(&t.instruction, "h"))
+}
+
+/// LNK-005: the table of contents is made of links (the `\h` switch). Word
+/// makes the links again at each update, without ScreenTips.
+pub fn lnk_005(doc: &Document) -> Vec<Finding> {
+    tocs_made_of_links(doc)
+        .map(|t| {
+            Finding::new(
+                RuleId::Lnk005,
+                "The table of contents is made of links (its field has the \\h switch). Screen readers need a description of each link in the PDF, and Word adds it only from a ScreenTip. Word cannot keep a ScreenTip on these links, because it makes them again each time the table updates.",
+                "Choose References > Table of Contents > Custom Table of Contents, clear \"Use hyperlinks instead of page numbers\", and choose OK. The tool can do the same for you. Readers still move through the PDF with its bookmarks and headings.",
+                Location::paragraph(doc, &doc.paragraphs[t.first_paragraph]),
+            )
+        })
+        .collect()
+}
 #[cfg(test)]
 mod tests {
     use super::*;

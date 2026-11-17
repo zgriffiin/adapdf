@@ -14,8 +14,9 @@ after it asks about each one. `adapdf export` exports the PDF through Word (stag
 the accessibility report as HTML and JSON (stage 6). The app and the installer
 are not built yet. See the [test plan](docs/test-plan.md) for what is tested and
 what is not, and for what the first runs with real Word and veraPDF found (a
-Word-made link has no description for assistive technology unless the author
-sets a ScreenTip; see "Known gaps in M4c").
+Word-made link has no description for assistive technology unless it has a
+ScreenTip, and a table of contents made of links cannot have one; the rules
+LNK-004 and LNK-005 and their fixes follow from this: see "S5-10 result").
 
 ## Specs
 

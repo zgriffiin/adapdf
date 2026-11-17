@@ -68,3 +68,20 @@ pub fn without_content_types(docx: &[u8]) -> Vec<u8> {
         .collect();
     adapdf::fixtures::zip_stored(&entries)
 }
+
+/// How many structure elements of this type (`/S`, for example `TOCI`) the tags
+/// of a PDF have. The tags are in compressed object streams, so the bytes cannot
+/// be searched: the PDF is read with `lopdf`.
+pub fn structure_elements(pdf: &[u8], kind: &str) -> usize {
+    let document = lopdf::Document::load_mem(pdf).expect("a PDF that lopdf can read");
+    document
+        .objects
+        .values()
+        .filter_map(|object| object.as_dict().ok())
+        .filter(|dict| {
+            dict.get(b"S")
+                .and_then(lopdf::Object::as_name)
+                .is_ok_and(|name| name == kind.as_bytes())
+        })
+        .count()
+}

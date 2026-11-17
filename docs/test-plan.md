@@ -6,8 +6,10 @@ tests, and table styles in the colour rules) and M3b (stage 2: the fix engine an
 `adapdf fix`), including the stage 2 tests that need Word, M4a (stage 3: the
 Word export as a library), M4b (stage 4, the PDF metadata fixes, and stage 5, the
 veraPDF run, as library code) and M4c (stage 6, the report, and the command
-`adapdf export`, which joins stages 1, 3, 4, 5 and 6). This plan says what is
-tested now and what is only planned. A row marked "planned" has no test yet.
+`adapdf export`, which joins stages 1, 3, 4, 5 and 6), and the rules LNK-004 and
+LNK-005 with their fixes, which the first S5-10 run asked for (decided
+2026-11-16). This plan says what is tested now and what is only planned. A row
+marked "planned" has no test yet.
 
 ## Scope
 
@@ -44,18 +46,22 @@ the library `adapdf::export` (`export_pdf`): stage 1 first, then the tool's own
 hidden Word opens the document read-only, updates the fields and calls
 `ExportAsFixedFormat`; a timeout ends only the tool's own Word. The S3 rows are
 built: see "Stage 3: Word export" and "How M4a reads stage 3". M4a also exports
-the 33 pass fixtures of S5-10 and checks that each PDF is tagged, so the veraPDF
+the 33 pass fixtures of S5-10 (35 since LNK-004 and LNK-005) and checks that each PDF is tagged, so the veraPDF
 exit criterion has inputs.
 
 M4c built stage 6 (`src/report`: the report as a value, as HTML and as JSON) and
 the command `adapdf export` (`src/pipeline.rs`, with `src/main.rs`). It also ran
 the real Word and the real veraPDF on the fixtures for the first time, so it
-has the first answer to the exit criterion S5-10: **29 of the 33 pass fixtures
-give 0 veraPDF PDF/UA-1 failures, and 4 do not** (the 3 link fixtures and the
-table of contents fixture). The reason is one problem: Word writes no
+had the first answer to the exit criterion S5-10: **29 of the 33 pass fixtures
+gave 0 veraPDF PDF/UA-1 failures, and 4 did not** (the 3 link fixtures and the
+table of contents fixture). The reason was one problem: Word writes no
 description for a link, unless the link has a ScreenTip, and no pre-check rule
-looks for that. "S5-10 result", "How M4c reads stage 6 and export" and "Known
-gaps in M4c" say what was found, what was decided and what is left.
+looked for that. The user decided on 2026-11-16 to add two rules, **LNK-004** (a
+link has no ScreenTip) and **LNK-005** (the table of contents is made of links),
+both errors with an auto fix. They are built, the pass fixtures were updated,
+and S5-10 was run again on 35 pass fixtures: see "S5-10 result" for both runs.
+"How M4c reads stage 6 and export", "How M2b reads the rules" and "Known gaps in
+M4c" say what was found, what was decided and what is left.
 
 Not built: the app and the installer. "Planned tests (not built)" lists each of
 them, requirement by requirement.
@@ -78,12 +84,12 @@ milestone numbers are the plan at the time of writing.
 | Rule | Each rule against fixtures and small built documents: rule ID, severity, fix kind, location, thresholds | `tests/rules_document.rs`, `tests/rules_headings.rs`, `tests/rules_lists.rs`, `tests/rules_images.rs`, `tests/rules_textboxes.rs`, `tests/rules_tables.rs`, `tests/rules_links.rs`, `tests/rules_colour.rs`, `tests/rules_text.rs` | implemented |
 | Fixture | The files in `tests/fixtures/` match the generator byte for byte. Every rule has a passing and a failing fixture. | `tests/fixtures.rs` | implemented |
 | CLI | `adapdf check`: exit codes 0, 1 and 2, text output, JSON shape | `tests/cli.rs` | implemented |
-| Fix (stage 2) | The fix engine on fixtures and small built documents: only the spliced bytes change, the backup, the lock file, the atomic write, each fix and its refusals, and the stage 1 re-run. `adapdf fix`: the questions, the answers on stdin, and the exit codes. | `tests/fix_safety.rs`, `tests/fix_engine.rs`, `tests/fix_fixes.rs`, `tests/cli_fix.rs` (helpers in `tests/fix_support/`), and unit tests in `src/fix/` | implemented |
+| Fix (stage 2) | The fix engine on fixtures and small built documents: only the spliced bytes change, the backup, the lock file, the atomic write, each fix and its refusals, and the stage 1 re-run. `adapdf fix`: the questions, the answers on stdin, and the exit codes. | `tests/fix_safety.rs`, `tests/fix_engine.rs`, `tests/fix_fixes.rs`, `tests/fix_links.rs`, `tests/cli_fix.rs` (helpers in `tests/fix_support/`), and unit tests in `src/fix/` | implemented |
 | Word integration (`windows_word`) | Word opens every fixture (W-01). The session quits its Word after success, an error and a panic. The model's table style colours match what Word shows. Word's lock file name, and a file that Word has open is never written (S2-02, S2-04). Every fixed file opens in Word and Word reads the fix as the model does (S2-15). Word exports a tagged PDF, in the tool's own hidden Word, with the fields updated, without touching a person's Word or the .docx; a timeout ends only the tool's own Word (S3). The exit codes of `adapdf export` with the real Word: a file that Word rejects, a timeout, warnings only, a locked PDF (S3-04, S3-06, S3-14, S3-19). | `tests/word.rs`, `tests/word_table_styles.rs`, `tests/fix_word.rs`, `tests/export_word.rs`, `tests/export_fixtures.rs` and `tests/export_pipeline_word.rs` (helpers in `tests/word_support/` and `tests/export_support/`), behind the cargo feature `windows_word` | implemented for W-01 to W-04 (M3a, 6 tests), S2-02, S2-04, S2-15 and the Word part of S2-23 (4 tests), the Word rows of S3 (M4a, 15 tests) and their exit codes (M4c, 4 tests) |
 | PDF metadata (stage 4) | The metadata checks and fixes on small PDFs made by test code (classic and cross-reference-stream layouts, with and without an earlier update): the original bytes are a prefix of the output, each fix, no change when nothing is missing, no change to content or tags, encrypted and damaged PDFs are refused. On a real Word export: what Word writes and what stage 4 adds (S4-11). | `tests/pdfmeta_fixes.rs` (PDF builder in `tests/pdf_support/`), unit tests in `src/pdfmeta/`, and `pdfmeta_on_a_real_word_export` in `tests/export_verapdf.rs` | implemented (M4b); S4-11 implemented (M4c, needs both features) |
 | veraPDF (stage 5) without Java | The run command, the JSON of veraPDF read into findings, the table of rule IDs, the pass decision, missing tools, crashes, the timeout, the WCAG profile (with a fake runner and JSON recorded from the real veraPDF) | `tests/verapdf_parse.rs`, `tests/data/verapdf/*.json` | implemented (M4b) |
 | veraPDF integration (feature `verapdf`) | The real veraPDF with the bundled Java on PDFs made by test code (S5-09), and on the stage 4 output (S4-10) | `tests/verapdf_real.rs`, behind the cargo feature `verapdf` (needs `vendor/`) | implemented (M4b, 8 tests) |
-| veraPDF on Word exports (features `windows_word` and `verapdf`) | A PDF exported from a fixture has 0 veraPDF PDF/UA-1 failures (S5-10, S5-11). The real `adapdf export` on a pass fixture (C-05). | `tests/export_verapdf.rs`, behind both cargo features, because it needs Word to export and veraPDF to check | implemented (M4c). **`verapdf_zero_failures_on_pass_fixtures` fails for 4 of the 33 fixtures** (see "S5-10 result"); the other tests of the file pass |
+| veraPDF on Word exports (features `windows_word` and `verapdf`) | A PDF exported from a fixture has 0 veraPDF PDF/UA-1 failures (S5-10, S5-11). The real `adapdf export` on a pass fixture (C-05). | `tests/export_verapdf.rs`, behind both cargo features, because it needs Word to export and veraPDF to check | implemented (M4c; S5-12 added with LNK-004 and LNK-005). All 6 tests of the file pass; `verapdf_zero_failures_on_pass_fixtures` passed for 35 of 35 fixtures (it failed for 4 of 33 before the two rules; see "S5-10 result") |
 | Report (stage 6) | The report as a value: the verdict, the seven sections, the escaping of text, the JSON against the HTML, and the accessibility of the HTML (headings, tables, labels, contrast, no outside resources) with no browser (S6-01 to S6-08, S6-10) | unit tests in `src/report/tests.rs` | implemented (M4c) |
 | Export command without Word or Java | `pipeline::export_docx` with fake stages: every exit code and the report files (C-05 to C-07, S3-12, S3-13, S3-16, S5-06 to S5-08, S6-09); the real `adapdf export` in the cases that need neither Word nor veraPDF (stage 1 errors, tool failures that come first) | `tests/export_pipeline.rs`, `tests/cli_export.rs`, `tests/cli.rs` (C-08) | implemented (M4c) |
 | No network | No HTTP client in the dependency graph (N-01) | `tests/no_network.rs` | implemented (M4b); N-02 to N-05 are planned |
@@ -100,7 +106,7 @@ milestone numbers are the plan at the time of writing.
 | CLI | The `adapdf` binary builds. | Exit codes 0, 1 and 2 are tested for each command. On exit 2 nothing is written to stdout. Output for `--json` parses. |
 | Fix (stage 2, without Word) | The crate builds. No Word, Java or network is needed. Tests write only in their own folders under `target/tmp/`, and remove them. | `cargo test` passes with 0 failed, 0 ignored. Every S2 row that does not need Word and every `fix` row has a test with the name in the row. After each fix, only the target bytes changed (S2-08), the file is valid (S2-09) and stage 1 gives the expected findings (S2-10). |
 | `windows_word` | A Windows machine with desktop Word 16.0 (Microsoft 365). The tests start their own Word instances; no Word window of a person needs to be closed. The Word build number is noted. | `cargo test --features windows_word` passes. After the run the number of `WINWORD.EXE` processes is the same as before. No file the tests made is left in the temp folder. |
-| veraPDF | The bundled veraPDF and Java runtime are in `vendor/` (run `scripts/fetch-vendor.ps1` once). For tests on Word exports, the `windows_word` entry applies too. | `cargo test --features verapdf` passes with 0 failed. The exit criterion in "Stage 5" below (S5-10) holds for the named fixtures: `cargo test --features windows_word,verapdf --test export_verapdf` passes. **Not met on 2026-11-16: 4 of the 33 fixtures fail. See "S5-10 result".** |
+| veraPDF | The bundled veraPDF and Java runtime are in `vendor/` (run `scripts/fetch-vendor.ps1` once). For tests on Word exports, the `windows_word` entry applies too. | `cargo test --features verapdf` passes with 0 failed. The exit criterion in "Stage 5" below (S5-10) holds for the named fixtures: `cargo test --features windows_word,verapdf --test export_verapdf` passes. Met on the evening of 2026-11-16 (local time) for 35 of 35 fixtures and the 6 picture fixtures; the first run, before LNK-004 and LNK-005, failed for 4 of 33 (see "S5-10 result"). |
 | Front-end (M5) | The web UI builds (its front-end and the Tauri shell). No Word or Java is needed. | `pnpm test` passes with 0 failed. axe-core reports 0 violations for WCAG 2.1 A and AA on each screen. The build passes N-05. |
 | Installer (manual) | A clean Windows 11 machine or snapshot with a standard (non-admin) user, no Java and no earlier install. | Every row of the installer table is signed with a date, the installer version and the machine used. |
 | Phase 0 and PAC (manual) | At least 5 real guides in `samples/` (git ignores them), PAC installed (version noted), the Word build noted. | Every row of the Phase 0 tables has a result. Changes to specs 02 and 03 that the results ask for are made. |
@@ -115,14 +121,14 @@ milestone numbers are the plan at the time of writing.
 | Tests for one rule | `cargo test hdg_003` (test names start with the rule ID in lower case) |
 | Fixture tests | `cargo test --test fixtures` |
 | CLI tests | `cargo test --test cli` (and `cargo test --test cli_fix` for `adapdf fix`) |
-| Stage 2 (fix) tests | `cargo test --test fix_safety`, `--test fix_engine`, `--test fix_fixes` and `--test cli_fix`; unit tests: `cargo test --lib fix::` |
+| Stage 2 (fix) tests | `cargo test --test fix_safety`, `--test fix_engine`, `--test fix_fixes`, `--test fix_links` and `--test cli_fix`; unit tests: `cargo test --lib fix::` |
 | Tests for one fix | `cargo test fix_` or `cargo test ask_` (the names in the stage 2 table) |
 | Write the fixtures again after a change | `cargo run --example gen-fixtures` |
 | Word tests (need desktop Word; they start their own hidden Word; about 10 minutes) | `cargo test --features windows_word` (also runs everything above). One file: `cargo test --features windows_word --test word`, `--test word_table_styles`, `--test fix_word`, `--test export_word` (S3, about 3 minutes), `--test export_fixtures` (33 exports, about 4 minutes) or `--test export_pipeline_word` (the exit codes of `export`, about 30 seconds) |
 | Stage 6 (report) tests | `cargo test --lib report::` (no Word or Java) |
 | `adapdf export` tests that need neither Word nor veraPDF | `cargo test --test export_pipeline` (fake stages) and `cargo test --test cli_export` (the real program, in the cases that stop before Word) |
 | `adapdf export` with the real Word (about 1 minute) | `cargo test --features windows_word --test export_pipeline_word`. Also run by `cargo test --features windows_word`. |
-| `adapdf export` with the real Word and the real veraPDF (about 11 minutes: 33 + 6 + 24 exports of about 10 seconds each, and S4-11 and C-05) | `cargo test --features windows_word,verapdf --test export_verapdf`. It needs both features, so no other command builds it. One test: add its name, for example `-- verapdf_zero_failures_on_pass_fixtures --nocapture` (the test prints each fixture and its failed rules). |
+| `adapdf export` with the real Word and the real veraPDF (about 17 minutes: 35 + 6 + 24 exports of about 10 seconds each, and S4-11, C-05 and S5-12) | `cargo test --features windows_word,verapdf --test export_verapdf`. It needs both features, so no other command builds it. One test: add its name, for example `-- verapdf_zero_failures_on_pass_fixtures --nocapture` (the test prints each fixture and its failed rules). |
 | Stage 4 (PDF metadata) tests | `cargo test --test pdfmeta_fixes`; unit tests: `cargo test --lib pdfmeta::` |
 | Stage 5 (veraPDF) tests that need no Java | `cargo test --test verapdf_parse` |
 | Get the bundled veraPDF and Java (once; needs the network) | `powershell -ExecutionPolicy Bypass -File scripts/fetch-vendor.ps1` (checks pinned SHA-256 values; does nothing if `vendor/` is up to date; `-Force` to fetch again) |
@@ -175,7 +181,7 @@ Installer and manual tests will get their steps here when they exist.
 - **Rule tests check** the rule ID, severity, fix kind, and the whole
   location (part, paragraph index, snippet, heading above) of the failing
   fixture. The shared helper `assert_location` in `tests/common/mod.rs` checks
-  all four fields. All 39 failing-fixture tests use it. The snippet
+  all four fields. All 41 failing-fixture tests use it. The snippet
   is the first 60 characters of the paragraph, so a paragraph that holds only a
   drawing has the snippet `""` (IMG-001 to IMG-005, IMG-007). TXB-001 uses the
   text in the box instead. Problems with the document as a whole (DOC-001,
@@ -211,56 +217,61 @@ Installer and manual tests will get their steps here when they exist.
 
 ## Counts at the time of writing
 
-Measured on 2026-11-16 on the M4c tree: the merge of M4a (stage 3) into M4b
-(stages 4 and 5), and the M4c work on top of it. The counts are summed from the
-"test result" lines of each command. Windows only: two tests of M3b (the held
-file handle in S2-03 and the folder with the name of the backup in S2-06),
-`the_production_clock_is_local_time` (S2-07), the 21 unit tests of `src/export/`,
-the 3 tests of `tests/verapdf_parse.rs` in its `process` module, and all tests of
-`tests/export_pipeline.rs` and `tests/cli_export.rs` (they use `adapdf::pipeline`,
-which needs Word's types); the counts include them.
+Measured on the evening of 2026-11-16 (local time) on the tree with LNK-004 and
+LNK-005 (the M4c tree plus those two rules, their fixes, and the updated
+fixtures). The counts are summed from the "test result" lines of each command.
+Windows only: two tests of M3b (the held file handle in S2-03 and the folder with
+the name of the backup in S2-06), `the_production_clock_is_local_time` (S2-07), the
+21 unit tests of `src/export/`, the 3 tests of `tests/verapdf_parse.rs` in its
+`process` module, and all tests of `tests/export_pipeline.rs` and
+`tests/cli_export.rs` (they use `adapdf::pipeline`, which needs Word's types); the
+counts include them.
 
 | Command | Tests run | Failed | Time |
 |---|---|---|---|
-| `cargo test` | 709 | 0 | about 1 minute with the build |
-| `cargo test --features verapdf` | 717 | 0 | 1 minute 6 seconds |
-| `cargo test --features windows_word` | 738 | 0 | 9 minutes 39 seconds |
-| `cargo test --features windows_word,verapdf --no-fail-fast` | 751 | **1** (`verapdf_zero_failures_on_pass_fixtures`, S5-10) | 21 minutes 24 seconds |
+| `cargo test` | 759 | 0 | 15 seconds (the build was cached) |
+| `cargo test --features verapdf` | 767 | 0 | 52 seconds (cached) |
+| `cargo test --features windows_word` | 788 | 0 | 13 minutes 10 seconds |
+| `cargo test --features windows_word,verapdf --no-fail-fast` | 802 | 0 | 29 minutes 35 seconds |
 
 (Without `--no-fail-fast`, cargo stops at the first test file that has a failure,
-so the files after `tests/export_verapdf.rs` do not run; use the flag to get all
-counts.)
+so the files after it do not run; use the flag to get all counts. The M4c
+measurements were 709, 717, 738 and 751 with 1 failed; the difference is 50, 50,
+50 and 51: see below.)
 
-**`cargo test`: 709.** 216 unit (200 after the merge of M4a and M4b, and 16 new in
-`src/report/tests.rs`), 14 CLI, 3 CLI for `export` (`tests/cli_export.rs`), 13
-CLI for `fix`, 22 for the export pipeline with fakes (`tests/export_pipeline.rs`),
-14 fix engine, 38 fix, 12 fix safety, 8 fixture, 24 PDF metadata, 22 veraPDF
+**`cargo test`: 759.** 225 unit (216 before: 7 for the link fields in
+`src/model/fields.rs`, 2 for the fix in `src/fix/links.rs`), 14 CLI, 3 CLI for
+`export` (`tests/cli_export.rs`), 13 CLI for `fix`, 22 for the export pipeline with
+fakes (`tests/export_pipeline.rs`), 14 fix engine, 38 fix, **25 for the link fixes
+(`tests/fix_links.rs`, new)**, 12 fix safety, 8 fixture, 24 PDF metadata, 22 veraPDF
 without Java, 3 no network, 31 DOC rule tests, 28 HDG, 17 LST, 61 IMG, 35 TXB, 29
-TBL, 23 LNK, 50 CLR and 46 TXT rule tests. The merge alone (before M4c) was 668:
-609 of M4a plus 59 of M4b.
+TBL, 39 LNK (23 before; 16 new for LNK-004 and LNK-005), 50 CLR and 46 TXT rule
+tests. The M4c total of 709 plus 9 unit, 25 link fix and 16 LNK rule tests is 759.
 
-**`--features verapdf`: 717.** The 709 and the 8 of `tests/verapdf_real.rs`.
+**`--features verapdf`: 767.** The 759 and the 8 of `tests/verapdf_real.rs`.
 
-**`--features windows_word`: 738.** The 709 and 29 more: 5 in `tests/word.rs`, 1 in
+**`--features windows_word`: 788.** The 759 and 29 more: 5 in `tests/word.rs`, 1 in
 `tests/word_table_styles.rs`, 4 in `tests/fix_word.rs`, 14 in `tests/export_word.rs`,
-1 in `tests/export_fixtures.rs` (33 exports) and 4 in
+1 in `tests/export_fixtures.rs` (35 exports) and 4 in
 `tests/export_pipeline_word.rs` (the exit codes with the real Word). The run took
-9 minutes 39 seconds, including the build. After the run the list of
-`WINWORD.EXE` processes was the same as before.
+13 minutes 10 seconds. `fix_result_opens_in_word` now has 32 cases (it had 23;
+the 16 failing fixtures that have a fix, and the added link and table of contents
+cases). Before and after the run the list of `WINWORD.EXE` processes was the same
+(empty).
 
-**`--features windows_word,verapdf`: 751.** The 738, the 8 of
-`tests/verapdf_real.rs` and 5 in `tests/export_verapdf.rs`
+**`--features windows_word,verapdf`: 802.** The 788, the 8 of
+`tests/verapdf_real.rs` and 6 in `tests/export_verapdf.rs`
 (`cli_export_exit_0_on_a_pass`, `verapdf_zero_failures_on_pass_fixtures`,
 `verapdf_zero_failures_on_the_picture_pass_fixtures`,
-`verapdf_on_warning_fixtures_is_recorded` and `pdfmeta_on_a_real_word_export`);
-that file takes about 11 minutes. 750 passed and 1 failed:
-`verapdf_zero_failures_on_pass_fixtures` (S5-10), for the 4 fixtures of "S5-10
-result". This is a real result and not a faulty test; the test was not changed to
-pass.
+`verapdf_on_warning_fixtures_is_recorded`, `pdfmeta_on_a_real_word_export` and
+`verapdf_zero_failures_after_the_link_fixes`); that file takes about 17 minutes.
+**All 802 passed**, including S5-10 for 35 of 35 fixtures. The list of
+`WINWORD.EXE` processes was empty before and after the run.
 
 The count changes as tests are added. `cargo test -- --list` gives the current
 list. Earlier measurements: M4a on its own commit, 609 (`cargo test`) and 634
-(`windows_word`); M4b on its own commit, 647 and 655 (`verapdf`).
+(`windows_word`); M4b on its own commit, 647 and 655 (`verapdf`); M4c, 709, 717,
+738 and 751 (with 1 failed: S5-10).
 
 ## Traceability: pre-check rules
 
@@ -269,9 +280,10 @@ Test names start with the rule ID in lower case, for example
 
 ### Implemented (M1, M2a, M2b and IMG-007)
 
-All 39 rules of spec 03 are implemented, listed in spec order. DOC, HDG and
+All 41 rules of spec 03 are implemented, listed in spec order. DOC, HDG and
 LST came in M1; IMG, TXB and TBL in M2a (images, text boxes and tables); LNK,
-CLR and TXT in M2b (links, colour and text). IMG-007 came after M2.
+CLR and TXT in M2b (links, colour and text). IMG-007 came after M2; LNK-004 and
+LNK-005 came with the S5-10 result (2026-11-16).
 
 | Rule | Severity, fix | Fixtures | Tests | Status |
 |---|---|---|---|---|
@@ -308,6 +320,8 @@ CLR and TXT in M2b (links, colour and text). IMG-007 came after M2.
 | LNK-001 | warning, manual | `LNK-001-fail/pass.docx` | `lnk_001_*` in `tests/rules_links.rs` | implemented |
 | LNK-002 | warning, manual | `LNK-002-fail/pass.docx` | `lnk_002_*` (40 and 41 characters) | implemented |
 | LNK-003 | error, manual | `LNK-003-fail/pass.docx` | `lnk_003_*`; `model::fields::tests::*` for reading links, fields and bookmarks | implemented |
+| LNK-004 | error, auto | `LNK-004-fail/pass.docx` | `lnk_004_*` in `tests/rules_links.rs` (element, simple and complex field, empty and blank ScreenTips, table of contents entries left out, links in headers); `model::fields::tests::*` for the ScreenTip, the source ranges and the place in a table of contents; the fix: S2-32 | implemented (decided 2026-11-16) |
+| LNK-005 | error, auto | `LNK-005-fail/pass.docx` | `lnk_005_*` (`\h` among other switches, not `\h` in a quoted word or `\hz`, content control, two tables); the fix: S2-33 | implemented (decided 2026-11-16) |
 | CLR-001 | error, manual | `CLR-001-fail/pass.docx` | `clr_001_*` in `tests/rules_colour.rs` (table styles: `clr_001_white_header_text_on_a_dark_fill_from_the_table_style_passes`, `..._fails_for_header_text_that_is_only_too_light_because_of_the_table_style`, `..._banded_rows_that_fail_come_from_the_band_fill`, `..._tbl_look_can_switch_the_band_off`, `..._a_fill_set_in_the_cell_beats_the_table_style`, `..._follows_the_based_on_chain_of_a_table_style` and two more); `model::colour::tests::*` for the WCAG values; `model::table_styles::tests::*`; `table_style_colours_match_word` (windows_word) | implemented (table styles applied, see "Known gaps in M2b") |
 | CLR-002 | warning, manual | `CLR-002-fail/pass.docx` | `clr_002_*` (table styles: `clr_002_the_table_style_colour_is_the_colour_of_the_text_around`, `clr_002_white_header_text_from_the_table_style_is_not_reported`) | implemented (heuristic, see below) |
 | TXT-001 | warning, manual | `TXT-001-fail/pass.docx` | `txt_001_*` in `tests/rules_text.rs` (9.5 pt and 10 pt) | implemented |
@@ -336,10 +350,10 @@ The model parts for IMG, TXB and TBL are tested in `model::drawings::tests::*`
 | Interface `adapdf check`, exit codes 0, 1, 2, `--json` | `tests/cli.rs` | implemented |
 | Stage 2: fix, backup, lock-file check | "Stage 2: fixes" below (S2-01 to S2-31): `tests/fix_safety.rs`, `tests/fix_engine.rs`, `tests/fix_fixes.rs`, `fix::*` unit tests | implemented (M3b). S2-02, S2-04 and S2-15 (`tests/fix_word.rs`, windows_word) are implemented. S2-23 is implemented for the part that Word can answer; its manual part is planned. |
 | Stage 2: the user picks the fixes, and ask fixes take typed text | S2-11 to S2-13; `adapdf fix` rows C-01 to C-04 | implemented (M3b) |
-| Interface `adapdf fix` | C-01 to C-04: `tests/cli_fix.rs` | implemented (M3b) |
+| Interface `adapdf fix` | C-01 to C-04: `tests/cli_fix.rs`; C-09 and C-10 (the link fixes): `tests/fix_links.rs` | implemented (M3b; C-09, C-10 with LNK-004 and LNK-005) |
 | Stage 3: Word export through COM | S3-01 to S3-19: `src/export/tests.rs` (unit, fake Word), `tests/export_word.rs` and `tests/export_fixtures.rs` (windows_word); the exit codes of the command: `tests/export_pipeline.rs` (fake Word) and `tests/export_pipeline_word.rs` (windows_word) | implemented (M4a) as the library `adapdf::export`, and (M4c) the exit codes and the report parts of S3-04, S3-06, S3-12, S3-13, S3-14, S3-16 and S3-19; S3-17 is still planned |
 | Stage 4: PDF metadata fixes | S4-01 to S4-12 (`src/pdfmeta`) | implemented (M4b: `tests/pdfmeta_fixes.rs`, S4-10 in `tests/verapdf_real.rs`; M4c: S4-11 in `tests/export_verapdf.rs`, and the exit codes in `tests/export_pipeline.rs`) |
-| Stage 5: veraPDF run and message table | S5-01 to S5-11 (`src/verapdf`) | implemented (M4b: S5-01 to S5-09 in `tests/verapdf_parse.rs` and `tests/verapdf_real.rs`; M4c: the exit codes of S5-06 to S5-08 in `tests/export_pipeline.rs` and `tests/cli_export.rs`, S5-10 and S5-11 in `tests/export_verapdf.rs`). **S5-10 fails for 4 fixtures** (see "S5-10 result"). |
+| Stage 5: veraPDF run and message table | S5-01 to S5-12 (`src/verapdf`) | implemented (M4b: S5-01 to S5-09 in `tests/verapdf_parse.rs` and `tests/verapdf_real.rs`; M4c: the exit codes of S5-06 to S5-08 in `tests/export_pipeline.rs` and `tests/cli_export.rs`, S5-10 and S5-11 in `tests/export_verapdf.rs`). S5-10 passes for 35 of 35 fixtures and the 6 picture fixtures after LNK-004 and LNK-005 (the first run failed for 4 of 33; see "S5-10 result"); S5-12 (the link fixes, then the export) is in the same file. |
 | The bundled tools (spec 01, technology) | `scripts/fetch-vendor.ps1`, run by hand; `Tool::locate` in `tests/verapdf_parse.rs` and `tests/verapdf_real.rs`; `ADAPDF_VENDOR` in `tests/cli_export.rs` | the script was written and was not run as a script by the worker (see "Known gaps in M4b"); the same steps were done by hand and the real veraPDF tests pass on the result. The orchestrator found that the first run stopped at `Get-FileHash` (a module that did not load in the shell that was used); M4c replaced it, and the other module cmdlets that the script used for files, with .NET calls. The changed script was checked only for its SHA-256 function, against `sha256sum`. |
 | Stage 6: HTML and JSON report, and its own accessibility | S6-01 to S6-11: `src/report/tests.rs`, `tests/export_pipeline.rs`, `tests/cli_export.rs` | implemented (M4c) except S6-11 (manual, not done) |
 | Interface `adapdf export` | C-05 to C-08: `tests/export_pipeline.rs`, `tests/cli_export.rs`, `tests/cli.rs`, `tests/export_verapdf.rs` | implemented (M4c) |
@@ -410,12 +424,27 @@ spec 02.
 9. **`AlignLeft` (TXT-002) sets a direct setting.** The fix sets
    `w:jc w:val="left"` in the paragraph's own `w:pPr`. It does not change the
    style, so no other paragraph changes.
+10. **LNK-004: a link has no ScreenTip (decided by the user, 2026-11-16).**
+    Error; the fix is auto, after the user confirms. It copies the link's own
+    visible text into its ScreenTip (`w:tooltip`, or `\o "text"` in a `HYPERLINK`
+    field). That is the author's text, not invented content. A link with no text,
+    or only spaces, is refused with a message. Entries of a table of contents are
+    not reported (point 11). Reason: Word writes a PDF link without `/Contents`
+    unless the link has a ScreenTip, and veraPDF fails PDF/UA-1 7.18.1-2 and
+    7.18.5-2 (S5-10). Whether PAC also fails it is for Phase 0 (P0-10).
+11. **LNK-005: the table of contents is made of links (decided by the user,
+    2026-11-16).** Error; the fix is auto, after the user confirms. It removes
+    the `\h` switch from the `TOC` field instruction and nothing else. Stage 3
+    updates the table at export and Word then makes it without links. Readers
+    still move through the PDF with its bookmarks (`CreateBookmarks`) and the
+    headings. Stage 4 does not write `/Contents`: it still changes only
+    document-level metadata.
 
 ### Fixture realism (stage 1)
 
 | # | Requirement | Planned test name | Level | Fixture or input | Pass condition |
 |---|---|---|---|---|---|
-| W-01 | Word opens every fixture (spec 02, "Testing") | `word_opens_every_fixture` (`tests/word.rs`) | windows_word | Every `tests/fixtures/*.docx` (78 files). The pictures point to a real PNG part. | Each file opens read-only in the test's own hidden Word (one session, all open at once), with no repair and no error, and Word counts at least one paragraph in it. The `WINWORD.EXE` processes after the test are the same processes as before. **Implemented (M3a).** Result on 2026-11-16, Word 16.0.20527: all 78 open; the person's own Word (PID 49988) was running and was not touched. Word also opened the fixtures before the image part was added (a picture with no image data is shown as missing, not rejected), so no fixture builder had to be fixed for Word. |
+| W-01 | Word opens every fixture (spec 02, "Testing") | `word_opens_every_fixture` (`tests/word.rs`) | windows_word | Every `tests/fixtures/*.docx` (82 files). The pictures point to a real PNG part. | Each file opens read-only in the test's own hidden Word (one session, all open at once), with no repair and no error, and Word counts at least one paragraph in it. The `WINWORD.EXE` processes after the test are the same processes as before. **Implemented (M3a).** Result on 2026-11-16, Word 16.0.20527: all 78 open (82 after LNK-004 and LNK-005: the 82 pass in the full `windows_word` run of 2026-11-16, evening); the person's own Word (PID 49988) was running and was not touched. Word also opened the fixtures before the image part was added (a picture with no image data is shown as missing, not rejected), so no fixture builder had to be fixed for Word. |
 | W-02 | Word rejects a damaged file with an error and without a dialog (spec 02: a file Word cannot open is an error) | `a_damaged_docx_gives_an_error_and_not_a_hang` | windows_word | Half of a .docx; a plain text file named .docx; a zip with `word/document.xml` that is not valid XML | `WordSession::open_read_only` gives `WordError::Open` with Word's message for each, within 90 seconds. **Implemented (M3a).** A file with 0 bytes is not an error: Word opens it as an empty document (stage 1 refuses it first). |
 | W-03 | The session quits its Word after a panic and after an error | `the_session_quits_word_after_a_panic`, `the_session_quits_word_after_an_error` | windows_word | A panic inside `catch_unwind` while the session is alive; `open_read_only` on a file that does not exist | The `WINWORD.EXE` processes are the same as before within 20 seconds. **Implemented (M3a).** The "error" case uses `WordError::FileNotFound`, which the session finds itself without asking Word. An error that Word reports is in W-02, which also compares the process list after it. |
 | W-04 | The model's table style colours are what Word shows (CLR-001 and CLR-002 depend on them) | `table_style_colours_match_word` (`tests/word_table_styles.rs`) | windows_word | 29 test tables in 2 documents: every conditional format with its own colour and fill; `tblLook` in both forms; band sizes; header rows; merged cells; `basedOn`; a fill set in the cell; a paragraph style over the table style | For every cell, the fill and the text colour that Word reports (`Cell.Shading.BackgroundPatternColor`, `Range.Font.Color`) equal the model's. **Implemented (M3a).** Result on 2026-11-16, Word 16.0.20527: 453 of 453 cells equal. The test follows the other Word tests: it takes `exclusive()`, records the `WINWORD.EXE` ids before, runs under `within` (300 seconds), compares the ids again with `wait_for_word_pids`, and keeps its files in a `word_support::TempDir`, which is removed also when the test fails. |
@@ -428,10 +457,10 @@ S2-15 and S2-23) need Word. They are built on the Word module of M3a, in
 `tests/fix_word.rs`; the manual part of S2-23 is still planned. The names in the
 table are the names of the tests.
 
-Fix IDs in `src/findings.rs`: 11 auto (`SetDefaultLanguage`,
+Fix IDs in `src/findings.rs`: 13 auto (`SetDefaultLanguage`,
 `ApplyHeadingStyle`, `DeleteEmptyHeading`, `ApplyListStyle`,
 `MakeImageInline`, `DeleteEmptyParagraphs`, `MarkHeaderRow`, `DeleteEmptyRow`,
-`DisallowRowBreak`, `AlignLeft`, `UpdateFields`) and 3 ask (`SetTitle`,
+`DisallowRowBreak`, `AlignLeft`, `UpdateFields`, `AddScreenTip`, `RemoveTocLinks`) and 3 ask (`SetTitle`,
 `SetAltText`, `MarkAnnotationsDecorative`). Each has its own row below.
 
 | # | Requirement | Test name (planned name if not built) | Level | Fixture or input | Pass condition | Status |
@@ -443,14 +472,14 @@ Fix IDs in `src/findings.rs`: 11 auto (`SetDefaultLanguage`,
 | S2-05 | The backup is written before any write to the target (AGENTS.md; spec 02) | `fix_writes_the_backup_before_the_first_write` | unit | Any fix on a fixture copy, with the writer recording every call | The first recorded write is the backup. It was closed and read back equal before the first write to the target. | implemented: `fix_writes_the_backup_before_the_first_write` in `tests/fix_safety.rs`. The recorded calls are: open the file, write the backup, read the backup back, write the temporary file, move it over the file. The read-back is tested in `fix_stops_when_the_backup_does_not_read_back_the_same`: a file system whose `read` gives other bytes, and one whose `read` fails, each give `FixError::Backup`, the target bytes are unchanged, the bad copy is deleted (a read error used to leave it; that was fixed) and no temporary file is written. |
 | S2-06 | No backup, no write | `fix_stops_when_the_backup_cannot_be_written` | unit | A directory that has the backup's name, so the backup cannot be made | Exit 2. Target bytes unchanged. | implemented: `fix_stops_when_the_backup_cannot_be_written` in `tests/fix_safety.rs` (the writer fails, also after half of the bytes), and, on Windows, `a_folder_with_the_name_of_the_backup_stops_the_fix` (a folder with the name of the backup: Windows says "access denied", and the tool stops). On Windows only a file with the name, not a folder, gets the next name (S2-07). |
 | S2-07 | Backup name `Guide.backup-<yyyymmdd-hhmmss>.docx`, bytes equal to the original (spec 02, "Inputs and outputs") | `fix_backup_name_and_bytes` | unit | `DOC-002-fail.docx` as `Guide.docx`, clock fixed at 2026-03-05 10:15:30 | `Guide.backup-20260305-101530.docx` is next to the source. Its bytes equal the original. A second run in the same second does not overwrite it. | implemented: `fix_backup_name_and_bytes` in `tests/fix_safety.rs`. The second backup in the same second is `Guide.backup-20260305-101530-1.docx`. The time on the real clock is local time: `the_production_clock_is_local_time` (Windows) compares `Timestamp::now()` with the local time that PowerShell (`Get-Date`) gives, within 2 seconds. The test machine is 7 hours behind UTC, so UTC would fail it. The clock is `Environment.now`, so every other test still sets a fixed time. |
-| S2-08 | Only the target XML bytes change; all other parts and all bytes outside the changes are identical (spec 02 stage 2; spec 01) | `fix_changes_only_the_spliced_bytes` | unit | The failing fixture of every fix ID in the rows below; the busy Word-like case of `new_properties_go_in_schema_order_in_a_busy_paragraph_and_row` | Every part but the target has equal bytes after unzip, and the entries have the same names and order. The target part equals the original with a table of exact edits and has no other change. For each edit the table has the exact original text that goes and the exact new text; it is written by hand for each fix from its fixture, and it is not the engine's splice list, so a fix that writes a whole paragraph again (or widens its splice) fails. The splice list of the engine must also agree with the result and must not overlap. | implemented: `fix_changes_only_the_spliced_bytes` and `fix_changes_only_the_target_part` in `tests/fix_engine.rs`. The first uses `assert_exactly_these_edits` with the table `expected_edits()` (14 fixes, 24 edits, for example HDG-004 removes one whole `<w:p>...</w:p>` and TXT-002 changes `both` to `left` and nothing else), and also `assert_only_the_splices_changed`, which only checks the engine against its own splice list. The busy case in `tests/fix_fixes.rs` goes through `assert_exactly_these_edits` too (4 edits; its styles define Heading 1, so the style part does not change; an undefined Heading style that is added is S2-18). **Mutation check, 2026-11-16:** a temporary change made the `AlignLeft` fix write its paragraph again with `xml:space="preserve"` removed. The new check failed for TXT-002 ("word/document.xml is the original with these edits and no other change"), and `fix_reruns_stage_1_with_every_auto_problem_in_one_document`, which uses only the splice-list check, still passed. A second temporary change wrote the `w:pStyle` element again with an added space, and the busy case failed. Both changes were removed. It runs for every fix that writes (14 rules). `untouched_entries_are_copied_raw` checks that untouched entries keep their compressed bytes, method and CRC. `a_byte_order_mark_is_kept` checks a part with a byte order mark. |
+| S2-08 | Only the target XML bytes change; all other parts and all bytes outside the changes are identical (spec 02 stage 2; spec 01) | `fix_changes_only_the_spliced_bytes` | unit | The failing fixture of every fix ID in the rows below; the busy Word-like case of `new_properties_go_in_schema_order_in_a_busy_paragraph_and_row` | Every part but the target has equal bytes after unzip, and the entries have the same names and order. The target part equals the original with a table of exact edits and has no other change. For each edit the table has the exact original text that goes and the exact new text; it is written by hand for each fix from its fixture, and it is not the engine's splice list, so a fix that writes a whole paragraph again (or widens its splice) fails. The splice list of the engine must also agree with the result and must not overlap. | implemented: `fix_changes_only_the_spliced_bytes` and `fix_changes_only_the_target_part` in `tests/fix_engine.rs`. The first uses `assert_exactly_these_edits` with the table `expected_edits()` (16 fixes, 26 edits, for example HDG-004 removes one whole `<w:p>...</w:p>` and TXT-002 changes `both` to `left` and nothing else), and also `assert_only_the_splices_changed`, which only checks the engine against its own splice list. The busy case in `tests/fix_fixes.rs` goes through `assert_exactly_these_edits` too (4 edits; its styles define Heading 1, so the style part does not change; an undefined Heading style that is added is S2-18). **Mutation check, 2026-11-16:** a temporary change made the `AlignLeft` fix write its paragraph again with `xml:space="preserve"` removed. The new check failed for TXT-002 ("word/document.xml is the original with these edits and no other change"), and `fix_reruns_stage_1_with_every_auto_problem_in_one_document`, which uses only the splice-list check, still passed. A second temporary change wrote the `w:pStyle` element again with an added space, and the busy case failed. Both changes were removed. It runs for every fix that writes (16 rules). `untouched_entries_are_copied_raw` checks that untouched entries keep their compressed bytes, method and CRC. `a_byte_order_mark_is_kept` checks a part with a byte order mark. |
 | S2-09 | The written file is a valid .docx | `fix_result_is_a_valid_docx` | unit | Same | The zip opens, the target part parses as XML, and `Document::from_bytes` reads it. | implemented: `fix_result_is_a_valid_docx` in `tests/fix_engine.rs`. |
 | S2-10 | Stage 1 runs again after the fixes and shows the new results (spec 02) | `fix_reruns_stage_1_and_the_fixed_finding_is_gone` | unit | Each failing fixture in the rows below, then one document with every auto problem | The finding of the rule is gone. No new finding appears, except those the rows list. After all auto fixes the document has no auto finding left (decided point 1 aside); the manual findings are the same rules and counts as before. | implemented: `fix_reruns_stage_1_and_the_fixed_finding_is_gone` and `fix_reruns_stage_1_with_every_auto_problem_in_one_document` in `tests/fix_engine.rs`. The extra findings that the plan allows (TBL-004 after S2-28) are tested in the test of that fix. |
 | S2-11 | The user picks which fixes to apply (spec 02) | `fix_applies_only_the_fixes_the_user_picked` | unit | A document with 3 auto problems; the user picks 1 | Only that rule's finding is gone. The other two remain. Bytes outside that splice are equal. | implemented: `fix_applies_only_the_fixes_the_user_picked` in `tests/fix_engine.rs`. `the_same_text_cannot_be_changed_by_two_different_fixes`, `two_fixes_on_the_same_drawing_do_not_overlap` and the tests for one `w:pPr` and one `w:trPr` check fixes that meet in one place. |
 | S2-12 | Ask fixes never write content the user did not type (AGENTS.md; spec 02) | `ask_fix_without_text_writes_nothing` | unit | Each ask fix ID with empty input and with spaces only; `DOC-001-fail.docx` shows the suggestion "Test guide" but the user types nothing | No write, no backup. The finding remains. The suggestion is never used as input. | implemented: `ask_fix_without_text_writes_nothing` in `tests/fix_engine.rs`. For `MarkAnnotationsDecorative` the "input" is the confirmation: text or "decorative" is refused. `cli_fix_shows_the_suggestion_but_never_fills_it_in` in `tests/cli_fix.rs` checks the CLI. |
 | S2-13 | The typed text is what is written | `ask_fix_writes_exactly_the_typed_text` | unit | Text `A & B <C> "D" é 日本` for the title and for alt text | The XML is escaped. Reading the file back gives the same text. Nothing else is added. | implemented: `ask_fix_writes_exactly_the_typed_text` in `tests/fix_engine.rs`. Line breaks and tabs in alt text are written as character references and read back. |
 | S2-14 | A failed write does not damage the source | `fix_write_is_atomic` | unit | The writer fails after half of the bytes | The original file is intact. No partial file stays. | implemented: `fix_write_is_atomic` in `tests/fix_safety.rs`: the writer fails after half of the bytes, and the move fails. The backup stays in both cases (it is a whole copy). |
-| S2-15 | Word still opens the fixed file (spec 02, "Testing") | `fix_result_opens_in_word` (`tests/fix_word.rs`) | windows_word | Every failing fixture that has an auto or ask fix (14), fixed with its fix by `fix_file` in a folder under the temp folder; also HDG-003 with the Heading 2 style not defined (decided point 4), alt text typed on a picture, shape, group, canvas, VML picture, VML shape and VML group, and "Mark as decorative". 23 cases | In one hidden Word, the original and the fixed file both open read-only (repair off, alerts off) with no error. For documents with no table, the change of Word's paragraph count equals the change of the model's. Word reads the fix as the model does: title (`BuiltInDocumentProperties`), the style of the heading (`Heading 2`) and of the list paragraphs (`List Number`), the alt text (`InlineShapes(1).AlternativeText`), a floating picture that is inline after the fix, the header row (`Rows(1).HeadingFormat`), the number of rows, `AllowBreakAcrossPages`, and left alignment (`Paragraphs(n).Alignment` is 3 before, 0 after). | **Implemented.** Result on 2026-11-16, Word 16.0.20527: 23 of 23 cases open and agree. The paragraph count is compared as a change, not as a total: Word also counts the end of each table row, so the totals of Word and the model differ. TXT-004 is left out because its fix writes nothing. DOC-002, IMG-007 and the decorative mark only have to open (the checks that Word has for them, language and decorative, are not read). The in-memory chart and SmartArt images are left out: Word cannot open even their original files (see "Known gaps in M3b"). Word gives an error when it is asked for the alt text of a document that is not the active one, so `WordDocument::inline_shape_alt_text` first activates the (hidden) document. |
+| S2-15 | Word still opens the fixed file (spec 02, "Testing") | `fix_result_opens_in_word` (`tests/fix_word.rs`) | windows_word | Every failing fixture that has an auto or ask fix (16), fixed with its fix by `fix_file` in a folder under the temp folder; also HDG-003 with the Heading 2 style not defined (decided point 4), alt text typed on a picture, shape, group, canvas, VML picture, VML shape and VML group, "Mark as decorative", the ScreenTip of a `w:hyperlink`, a complex field, a simple field and a field in pieces (link text with quote marks, a backslash, `&`, `<`, `>`, `é` and Japanese letters), link texts of 299 characters, and `\h` removed from a table of contents in a content control. 32 cases | In one hidden Word, the original and the fixed file both open read-only (repair off, alerts off) with no error. For documents with no table, the change of Word's paragraph count equals the change of the model's. Word reads the fix as the model does: title (`BuiltInDocumentProperties`), the style of the heading (`Heading 2`) and of the list paragraphs (`List Number`), the alt text (`InlineShapes(1).AlternativeText`), a floating picture that is inline after the fix, the header row (`Rows(1).HeadingFormat`), the number of rows, `AllowBreakAcrossPages`, left alignment (`Paragraphs(n).Alignment` is 3 before, 0 after), the ScreenTip (`Hyperlinks(1).ScreenTip`) and "Use hyperlinks instead of page numbers" (`TablesOfContents(1).UseHyperlinks`, true before and false after). | **Implemented.** Result on the evening of 2026-11-16 (local time), Word 16.0.20527: 32 of 32 cases open and agree (23 of 23 in the first run, before the link fixes). Word reads the ScreenTip as the text of the link in all four forms, with the awkward text, so the escapes (`\"`, `\\`, XML) are right for Word 16.0.20527. **Finding:** for a link text of 299 characters Word reads a `w:tooltip` as its first 260 characters and the `\o` text of a field whole; the test expects exactly that (see "Known gaps in M2b"). The paragraph count is compared as a change, not as a total: Word also counts the end of each table row, so the totals of Word and the model differ. TXT-004 is left out because its fix writes nothing. DOC-002, IMG-007 and the decorative mark only have to open (the checks that Word has for them, language and decorative, are not read). The in-memory chart and SmartArt images are left out: Word cannot open even their original files (see "Known gaps in M3b"). Word gives an error when it is asked for the alt text of a document that is not the active one, so `WordDocument::inline_shape_alt_text` first activates the (hidden) document. |
 | S2-16 | `SetTitle` (DOC-001, ask) | `ask_set_title_writes_dc_title` | unit | `DOC-001-fail.docx` (empty `dc:title`); a copy with no `dc:title` element | The typed title is in `docProps/core.xml` only. DOC-001 is gone. Spaces only is refused. | implemented: `ask_set_title_writes_dc_title` in `tests/fix_fixes.rs`, and `set_title_refuses_a_document_with_no_properties_part`. |
 | S2-17 | `SetDefaultLanguage` (DOC-002, auto) | `fix_set_default_language` | unit | `DOC-002-fail.docx`; a copy with an empty `w:lang`; a copy with other `rPr` children in the defaults | `w:lang` has the language of the setting (default en-US) in the document defaults of `word/styles.xml`. DOC-002 is gone. A setting of en-GB writes en-GB. | implemented: `fix_set_default_language`, `set_default_language_writes_the_language_of_the_setting` and `set_default_language_in_a_styles_part_with_fewer_parts` in `tests/fix_fixes.rs`. |
 | S2-18 | `ApplyHeadingStyle` (HDG-003, auto; the user confirms each paragraph) | `fix_apply_heading_style_at_the_suggested_level` | unit | `HDG-003-fail.docx`; a copy where the style is not defined in `styles.xml` (decided point 4); one with no heading above | The paragraph has the suggested style (Heading 2 in the fixture). The text is the same. HDG-003 is gone. No HDG-002 appears. An undefined Heading style is added from Word's built-in definition, then applied. | implemented: `fix_apply_heading_style_at_the_suggested_level`, `fix_apply_heading_style_when_the_style_is_not_defined` and `fix_apply_heading_style_with_no_heading_above_and_a_style_already_set` in `tests/fix_fixes.rs`. Only Heading 1 to Heading 4 are defined (the tool never suggests a deeper level). |
@@ -467,6 +496,8 @@ Fix IDs in `src/findings.rs`: 11 auto (`SetDefaultLanguage`,
 | S2-29 | `DisallowRowBreak` (TBL-006, auto) | `fix_disallow_row_break` | unit | `TBL-006-fail.docx`; a copy with `w:trPr` but no `w:cantSplit`; a copy with `w:cantSplit w:val="0"` | Every row has `<w:cantSplit/>`. The header flag stays. TBL-006 is gone. | implemented: `fix_disallow_row_break` in `tests/fix_fixes.rs`, and `header_row_and_row_break_fixes_on_the_same_row_make_one_trpr`. |
 | S2-30 | `AlignLeft` (TXT-002, auto) | `fix_align_left` | unit | `TXT-002-fail.docx` (direct `jc both`); a copy where the style is justified | The paragraph has `w:jc w:val="left"` in its own `w:pPr`. Its effective alignment is left, the style is unchanged, and TXT-002 is gone (decided point 9). | implemented: `fix_align_left` in `tests/fix_fixes.rs`, and `heading_style_and_align_left_on_the_same_paragraph_make_one_ppr`. |
 | S2-31 | `UpdateFields` (TXT-004, auto; decided point 1) | `fix_update_fields_is_done_at_export` | unit | `TXT-004-fail.docx` | The fix writes nothing to the .docx and no backup is made. The finding is listed as "done at export". The proof is `export_updates_fields_before_exporting` in stage 3. | implemented: `fix_update_fields_is_done_at_export` in `tests/fix_engine.rs`. The proof that the export does it stays in stage 3. |
+| S2-32 | `AddScreenTip` (LNK-004, auto; the user confirms; decided 2026-11-16) | `fix_add_screen_tip_to_a_hyperlink_element`, `fix_add_screen_tip_to_an_internal_link_and_replaces_an_empty_one`, `fix_add_screen_tip_to_a_simple_field_edits_only_the_instruction`, `..._in_single_quotes`, `fix_add_screen_tip_to_a_complex_field_edits_only_the_instruction`, `..._with_its_instruction_in_pieces`, `..._gives_the_instruction_xml_space_preserve`, `..._keeps_the_other_switches_of_a_field`, `fix_add_screen_tip_escapes_quotes_backslashes_and_xml_characters`, `fix_add_screen_tip_writes_the_field_escapes_and_the_xml_escapes`, `fix_add_screen_tip_folds_spaces_tabs_and_line_breaks_in_the_text`, `fix_add_screen_tip_refuses_a_link_with_no_text`, `fix_add_screen_tip_refuses_a_field_that_it_cannot_extend`, `fix_add_screen_tip_changes_only_the_link_that_was_chosen`, `fix_add_screen_tip_leaves_the_entries_of_a_table_of_contents_alone` (`tests/fix_links.rs`); the exact edit in `fix_changes_only_the_spliced_bytes` (`tests/fix_engine.rs`) | unit | `LNK-004-fail.docx` (a `w:hyperlink`); built documents with a simple field, a complex field (also in pieces), an internal link, a link text with `"`, `\`, `&`, `<`, `>`, `é` and Japanese letters, spaces and tabs in the text, links with no text, fields with an empty `\o` or an open quote mark | The ScreenTip is the visible text of the link, with runs of white space made into one space, and nothing else is invented. A `w:hyperlink` gets `w:tooltip`; a field gets `\o "text"` after its last word (the hand-written edit shows one insertion and no other byte changed; the quote marks of the rest of the field keep their form). The text is escaped for the field (`\"`, `\\`) and for XML; the model and Word read the same text back. LNK-004 is gone and no new finding appears. A link with no text, an empty `\o` and an open quote mark are refused with a message that says to type the ScreenTip in Word, and `adapdf fix` shows them as "the tool cannot fix this now". Only the chosen link changes. The entries of a table of contents are not touched. | implemented |
+| S2-33 | `RemoveTocLinks` (LNK-005, auto; the user confirms; decided 2026-11-16) | `fix_remove_toc_links_removes_the_h_switch_and_nothing_else`, `fix_remove_toc_links_for_every_place_of_the_switch`, `fix_remove_toc_links_in_a_content_control`, `fix_remove_toc_links_changes_only_the_table_that_was_chosen`, `fix_remove_toc_links_when_the_instruction_is_in_pieces`, `fix_remove_toc_links_keeps_the_old_entries_and_does_not_make_a_new_finding` (`tests/fix_links.rs`); the exact edit in `fix_changes_only_the_spliced_bytes` | unit | `LNK-005-fail.docx`; tables with `\h` first, last, alone, in upper case, among other switches (`\o "1-3" \h \z \u`), after a quoted `\t "Callout \h,2"`, in a content control, two in one document, and an instruction in two pieces | One deletion of ` \h` (the switch and the spaces before it); the rest of the instruction, including `&quot;`, is as it was. A `\h` in a quoted word is not removed. A switch split between two `w:instrText` is refused with the Word way (clear "Use hyperlinks instead of page numbers"). The old entries (`w:hyperlink`) stay until Word updates the table at export, and they are not LNK-004 findings. LNK-005 is gone and no new finding appears. | implemented. `fix_both_link_fixes_in_one_run_clear_both_findings` and `fix_the_link_fixes_write_a_backup_and_the_new_file` run both fixes together. |
 
 ### Stage 3: Word export (spec 02, stage 3)
 
@@ -488,11 +519,11 @@ command and no report (those are M4c). The names below are the real test names.
 | S3-08 | Timeout with the real Word | `export_times_out_with_real_word` | windows_word | `clean()` document with the timeout set to 1 ms | `Timeout` with `ended` true. The process list equals the list before. No PDF, no temporary file. The .docx is unchanged. | implemented |
 | S3-09 | `ExportAsFixedFormat` parameters (spec 02, table) and a read-only open | `export_passes_the_spec_parameters`, `the_parameters_are_the_spec_table` | unit | A fake that records the call; the table in `docs/specs/02-pipeline.md` | The parameters are 17, false, 0, 0, true, 1, true, true, false for `ExportFormat`, `OpenAfterExport`, `OptimizeFor`, `Item`, `IncludeDocProps`, `CreateBookmarks`, `DocStructureTags`, `BitmapMissingFonts`, `UseISO19005_1`, and they equal the values in the spec table. The output file is a temporary name next to the PDF. | implemented. The open is read-only because the traits offer only a read-only open; the `WordSession::open` arguments (hidden, not in the recent files, no repair, no dialog) are read in the code and run in every Word test, not recorded by a fake. |
 | S3-10 | The parameters have the effect the spec says | `export_makes_a_tagged_pdf_with_bookmarks_and_properties` | windows_word | `clean()` with a Heading 2 added | The PDF has `/MarkInfo` with `/Marked true`, a `/StructTreeRoot`, `/Outlines` with a bookmark for each heading, the Info `/Title` and the XMP title, and no `pdfaid`. | implemented |
-| S3-11 | Fields are updated before the export (spec 02) | `export_updates_fields_before_exporting` | unit and windows_word | Unit: a fake that records the order. Word: a document with a table of contents of 1 entry and 4 headings; the `TXT-004-fail.docx` fixture (a heading renamed after the table was made). | Unit: `update_fields` comes after the open and before `export`. Word: the PDF has 4 link annotations (`/Subtype/Link`), one for each entry that Word wrote, and not the 1 of the stale table; the `TXT-004-fail.docx` PDF has 2. The .docx on disk is unchanged. This also proves S2-31. | implemented, but not as the first plan said: the PDF text is not read (see "Known gaps in M4a"), so a renamed heading with the same number of entries is not proved by the PDF. |
+| S3-11 | Fields are updated before the export (spec 02) | `export_updates_fields_before_exporting` | unit and windows_word | Unit: a fake that records the order. Word: a document with a table of contents of 1 entry and 4 headings, made without the `\h` switch (a table with `\h` is refused by stage 1: LNK-005); the same document with an up-to-date table of 4 entries; the `TXT-004-fail.docx` fixture (a heading renamed after the table was made). | Unit: `update_fields` comes after the open and before `export`. Word: the PDF has 4 `Link` tags (read with `lopdf`: the tags are in compressed object streams), one for each entry that Word wrote, and not the 1 of the stale table; the numbers of `TOC`, `TOCI` and `Link` tags are those of the up-to-date document; the `TXT-004-fail.docx` PDF has 2 `Link` tags. There is no link annotation (`/Subtype/Link`) in any of them. The .docx on disk is unchanged. This also proves S2-31. | implemented, but not as the first plan said: the PDF text is not read (see "Known gaps in M4a"), so a renamed heading with the same number of entries is not proved by the PDF. The first version counted `/Subtype/Link` annotations of a table with `\h`; LNK-005 made that table an error, so the test counts tags. |
 | S3-12 | Export is refused when DOC-005 fires (spec 02) | `export_is_refused_when_doc_005_fires` (unit); `export_is_refused_when_doc_005_fires_and_starts_no_word` (windows_word) | unit and windows_word | `DOC-005-fail.docx` (tracked change); a document with only a comment | `ExportError::Blocked` with the DOC-005 finding (error). The fake Word is never started (the start panics if called); with the real Word the process list is unchanged. No PDF. The message names the rule and "tracked changes" or "comments". The .docx is unchanged. | implemented. **Exit code 1 (M4c):** `pipeline_refuses_doc_005_with_a_fail_report` (fake stages that are never called) and `cli_export_blocks_every_error_rule_and_doc_005` (the real program, no Word needed): exit 1, the report lists DOC-005 and says "tracked changes", no PDF. |
-| S3-13 | The PDF is written only when stage 1 has no errors (spec 02, "Inputs and outputs") | `export_writes_no_pdf_when_stage_1_has_errors` | unit now; CLI planned | Each of the 15 `*-fail.docx` fixtures whose rule is an error (DOC-001, 002, 005, 006; HDG-001, 002, 004; IMG-001, 007; TXB-001; LST-001; TBL-001, 002; LNK-003; CLR-001) | Unit: `Blocked` with the rule of the fixture for each of the 15; Word is not started; no `.pdf`. CLI (M4c): exit 1, `Guide.accessibility.html` exists, says Fail and lists the errors (decided point 7). | implemented. Library part (M4a); the command and report part (M4c): `pipeline_writes_no_pdf_when_stage_1_has_errors` (all 15 error fixtures: exit 1, `Guide.accessibility.html` and `.json` exist, the verdict is fail, the rule is listed, `pdf` is null, stages 4 and 5 are "not-run", no Word or veraPDF call) and `cli_export_blocks_every_error_rule_and_doc_005` / `cli_export_exit_1_on_errors` (the real program) |
+| S3-13 | The PDF is written only when stage 1 has no errors (spec 02, "Inputs and outputs") | `export_writes_no_pdf_when_stage_1_has_errors` | unit now; CLI planned | Each of the 17 `*-fail.docx` fixtures whose rule is an error (DOC-001, 002, 005, 006; HDG-001, 002, 004; IMG-001, 007; TXB-001; LST-001; TBL-001, 002; LNK-003, 004, 005; CLR-001) | Unit: `Blocked` with the rule of the fixture for each of the 17; Word is not started; no `.pdf`. CLI (M4c): exit 1, `Guide.accessibility.html` exists, says Fail and lists the errors (decided point 7). | implemented. Library part (M4a); the command and report part (M4c): `pipeline_writes_no_pdf_when_stage_1_has_errors` (all 17 error fixtures: exit 1, `Guide.accessibility.html` and `.json` exist, the verdict is fail, the rule is listed, `pdf` is null, stages 4 and 5 are "not-run", no Word or veraPDF call) and `cli_export_blocks_every_error_rule_and_doc_005` / `cli_export_exit_1_on_errors` (the real program) |
 | S3-14 | Warnings do not block the export | `export_runs_when_only_warnings_exist` | unit and windows_word | `HDG-006-fail.docx` and `TXT-002-fail.docx` | A tagged PDF is written, and the result lists the warning. | implemented. **Report (M4c):** `pipeline_word_runs_when_only_warnings_exist` (windows_word, HDG-006-fail and TXT-002-fail with the real Word): exit 0, a tagged PDF, and the report has 0 errors, 1 warning and names the rule; `pipeline_runs_when_only_warnings_exist` is the fake. |
-| S3-15 | The source .docx is not changed by the export | `export_leaves_the_docx_unchanged`; `export_makes_tagged_pdfs_of_the_pass_fixtures` | windows_word | Two documents; the 33 pass fixtures of S5-10 | Bytes and modified time are the same before and after. | implemented |
+| S3-15 | The source .docx is not changed by the export | `export_leaves_the_docx_unchanged`; `export_makes_tagged_pdfs_of_the_pass_fixtures` | windows_word | Two documents; the 35 pass fixtures of S5-10 | Bytes and modified time are the same before and after. | implemented |
 | S3-16 | Word is not installed | `export_reports_missing_word` | unit | A fake start that fails with `WordError::NotInstalled` | `ExportError::Word(NotInstalled)`; the message says Microsoft Word is not installed. No panic, no PDF. **Exit code 2 (M4c):** `pipeline_exit_2_when_word_is_missing` (fake Word): exit 2, stderr says Microsoft Word is not installed and names the file, stdout empty, no report. | implemented |
 | S3-17 | A document Word cannot open (for example a password) | `export_reports_a_password_protected_document` | windows_word | A copy that the test saves with a password through Word | An error with a clear message. The process list equals the list before. | planned. A password-protected .docx is not a zip file, so stage 1 refuses it before Word starts (`a_file_that_is_not_a_docx_is_a_check_error` covers that refusal with a plain text file). Making a real one needs Word to save with a password, which the Word module cannot do yet. The Word-side open error is covered by S3-04. |
 | S3-18 | Awkward paths | `export_handles_awkward_paths` | windows_word | A folder and file name with spaces, non-ASCII letters, a dash and brackets; a path of about 220 characters | The PDF is written next to the file and is tagged. | implemented. A path over 260 characters is not tested (Word does not open it). |
@@ -546,8 +577,9 @@ name in them was shortened). The real-tool rows run the bundled veraPDF.
 | S5-07 | A crash is not a pass | `verapdf_crash_or_bad_output_is_not_a_pass` | unit | A runner that exits with an error, gives empty output, or gives invalid JSON | Exit 2, not pass. **Implemented (M4b)** as typed errors for 11 cases, including a PDF that veraPDF cannot read (exit code 7 and a `taskException` in the JSON), a timeout and a program that cannot start. **The exit code 2 (M4c):** `verapdf_crash_or_bad_output_is_exit_2` (fake runner errors: a crash, a timeout and bad output give exit 2, "The PDF could not be checked", no report). The timeout is also tested with a real process (`verapdf_timeout_stops_the_process`) and with the real veraPDF. |
 | S5-08 | Any failure means the PDF does not pass | `verapdf_any_failure_means_not_pass` | unit | JSON with 1 failed check; JSON with 0 failed checks | 1 failed check: not pass, exit 1. 0 failed: pass. **Implemented (M4b).** Not compliant, a failed check, or a failed rule: not a pass, also when the rule list is empty. A job that did not end normally is an error. **The exit code 1 (M4c):** `pipeline_exit_1_on_a_verapdf_failure` (the recorded JSON of a figure without alt text: exit 1, the rule 7.3-1 is in the report with the pre-check rule IMG-001, the PDF is kept next to the Fail report) and `pipeline_wcag_results_are_warnings_and_do_not_fail_the_run`. |
 | S5-09 | The real veraPDF runs on a PDF made by test code | `verapdf_runs_on_a_generated_pdf` | veraPDF | `tagged-complete` | The JSON parses and the failure count is the one the test knows. **Implemented (M4b)** (feature `verapdf`): `Pdf::complete()` (the `tagged-complete` fixture) has 0 failures, in the classic layout and with object streams; an untagged PDF with an unembedded font has exactly 7 failed rules; a figure without alt text fails only 7.3-1 and is linked to IMG-001. |
-| S5-10 | **Exit criterion.** Word-made PDFs of passing fixtures have 0 veraPDF failures (spec 01, success criterion 1, applied to the fixtures) | `verapdf_zero_failures_on_pass_fixtures` | veraPDF with windows_word | The 33 pass fixtures that have content and need no picture data: DOC-001 to DOC-006, HDG-001 to HDG-004, HDG-006, LST-001, LST-002, TXB-001 to TXB-004, TBL-001 to TBL-006, LNK-001 to LNK-003, CLR-001, CLR-002, TXT-001 to TXT-004 and IMG-006. | Each is exported by Word and checked. 0 failures for each. The 6 pass fixtures with a picture (IMG-001 to IMG-005 and IMG-007) are added when the builder writes a small image part (see "Known gaps in M2a"). Failing fixtures are not in the criterion, because stage 1 blocks those with errors. A failure here is a finding for Phase 0: a missing source rule or a Word export problem. **Built (M4c), and it FAILS for 4 of the 33 fixtures: LNK-001, LNK-002, LNK-003 and TXT-004.** The test is strict and was not changed to hide them. See "S5-10 result" below for each fixture, the veraPDF rules, the classification and the evidence. The 6 picture fixtures (IMG-001 to IMG-005 and IMG-007) are checked in `verapdf_zero_failures_on_the_picture_pass_fixtures`, which passes (6 of 6, 0 failures). |
-| S5-11 | Information only: veraPDF on failing fixtures that have only warnings | `verapdf_on_warning_fixtures_is_recorded` | veraPDF with windows_word | The `*-fail` fixtures of warning rules that can be exported | The veraPDF failures are recorded, to see which warnings need to become errors. No pass condition. **Implemented (M4c)** as a test that records and has no pass condition except that the tool does not fail. Result on 2026-11-16: of the 24 failing fixtures of warning rules, 1 is blocked by an error of another rule (`LST-002-fail.docx` also has LST-001: the typed number is the problem of both rules), 20 give 0 veraPDF failures after stage 4 (DOC-003, DOC-004, HDG-003, HDG-006, IMG-002 to IMG-006, TXB-002 to TXB-004, TBL-003 to TBL-006, CLR-002, TXT-001 to TXT-003), and 3 give the same two failures as the passing link fixtures (LNK-001, LNK-002 and TXT-004: 7.18.1-2 and 7.18.5-2). **No warning rule needs to become an error because of a veraPDF failure.** (The one problem that Word's output has, a link with no ScreenTip, has no pre-check rule at all.) |
+| S5-10 | **Exit criterion.** Word-made PDFs of passing fixtures have 0 veraPDF failures (spec 01, success criterion 1, applied to the fixtures) | `verapdf_zero_failures_on_pass_fixtures` | veraPDF with windows_word | The 35 pass fixtures that have content and need no picture data: DOC-001 to DOC-006, HDG-001 to HDG-004, HDG-006, LST-001, LST-002, TXB-001 to TXB-004, TBL-001 to TBL-006, LNK-001 to LNK-005, CLR-001, CLR-002, TXT-001 to TXT-004 and IMG-006. | Each is exported by Word and checked. 0 failures for each. The 6 pass fixtures with a picture (IMG-001 to IMG-005 and IMG-007) are in `verapdf_zero_failures_on_the_picture_pass_fixtures`. Failing fixtures are not in the criterion, because stage 1 blocks those with errors. A failure here is a finding for Phase 0: a missing source rule or a Word export problem. **Built (M4c). First run: it failed for 4 of the 33 fixtures (LNK-001, LNK-002, LNK-003 and TXT-004); the test was strict and was not changed to hide them.** That led to the rules LNK-004 and LNK-005 (decided points 10 and 11). **Second run, with the 2 rules and the 2 new pass fixtures: 35 of 35 give exit 0 and 0 failed rules, and so do the 6 picture fixtures.** See "S5-10 result" for each fixture, the veraPDF rules, the classification and the evidence. |
+| S5-11 | Information only: veraPDF on failing fixtures that have only warnings | `verapdf_on_warning_fixtures_is_recorded` | veraPDF with windows_word | The `*-fail` fixtures of warning rules that can be exported | The veraPDF failures are recorded, to see which warnings need to become errors. No pass condition. **Implemented (M4c)** as a test that records and has no pass condition except that the tool does not fail. Result on the evening of 2026-11-16 (local time), with LNK-004 and LNK-005: of the 24 failing fixtures of warning rules, 1 is blocked by an error of another rule (`LST-002-fail.docx` also has LST-001: the typed number is the problem of both rules) and 23 give 0 veraPDF failures after stage 4 (DOC-003, DOC-004, HDG-003, HDG-006, IMG-002 to IMG-006, TXB-002 to TXB-004, TBL-003 to TBL-006, LNK-001, LNK-002, CLR-002, TXT-001 to TXT-004). In the first run (2026-11-16, before the two rules) LNK-001, LNK-002 and TXT-004 gave the two link failures (7.18.1-2 and 7.18.5-2); their documents now have a ScreenTip or a table of contents without `\h`. **No warning rule needs to become an error because of a veraPDF failure.** |
+| S5-12 | A guide with links that have no ScreenTip and a table of contents made of links: stage 1 refuses it, `adapdf fix` does both auto fixes, and `adapdf export` gives a PDF with 0 veraPDF failures (decided points 10 and 11) | `verapdf_zero_failures_after_the_link_fixes` | veraPDF with windows_word | A built guide: a table of contents with `\h`; a `w:hyperlink`, a complex `HYPERLINK` field and a simple one, with no ScreenTip | Before: the export gives exit 1 with LNK-004 three times and LNK-005, and writes no PDF. `adapdf fix` with four yes answers: exit 0, "Fixes applied (4)". After: exit 0, 0 failed rules; the PDF has 3 `/Subtype/Link` annotations (the table of contents has none), each with `/Contents` equal to its link text. | implemented. Result on the evening of 2026-11-16 (local time), Word 16.0.20527, veraPDF 1.28.2: passes. |
 
 ### Stage 6: report (spec 02, stage 6)
 
@@ -582,6 +614,8 @@ the test needs a parser, which needs a decision.
 | C-06 | `export`: 1 for stage 1 errors, veraPDF failures or a PDF with no tags | `cli_export_exit_1_on_errors` | CLI | `HDG-002-fail.docx` (no PDF); a stage 5 fake that reports 1 failure; the stage 4 input `no-structtreeroot`, an untagged PDF (decided point 8) | Exit 1 in all three. **Implemented (M4c).** (1) `cli_export_exit_1_on_errors` (the real program): exit 1, a Fail report, no PDF. (2) `pipeline_exit_1_on_a_verapdf_failure`. (3) `pipeline_exit_1_for_an_untagged_pdf` (both `no-markinfo` and `no-structtreeroot`): exit 1, the PDF is left as Word wrote it (nothing appended) next to a Fail report that lists the problem (decided point 8). (2) and (3) call `pipeline::export_docx`, which the command calls with the real stages, here with fake stages: the real program cannot be made to give a veraPDF failure or an untagged PDF on demand. The real program on a link fixture gives exit 1 (S5-10). |
 | C-07 | `export`: 2 for a tool failure (Word missing, timeout, veraPDF or Java missing) | `cli_export_exit_2_on_tool_failure` | CLI | The fakes of S3-16, S3-06 and S5-06 | Exit 2. stdout is empty. **Implemented (M4c).** The real program: `cli_export_exit_2_on_tool_failure` (a file that is not there, a file that is not a .docx, no file given, and the three veraPDF and Java cases of S5-06). With fakes: Word not installed (`pipeline_exit_2_when_word_is_missing`), timeout (`pipeline_exit_2_on_a_timeout`), Word rejects the file, locked PDF, veraPDF crash, timeout and bad output (`verapdf_crash_or_bad_output_is_exit_2`), a PDF that cannot be read (`a_pdf_that_cannot_be_read_is_exit_2`), an unreadable .docx and a report that cannot be written (`a_report_that_cannot_be_written_is_exit_2`). Each checks: exit 2, nothing on stdout, a message on stderr that names the file, no report, no PDF. With the real Word: S3-04, S3-06 and S3-19. |
 | C-08 | The current test that `export` is not in this version | `exit_code_2_for_wrong_usage` in `tests/cli.rs` | CLI | `adapdf export a.docx` | This test must be changed when `export` is built. **Done (M4c):** `exit_code_2_for_wrong_usage` now checks `adapdf export` with no file (exit 2) and with a file that is not there (exit 2, stdout empty, stderr names the file). |
+| C-09 | `fix` offers the two link fixes and applies them (decided 2026-11-16) | `cli_fix_offers_both_link_fixes_and_applies_them` (`tests/fix_links.rs`) | CLI | A guide with three links that have no ScreenTip (a `w:hyperlink`, a complex field, a simple field) and a table of contents with `\h`; answers piped in: four times yes | stderr says "4 problem(s) the tool can fix" and shows the text of both fixes. stdout lists "Fixes applied (4)" with `[LNK-004] Added the ScreenTip "parking policy"` and `[LNK-005] Removed the \h switch`, and "No problems found." Exit 0. Every link has a ScreenTip, except the entries of the table of contents. | implemented |
+| C-10 | `fix` says when a link fix cannot be done | `cli_fix_says_when_a_link_fix_cannot_be_done` (`tests/fix_links.rs`) | CLI | A guide with a link whose text is only spaces | stderr says "The tool cannot fix this now: The link has no text ..." and asks nothing. Nothing is written and there is no backup. Exit 1 (the error remains). | implemented |
 
 ### No network (spec 01, constraints; AGENTS.md)
 
@@ -680,6 +714,7 @@ proposals; the product owner confirms them before Phase 0.
 | P0-07 | The first heading when it is not Heading 1 (HDG-002; "How M1 reads the rules") | `phase0_first_heading_level` | manual | A document whose first heading is Heading 2 | Whether PAC or veraPDF reports it. HDG-002 keeps or drops that case. |
 | P0-08 | PAC is the checker of record (spec 01, Q1) | `phase0_pac_checker_of_record` | manual | Each sample PDF and each acceptance PDF, checked in PAC (version noted) | The PAC report is saved with the PDF. 0 errors is the pass result. A table shows the findings where veraPDF and PAC differ. The city's ADA coordinator confirms in writing that the PAC report is acceptable as evidence. |
 | P0-09 | Each error comes from the source or from Word's export (spec 01, Phase 0) | `phase0_error_origin_table` | manual | Every error on the sample guides after fixes in Word | A table: error, source or Word export, the pre-check rule that should have found it (or "missing rule"). |
+| P0-10 | Does PAC also fail a link with no `/Contents`, and a table of contents with link tags (LNK-004, LNK-005; decided points 10 and 11) | `phase0_link_description_in_pac` | manual | Four PDFs from Word: (a) a link with no ScreenTip, (b) the same link with a ScreenTip, (c) a table of contents with `\h`, (d) the same table without `\h` (Word 16.0.20527 gives (a) and (c) 2 veraPDF failures and (b) and (d) none; (d) still has one `Link` tag for each entry, with no link annotation) | The PAC result for each of the four is written in this plan. If PAC does not fail (a) and (c), LNK-004 and LNK-005 may become warnings (the product owner decides). If PAC fails (d) because of the `Link` tags without an annotation, the table of contents needs another way (for example `\n`, no page numbers, or a table made by hand). |
 
 ## How M1 reads the rules
 
@@ -993,6 +1028,37 @@ together if the spec changes.
   `word/document.xml`, ignoring case, plus Word's `_top`. Hidden `_Toc`
   bookmarks count like any other, so a table of contents whose bookmarks are
   gone is reported.
+- **LNK-004 (decided 2026-11-16, after the S5-10 result).** A link has no
+  ScreenTip when its `w:tooltip` (on a `w:hyperlink`) or the argument of its
+  `\o` switch (on a simple or complex `HYPERLINK` field) is missing, empty or
+  only spaces. A link that is an entry of a table of contents (inside the result
+  of a `TOC` field, or inside a "Table of Contents" content control) is not
+  reported: LNK-005 covers it. Links with no text (a picture link, say) are
+  reported; the fix refuses them. Severity error, so the rule blocks the export
+  of a guide with such a link until the fix is applied (a person confirms it) or
+  the author types the ScreenTips in Word.
+- **LNK-005 (decided 2026-11-16).** A `TOC` field (also in a "Table of
+  Contents" content control) whose instruction has the `\h` switch. The switch
+  is found as a word, so `\h` inside a quoted word (`\t "Style \h,1"`) and `\hz`
+  are not it. A table of contents that is only a `TOC` simple field
+  (`w:fldSimple`) is not read; Word writes a complex field for it.
+- **The fixes (`src/fix/links.rs`).** `AddScreenTip` copies the visible text of
+  the link, with runs of spaces, tabs and line breaks made into one space, into
+  `w:tooltip`, or inserts `\o "text"` after the last word of the field
+  instruction (before its trailing spaces; in the last `w:instrText` that has
+  text when the instruction is in pieces). The text is escaped for the field
+  syntax (`\` as `\\`, `"` as `\"`) and then for XML. Both are splices of the
+  raw bytes; the rest of the instruction keeps its form. An `xml:space="preserve"`
+  is added to a `w:instrText` that has none. A link with no text, a field with an
+  empty `\o` switch, and a field with an open quote mark are refused with a
+  message. `RemoveTocLinks` deletes the `\h` switch and the spaces before it
+  from the `w:instrText` that holds it (a switch split between two
+  `w:instrText` elements is refused). The field tokenizer of the model now reads
+  `\"` and `\\` inside a quoted word, so that a ScreenTip with a quote mark does
+  not change what the model reads as the target of the link.
+- **veraPDF mapping.** 7.18.1-2 and 7.18.5-2 both name LNK-004 as the pre-check
+  rule (a table entry names one rule); their how-to-fix text names LNK-005 for
+  the table of contents.
 - **CLR-001.** Foreground is the effective run colour (styles, theme colour
   with tint and shade, then direct formatting). Background is, from the top:
   run highlight, run shading, paragraph shading, table cell or table shading,
@@ -1070,7 +1136,22 @@ together if the spec changes.
   Word is known to write a table of contents. They have not been checked
   against a document that Word made.
 - **Links in headers, footers and footnotes are not read** (LNK-001 to
-  LNK-003).
+  LNK-004). A link there that has no ScreenTip gives the same veraPDF failure and
+  no pre-check finding; the template has no links in the header or footer.
+- **LNK-004 and LNK-005 follow veraPDF, not PAC.** Whether PAC also fails a link
+  with no `/Contents` is not known; Phase 0 confirms it (P0 table). The rules
+  also make Word's own table of contents unclickable in the PDF; readers use the
+  PDF bookmarks and the headings.
+- **The ScreenTip is the link text, with no limit on its length, and Word cuts
+  a `w:tooltip` at 260 characters.** The tool copies the whole text. Word 16.0.20527
+  (S2-15, a link text of 299 characters) reads a `w:tooltip` as its first 260
+  characters, the length of its own ScreenTip box, and writes only those into the
+  PDF as `/Contents` (checked by exporting a fixed guide: the annotation had 260
+  characters). It reads the `\o` text of a `HYPERLINK` field whole (299
+  characters, in the PDF too). veraPDF passes both. So a long link text gives a
+  ScreenTip that is the start of the text, which is still the author's own words.
+  The text of a link that is a bare address is copied as it is (LNK-002 still
+  reports it).
 - **Table styles are applied, with limits.** The model gives a cell the text
   colour, the other run properties, the paragraph properties and the fill of its
   table style (`src/model/table_styles.rs` says in what order). It was checked
@@ -1334,13 +1415,13 @@ it with the bundled JRE. Licences: `THIRD-PARTY.md`.
   Word exports (a classic cross-reference table, and veraPDF reads the update).
   If Word writes a layout that `lopdf` reads differently (a hybrid file, a
   linearized file), the result is a typed error, not a bad file.
-- **S5-10 and S5-11** (veraPDF on Word exports) were built in M4c. S5-10 fails
-  for 4 fixtures: see "S5-10 result".
+- **S5-10 and S5-11** (veraPDF on Word exports) were built in M4c. S5-10 failed (first run)
+  for 4 fixtures and passes after LNK-004 and LNK-005: see "S5-10 result".
 - **Exit codes** for stage 4 and 5 errors (2) and failures (1) were built in M4c
   (C-06, C-07).
 - **The rule table is a start.** 28 of the 100 or so rules of the profile, chosen
   from the Word problems that are likely. The links to pre-check rules for 7.1-3
-  (to TXB-001), 7.18.5-2 (to LNK-001) and the table rules are best guesses until
+  (to TXB-001) and the table rules are best guesses until
   Phase 0 shows real failures.
 - **No real WCAG-only warning has been seen.** On every test PDF the WCAG
   profile only repeated UA-1 failures, so the warnings are tested with the fake
@@ -1525,9 +1606,10 @@ Decisions that the specs leave open (all documented here, none in the spec):
   when it is set, and only that one, so that a wrong path gives an error that names
   it. The tests of S5-06 use it. This is a small addition to M4b's `Tool::locate`.
 - **Rule table.** The entries for 7.18.1-2 and 7.18.5-2 now say what really
-  happens (Word's ScreenTip; a table of contents). They have no linked pre-check
-  rule (the old link to LNK-001 was wrong: a link with good text still fails).
-  The table has 29 entries.
+  happens (Word's ScreenTip; a table of contents). In M4c they had no linked pre-check
+  rule (the old link to LNK-001 was wrong: a link with good text still fails). Both now
+  name LNK-004 (2026-11-16; a table entry names one rule, and the how-to-fix text names
+  LNK-005 for the table of contents). The table has 29 entries.
 - **Existing reports are replaced** without a backup, as the PDF is.
 
 **The report (`src/report`).** `report::build(Input) -> Report`; `Report::to_json()`
@@ -1557,10 +1639,46 @@ the test reads them from the style sheet that is written.
 
 ## S5-10 result
 
-Measured on 2026-11-16 with Word 16.0.20527 and veraPDF 1.28.2 (WCAG profile
-`WCAG-2-2-Machine.xml` present), by `verapdf_zero_failures_on_pass_fixtures` in
-`tests/export_verapdf.rs`: each pass fixture is exported by Word, stage 4 is run,
-and veraPDF checks the final PDF.
+S5-10 was run twice. The first run (M4c) failed for 4 fixtures and led to the rules
+LNK-004 and LNK-005. The second run is the result that counts now.
+
+### Second run: with LNK-004 and LNK-005
+
+Measured on the evening of 2026-11-16 (local time; the decision that led to it is
+dated 2026-11-16) with Word 16.0.20527 and veraPDF 1.28.2 (WCAG profile
+`WCAG-2-2-Machine.xml` present), by `cargo test --features windows_word,verapdf
+--test export_verapdf -- --nocapture --test-threads=1` (6 tests, all passed, 996
+seconds). Each fixture is exported by Word, stage 4 is run, and veraPDF checks the
+final PDF. **Every PDF: exit 0, 0 failed rules.** Per fixture:
+
+| Test | Fixtures | Result |
+|---|---|---|
+| `verapdf_zero_failures_on_pass_fixtures` (S5-10, 35 pass fixtures) | DOC-001 to DOC-006 (6), HDG-001 to HDG-004 and HDG-006 (5), LST-001 and LST-002 (2), TXB-001 to TXB-004 (4), TBL-001 to TBL-006 (6), **LNK-001 to LNK-005 (5)**, CLR-001 and CLR-002 (2), TXT-001 to TXT-004 (4), IMG-006 (1) | each one: exit 0, 0 failed rules (35 of 35) |
+| `verapdf_zero_failures_on_the_picture_pass_fixtures` | IMG-001 to IMG-005, IMG-007 | each one: exit 0, 0 failed rules (6 of 6) |
+| `verapdf_zero_failures_after_the_link_fixes` (S5-12) | A guide with 3 links that have no ScreenTip (a `w:hyperlink`, a complex field, a simple field) and a table of contents with `\h`. Before: stage 1 refuses it (LNK-004 three times, LNK-005) and no PDF is written. `adapdf fix` (four yes answers) applies both auto fixes. Then `adapdf export`. | exit 0, 0 failed rules. The PDF has 3 `/Subtype/Link` annotations (the table of contents has none) and each has `/Contents` with the link text (`/Contents(parking policy)`, `/Contents(the same policy)`, `/Contents(and again)`), so Word writes the ScreenTip of a field link (`\o`) as it does for `w:tooltip`. |
+| `verapdf_on_warning_fixtures_is_recorded` (S5-11) | the 24 failing fixtures of warning rules | 23 give exit 0 and 0 failed rules; `LST-002-fail.docx` is blocked by an error of another rule (it also has LST-001). The 3 that failed in the first run (LNK-001-fail, LNK-002-fail, TXT-004-fail) now give 0, because their documents have a ScreenTip or no `\h` (see below). |
+
+The criterion was not weakened and the test is the one of the first run, except
+that its list has the 2 new pass fixtures (35). What changed for the 4 fixtures
+that failed:
+
+- LNK-001-pass, LNK-002-pass, LNK-003-pass (and the matching fail fixtures) now
+  have a ScreenTip on their link (`w:tooltip`). This is not hiding a problem: the
+  new fixture `LNK-004-fail.docx` is the same kind of link without a ScreenTip, and
+  stage 1 reports it as an error. The first run's PDFs for the same documents
+  without ScreenTips failed 7.18.1-2 and 7.18.5-2.
+- TXT-004-pass and TXT-004-fail now have a table of contents with the field
+  `TOC \o "1-3" \z \u` (no `\h`), and its entries are plain runs, as Word writes
+  them. `LNK-005-fail.docx` is the same table with `\h`, and stage 1 reports it.
+- A table of contents made without `\h` still has one `Link` tag in the PDF for
+  each entry (read with `lopdf` in S3-11), but no link annotation. veraPDF passes
+  it. Whether PAC does is Phase 0 (P0-10).
+
+### First run: before LNK-004 and LNK-005
+
+Measured on 2026-11-16 with Word 16.0.20527 and veraPDF 1.28.2, by
+`verapdf_zero_failures_on_pass_fixtures` in `tests/export_verapdf.rs` (33 pass
+fixtures then):
 
 | Fixtures | Result |
 |---|---|
@@ -1590,37 +1708,49 @@ same command (`adapdf export`); the fixtures were not changed.
 
 | Fixtures | Class | Why |
 |---|---|---|
-| LNK-001-pass, LNK-002-pass, LNK-003-pass | **(b) a missing pre-check rule** | The documents are valid and have good link text, and the PDF still fails: the cause is a link with no ScreenTip, and nothing in spec 03 looks for that. They are not a fixture builder problem (a). Word's export is doing what it always does (c, but the author can fix it in the source), and stage 4 cannot fix it without editing an annotation (d, and that would break "only document-level metadata"; see below). |
+| LNK-001-pass, LNK-002-pass, LNK-003-pass | **(b) a missing pre-check rule** | The documents are valid and have good link text, and the PDF still fails: the cause is a link with no ScreenTip, and nothing in spec 03 looked for that. They are not a fixture builder problem (a). Word's export is doing what it always does (c, but the author can fix it in the source), and stage 4 cannot fix it without editing an annotation (d, and that would break "only document-level metadata"). |
 | TXT-004-pass | **(c) a Word export limitation**, with a workaround that is a decision | Word's own table of contents (with hyperlinks) cannot give a link a lasting ScreenTip: Word makes the entries again at each update. Without `\h` there are no links and the PDF passes. |
 
-**What was fixed in M4c, and what was not.**
+**What was done in M4c, and what was decided after it.**
 
-- Fixed: the veraPDF table entries for 7.18.1-2 and 7.18.5-2 (a better message,
-  the ScreenTip fix and the table of contents fix; no linked rule), so that the
-  report tells the author what to do. This is the only change for S5-10.
-- **Not fixed, and the exit criterion was not weakened.** A new pre-check rule
-  ("a link has no ScreenTip") is not small and is not a spec decision that the
-  worker may make: it needs a severity (as an error it blocks the export of every
-  guide that has a hyperlink without a ScreenTip, which is probably most guides),
-  a fix that asks for the text (the tool must not invent it; the link text is
-  there to suggest, as for DOC-001), a place in spec 03, fixtures and the
-  `RuleId` list. Making the fixtures pass by putting a ScreenTip on them would
-  hide the missing rule, so it was not done. Making stage 4 write `/Contents` into
-  annotations is outside spec 02 ("only document-level metadata", AGENTS.md: never
-  edit tags or content) and also needs text that the tool does not have.
-- **Decisions for the product owner** (the orchestrator takes them to the user):
-  (1) first record in Phase 0 whether PAC (the checker of record, spec 01) also
-  fails a link with no `/Contents`; PAC and veraPDF can differ, and the answer
-  decides how much this matters; (2) if PAC fails it too: add a rule for the
-  ScreenTip (suggested: error, with an `ask` fix that never fills the text in), or
-  accept that the report says Fail with the clear message that it has now; (3) the
-  table of contents: say in spec 04 how the template makes it (without hyperlinks
-  passes veraPDF, and a clickable table of contents does not).
+- M4c fixed the veraPDF table entries for 7.18.1-2 and 7.18.5-2 (a better message
+  and the fix text), so that the report tells the author what to do. The exit
+  criterion was not weakened, and the fixtures were not given ScreenTips to hide
+  the missing rule. Making stage 4 write `/Contents` into annotations is outside
+  spec 02 ("only document-level metadata", AGENTS.md: never edit tags or content)
+  and also needs text that the tool does not have.
+- **The user decided on 2026-11-16** (decided points 10 and 11): a new rule LNK-004
+  (error, auto fix: copy the link's own text into the ScreenTip), and a new rule
+  LNK-005 (error, auto fix: remove `\h` from the table of contents field). Both are
+  built (spec 03; S2-32, S2-33; the fixtures `LNK-004` and `LNK-005`), and the
+  second run above is the result. Stage 4 is unchanged.
+- **Still open (Phase 0, P0-10):** whether PAC (the checker of record, spec 01)
+  also fails a link with no `/Contents`, and whether it fails the `Link` tags of a
+  table of contents that has no link annotation. The rules follow veraPDF until
+  then. An error rule means that a guide with a link and no ScreenTip is not
+  exported until the author or `adapdf fix` adds the ScreenTip.
 
 ## Known gaps in M4c
 
-- **S5-10 fails** for LNK-001, LNK-002, LNK-003 and TXT-004 (above). The test
-  stays strict and red until a decision is made and built.
+- **S5-10 passes** (35 of 35, and the 6 picture fixtures) since LNK-004 and
+  LNK-005 were built (2026-11-16; "S5-10 result"). It failed for LNK-001,
+  LNK-002, LNK-003 and TXT-004 in the first run. What is still open is the part
+  that veraPDF cannot say: PAC (P0-10) may fail a link with no `/Contents`, or
+  the `Link` tags that a table of contents without `\h` still has.
+- **LNK-004 and LNK-005 are errors, so they block the export** of every guide that
+  has a link with no ScreenTip or a table of contents with `\h`. That is most
+  Word-made guides until `adapdf fix` (or the author) has done the fixes. The
+  fixes need only a yes. The ScreenTip that the fix writes is the link text, so
+  it is no better than the link text (a link "here" gets the ScreenTip "here";
+  LNK-001 still warns about it).
+- **A table of contents made without `\h` cannot be clicked in the PDF.** Readers
+  use the PDF bookmarks (`CreateBookmarks`) and the headings. A table of contents
+  that is only a `TOC` simple field (`w:fldSimple`) is not read by LNK-005; links
+  in headers, footers and footnotes are not read by LNK-004.
+- **Escaping in a field instruction is checked against Word 16.0.20527 only.**
+  Word read back a ScreenTip with quote marks, a backslash, `&`, `<`, `>`, `é` and
+  Japanese letters as the same text, for a `w:hyperlink`, a complex field, a
+  simple field and a field in pieces (S2-15); other Word builds were not tried.
 - **S6-11 (a screen reader reads the report) was not done.** No browser, NVDA,
   Narrator or axe-core was run on the report. The accessibility checks that were
   made are structural: the HTML is parsed, and the headings, tables, labels,

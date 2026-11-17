@@ -3,6 +3,7 @@
 
 use super::{CustomStyle, DocxBuilder, Para, Run, clean, clean_settings, esc};
 use crate::findings::RuleId;
+use crate::model::fields::has_switch;
 
 /// A `w:shd` element that fills with `hex` (`RRGGBB`).
 pub(super) fn shd_xml(hex: &str) -> String {
@@ -118,11 +119,34 @@ impl Para {
         self
     }
 
+    /// The same as [`Para::hyperlink`], with a ScreenTip (`w:tooltip`).
+    pub fn hyperlink_tip(mut self, text: &str, url: &str, tip: &str) -> Para {
+        let id = link_id(url);
+        self.link_targets.push((id.clone(), url.to_string()));
+        self.raw_runs.push(format!(
+            r#"<w:hyperlink r:id="{id}" w:tooltip="{}"><w:r><w:t xml:space="preserve">{}</w:t></w:r></w:hyperlink>"#,
+            esc(tip),
+            esc(text)
+        ));
+        self
+    }
+
     /// Adds a link to a bookmark (`w:hyperlink w:anchor`).
     pub fn internal_link(mut self, text: &str, bookmark: &str) -> Para {
         self.raw_runs.push(format!(
             r#"<w:hyperlink w:anchor="{}"><w:r><w:t xml:space="preserve">{}</w:t></w:r></w:hyperlink>"#,
             esc(bookmark),
+            esc(text)
+        ));
+        self
+    }
+
+    /// The same as [`Para::internal_link`], with a ScreenTip (`w:tooltip`).
+    pub fn internal_link_tip(mut self, text: &str, bookmark: &str, tip: &str) -> Para {
+        self.raw_runs.push(format!(
+            r#"<w:hyperlink w:anchor="{}" w:tooltip="{}"><w:r><w:t xml:space="preserve">{}</w:t></w:r></w:hyperlink>"#,
+            esc(bookmark),
+            esc(tip),
             esc(text)
         ));
         self
@@ -194,6 +218,10 @@ pub fn raw_docx(body: &str, styles: &str, theme: bool) -> Vec<u8> {
 /// The instruction that Word writes for a table of contents of Heading 1 to 3.
 pub const TOC_INSTRUCTION: &str = r#"TOC \o "1-3" \h \z \u"#;
 
+/// The same instruction without `\h` ("Use hyperlinks instead of page numbers"
+/// turned off): Word makes the entries without links.
+pub const TOC_INSTRUCTION_NO_LINKS: &str = r#"TOC \o "1-3" \z \u"#;
+
 const TOC_SDT_START: &str = r#"<w:sdt><w:sdtPr><w:docPartObj><w:docPartGallery w:val="Table of Contents"/><w:docPartUnique/></w:docPartObj></w:sdtPr><w:sdtContent>"#;
 const TOC_SDT_END: &str = "</w:sdtContent></w:sdt>";
 
@@ -222,12 +250,20 @@ fn toc_paragraphs(
             if i == 0 {
                 p = p.raw_run(&begin);
             }
-            paragraphs.push(p.raw_run(&format!(
-                r#"<w:hyperlink w:anchor="_Toc{}" w:history="1"><w:r><w:t>{}</w:t></w:r><w:r><w:tab/></w:r><w:r><w:t>{}</w:t></w:r></w:hyperlink>"#,
-                i + 1,
+            let entry = format!(
+                "<w:r><w:t>{}</w:t></w:r><w:r><w:tab/></w:r><w:r><w:t>{}</w:t></w:r>",
                 esc(text),
                 i + 1
-            )));
+            );
+            // The entries are links when the field has `\h`.
+            paragraphs.push(p.raw_run(&if has_switch(instruction, "h") {
+                format!(
+                    r#"<w:hyperlink w:anchor="_Toc{}" w:history="1">{entry}</w:hyperlink>"#,
+                    i + 1
+                )
+            } else {
+                entry
+            }));
         }
         paragraphs.push(Para::empty().raw_run(end));
     }
@@ -290,8 +326,18 @@ impl DocxBuilder {
 
     /// A table of contents inside a "Table of Contents" content control.
     pub fn toc_content_control(self, entries: &[(&str, u8)], dirty: bool) -> DocxBuilder {
+        self.toc_content_control_with(TOC_INSTRUCTION, entries, dirty)
+    }
+
+    /// The same, with a field instruction of your choice.
+    pub fn toc_content_control_with(
+        self,
+        instruction: &str,
+        entries: &[(&str, u8)],
+        dirty: bool,
+    ) -> DocxBuilder {
         self.with_toc_styles()
-            .paragraphs(toc_paragraphs(TOC_INSTRUCTION, entries, dirty, true))
+            .paragraphs(toc_paragraphs(instruction, entries, dirty, true))
     }
 
     /// Defines the styles TOC 1 to TOC 3 once.
@@ -314,11 +360,16 @@ impl DocxBuilder {
 const LONG_URL: &str = "https://example.org/departments/parking/policy-2026-final.pdf";
 const SHORT_URL: &str = "https://example.org/parking-policy";
 
+/// A ScreenTip for the links of the fixtures.
+const TIP: &str = "Parking policy page";
+
 /// The pass and fail document for each of the LNK, CLR and TXT rules.
 pub(super) fn pairs() -> Vec<(RuleId, DocxBuilder, DocxBuilder)> {
-    let toc_headings = |second: &str| {
+    // A guide with a table of contents and two headings. The entries are
+    // links only when `instruction` has `\h`.
+    let toc_headings = |instruction: &str, second: &str| {
         clean_settings()
-            .toc(&[("Test guide", 1), ("Setup", 2)], false)
+            .toc_with(instruction, &[("Test guide", 1), ("Setup", 2)], false)
             .paragraph(Para::new("Test guide").style("Heading1").bookmark("_Toc1"))
             .paragraph(Para::new(second).style("Heading2").bookmark("_Toc2"))
             .para("Plug it in.")
@@ -326,24 +377,52 @@ pub(super) fn pairs() -> Vec<(RuleId, DocxBuilder, DocxBuilder)> {
     vec![
         (
             RuleId::Lnk001,
-            clean().paragraph(Para::new("Read the ").hyperlink("parking policy", SHORT_URL)),
-            clean().paragraph(
-                Para::new("To read the parking policy, ").hyperlink("click here", SHORT_URL),
-            ),
+            clean().paragraph(Para::new("Read the ").hyperlink_tip(
+                "parking policy",
+                SHORT_URL,
+                TIP,
+            )),
+            clean().paragraph(Para::new("To read the parking policy, ").hyperlink_tip(
+                "click here",
+                SHORT_URL,
+                TIP,
+            )),
         ),
         (
             RuleId::Lnk002,
-            clean().paragraph(Para::new("Visit ").hyperlink(SHORT_URL, SHORT_URL)),
-            clean().paragraph(Para::new("Visit ").hyperlink(LONG_URL, LONG_URL)),
+            clean().paragraph(Para::new("Visit ").hyperlink_tip(SHORT_URL, SHORT_URL, TIP)),
+            clean().paragraph(Para::new("Visit ").hyperlink_tip(LONG_URL, LONG_URL, TIP)),
         ),
         (
             RuleId::Lnk003,
             clean()
                 .paragraph(Para::new("Setup").style("Heading2").bookmark("Setup"))
-                .paragraph(Para::empty().internal_link("See the setup section", "Setup")),
+                .paragraph(Para::empty().internal_link_tip(
+                    "See the setup section",
+                    "Setup",
+                    "Setup section",
+                )),
             clean()
                 .paragraph(Para::new("Setup").style("Heading2").bookmark("Setup"))
-                .paragraph(Para::empty().internal_link("See the setup section", "Nowhere")),
+                .paragraph(Para::empty().internal_link_tip(
+                    "See the setup section",
+                    "Nowhere",
+                    "Setup section",
+                )),
+        ),
+        (
+            RuleId::Lnk004,
+            clean().paragraph(Para::new("Read the ").hyperlink_tip(
+                "parking policy",
+                SHORT_URL,
+                TIP,
+            )),
+            clean().paragraph(Para::new("Read the ").hyperlink("parking policy", SHORT_URL)),
+        ),
+        (
+            RuleId::Lnk005,
+            toc_headings(TOC_INSTRUCTION_NO_LINKS, "Setup"),
+            toc_headings(TOC_INSTRUCTION, "Setup"),
         ),
         (
             RuleId::Clr001,
@@ -386,8 +465,8 @@ pub(super) fn pairs() -> Vec<(RuleId, DocxBuilder, DocxBuilder)> {
         ),
         (
             RuleId::Txt004,
-            toc_headings("Setup"),
-            toc_headings("Installation"),
+            toc_headings(TOC_INSTRUCTION_NO_LINKS, "Setup"),
+            toc_headings(TOC_INSTRUCTION_NO_LINKS, "Installation"),
         ),
     ]
 }

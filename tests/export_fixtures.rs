@@ -19,11 +19,11 @@ use adapdf::fixtures::{FixtureFonts, catalogue};
 use export_support::{assert_tagged, fingerprint, names};
 use word_support::{TempDir, exclusive, wait_for_word_pids, word_pids};
 
-/// The 33 pass fixtures of S5-10: no picture, except IMG-006 (an equation).
-const S5_10: [RuleId; 33] = [
+/// The 35 pass fixtures of S5-10: no picture, except IMG-006 (an equation).
+const S5_10: [RuleId; 35] = [
     Doc001, Doc002, Doc003, Doc004, Doc005, Doc006, Hdg001, Hdg002, Hdg003, Hdg004, Hdg006, Lst001,
     Lst002, Txb001, Txb002, Txb003, Txb004, Tbl001, Tbl002, Tbl003, Tbl004, Tbl005, Tbl006, Lnk001,
-    Lnk002, Lnk003, Clr001, Clr002, Txt001, Txt002, Txt003, Txt004, Img006,
+    Lnk002, Lnk003, Lnk004, Lnk005, Clr001, Clr002, Txt001, Txt002, Txt003, Txt004, Img006,
 ];
 
 #[test]
@@ -49,8 +49,8 @@ fn export_makes_tagged_pdfs_of_the_pass_fixtures() {
         assert_eq!(fingerprint(&docx), docx_before, "{}", fixture.file_name());
         done.push(rule);
     }
-    assert_eq!(done.len(), 33);
-    // 33 sources and 33 PDFs, and nothing else.
-    assert_eq!(names(dir.path()).len(), 66);
+    assert_eq!(done.len(), 35);
+    // 35 sources and 35 PDFs, and nothing else.
+    assert_eq!(names(dir.path()).len(), 70);
     assert_eq!(wait_for_word_pids(&before), before);
 }

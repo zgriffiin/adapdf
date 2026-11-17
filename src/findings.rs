@@ -79,6 +79,10 @@ pub enum RuleId {
     Lnk002,
     #[serde(rename = "LNK-003")]
     Lnk003,
+    #[serde(rename = "LNK-004")]
+    Lnk004,
+    #[serde(rename = "LNK-005")]
+    Lnk005,
     #[serde(rename = "CLR-001")]
     Clr001,
     #[serde(rename = "CLR-002")]
@@ -121,6 +125,8 @@ pub enum FixId {
     DisallowRowBreak,
     AlignLeft,
     UpdateFields,
+    AddScreenTip,
+    RemoveTocLinks,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -136,7 +142,7 @@ pub enum FixKind {
 
 impl RuleId {
     /// Every rule, in spec order.
-    pub const ALL: [RuleId; 39] = [
+    pub const ALL: [RuleId; 41] = [
         RuleId::Doc001,
         RuleId::Doc002,
         RuleId::Doc003,
@@ -170,6 +176,8 @@ impl RuleId {
         RuleId::Lnk001,
         RuleId::Lnk002,
         RuleId::Lnk003,
+        RuleId::Lnk004,
+        RuleId::Lnk005,
         RuleId::Clr001,
         RuleId::Clr002,
         RuleId::Txt001,
@@ -214,6 +222,8 @@ impl RuleId {
             RuleId::Lnk001 => "LNK-001",
             RuleId::Lnk002 => "LNK-002",
             RuleId::Lnk003 => "LNK-003",
+            RuleId::Lnk004 => "LNK-004",
+            RuleId::Lnk005 => "LNK-005",
             RuleId::Clr001 => "CLR-001",
             RuleId::Clr002 => "CLR-002",
             RuleId::Txt001 => "TXT-001",
@@ -228,7 +238,7 @@ impl RuleId {
         use RuleId::*;
         match self {
             Doc001 | Doc002 | Doc005 | Doc006 | Hdg001 | Hdg002 | Hdg004 | Lst001 | Lnk003
-            | Clr001 => Severity::Error,
+            | Lnk004 | Lnk005 | Clr001 => Severity::Error,
             Doc003 | Doc004 | Hdg003 | Hdg006 | Lst002 | Lnk001 | Lnk002 | Clr002 | Txt001
             | Txt002 | Txt003 | Txt004 => Severity::Warning,
             Img001 | Img007 | Txb001 | Tbl001 | Tbl002 => Severity::Error,
@@ -255,6 +265,8 @@ impl RuleId {
             Tbl006 => FixKind::Auto(FixId::DisallowRowBreak),
             Txt002 => FixKind::Auto(FixId::AlignLeft),
             Txt004 => FixKind::Auto(FixId::UpdateFields),
+            Lnk004 => FixKind::Auto(FixId::AddScreenTip),
+            Lnk005 => FixKind::Auto(FixId::RemoveTocLinks),
             Img003 | Img005 | Img006 | Txb001 | Txb002 | Txb003 | Tbl002 | Tbl003 | Tbl004 => {
                 FixKind::Manual
             }

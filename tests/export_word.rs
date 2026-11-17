@@ -22,9 +22,11 @@ use std::time::{Duration, Instant};
 
 use adapdf::export::{ExportError, ExportOptions, ExportResult, export_pdf};
 use adapdf::findings::{RuleId, Severity};
-use adapdf::fixtures::{FixtureFonts, Para, catalogue, clean};
+use adapdf::fixtures::{FixtureFonts, Para, TOC_INSTRUCTION_NO_LINKS, catalogue, clean};
 use adapdf::word::{WordError, WordSession};
-use export_support::{assert_tagged, contains, count, fingerprint, names, without_content_types};
+use export_support::{
+    assert_tagged, contains, count, fingerprint, names, structure_elements, without_content_types,
+};
 use word_support::{TempDir, exclusive, wait_for_word_pids, word_pids};
 
 /// A time limit that a test that works will not reach.
@@ -406,16 +408,29 @@ fn export_updates_fields_before_exporting() {
     let _lock = exclusive();
     let dir = TempDir::new("s3-11");
     // A table of contents with one entry, in a document that has four
-    // headings. Word makes one link for each entry of the table of contents, so
-    // the number of links in the PDF is the number of entries that Word wrote.
-    let stale = clean()
-        .toc(&[("Test guide", 1)], false)
-        .paragraph(Para::new("Test guide").style("Heading1").bookmark("_Toc1"))
-        .paragraph(Para::new("Setup steps").style("Heading2").bookmark("_Toc2"))
-        .para("Plug it in.")
-        .paragraph(Para::new("Cleaning up").style("Heading2").bookmark("_Toc3"))
-        .para("Wipe it.")
-        .build();
+    // headings. The table has no `\h` switch (LNK-005 would stop the export). Word
+    // shows each entry of the table as one `Link` tag (in a `TOCI` tag; the PDF
+    // has no link annotation for it), so the number of `Link` tags is the
+    // number of entries that Word wrote (observed with Word 16.0.20527).
+    // The same document with a table that lists all four headings (an up-to-date
+    // table) gives the same tags.
+    let headings = |toc: &[(&str, u8)]| {
+        clean()
+            .toc_with(TOC_INSTRUCTION_NO_LINKS, toc, false)
+            .paragraph(Para::new("Test guide").style("Heading1").bookmark("_Toc1"))
+            .paragraph(Para::new("Setup steps").style("Heading2").bookmark("_Toc2"))
+            .para("Plug it in.")
+            .paragraph(Para::new("Cleaning up").style("Heading2").bookmark("_Toc3"))
+            .para("Wipe it.")
+            .build()
+    };
+    let stale = headings(&[("Test guide", 1)]);
+    let up_to_date = headings(&[
+        ("Test guide", 1),
+        ("Test guide", 1),
+        ("Setup steps", 2),
+        ("Cleaning up", 2),
+    ]);
     let docx = dir.write("Stale.docx", &stale);
     let findings = adapdf::check_bytes(&stale, &FixtureFonts).unwrap();
     assert!(findings.iter().any(|f| f.rule_id == RuleId::Txt004));
@@ -428,11 +443,23 @@ fn export_updates_fields_before_exporting() {
     assert!(result.fields.fields >= 1);
     assert_eq!(result.fields.first_failed, None);
     assert_eq!(
-        count(&pdf, b"/Subtype/Link"),
+        structure_elements(&pdf, "Link"),
         4,
         "the table of contents has an entry for each of the 4 headings, not the 1 it had"
     );
+    assert_eq!(count(&pdf, b"/Subtype/Link"), 0, "no link annotations");
     assert_eq!(fingerprint(&docx), before, "the .docx on disk is unchanged");
+    let docx = dir.write("UpToDate.docx", &up_to_date);
+    let fresh_path = dir.path().join("UpToDate.pdf");
+    export(&docx, &fresh_path).unwrap();
+    let fresh = fs::read(&fresh_path).unwrap();
+    for kind in ["TOC", "TOCI", "Link"] {
+        assert_eq!(
+            structure_elements(&pdf, kind),
+            structure_elements(&fresh, kind),
+            "{kind}: the stale table gives the tags of an up-to-date one"
+        );
+    }
 
     // The fixture of TXT-004: a heading renamed after the table was made. The
     // text of the entry is not read from the PDF (see "Known gaps in M4a").
@@ -440,7 +467,8 @@ fn export_updates_fields_before_exporting() {
     let result = export(&renamed, &dir.path().join("Renamed.pdf")).unwrap();
     assert_eq!(result.fields.tables_of_contents, 1);
     let pdf = fs::read(dir.path().join("Renamed.pdf")).unwrap();
-    assert_eq!(count(&pdf, b"/Subtype/Link"), 2);
+    assert_eq!(structure_elements(&pdf, "Link"), 2);
+    assert_eq!(count(&pdf, b"/Subtype/Link"), 0, "no link annotations");
 }
 
 // S3-12 with the real Word
