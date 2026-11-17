@@ -11,5 +11,11 @@ vendor/
 # Rust
 /target/
 
+# Desktop app: Node packages, the built page, and the files that Tauri generates
+app/node_modules/
+app/dist/
+app/.vitest/
+app/src-tauri/gen/
+
 # Claude Code agent worktrees
 .claude/worktrees/

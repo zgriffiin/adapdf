@@ -375,10 +375,29 @@ fn property(block: &str, name: &str) -> Option<String> {
     })
 }
 
+/// The report after the app saved a sign-off in it (row A-08).
+fn signed_report() -> Report {
+    let mut report = full_report();
+    for item in report.checklist.items.iter_mut().take(5) {
+        item.done = true;
+    }
+    report.checklist.name = Some("A. Reviewer".to_string());
+    report.checklist.date = Some("2026-03-06".to_string());
+    report
+}
+
 #[test]
 fn report_html_is_accessible() {
-    let report = full_report();
-    let html = html::render(&report);
+    assert_report_html_is_accessible(&full_report());
+}
+
+#[test]
+fn a_signed_report_html_is_accessible() {
+    assert_report_html_is_accessible(&signed_report());
+}
+
+fn assert_report_html_is_accessible(report: &Report) {
+    let html = html::render(report);
     let doc = xml(&html);
 
     // Language, title, one h1.
@@ -605,7 +624,16 @@ fn report_json_matches_html() {
 
 #[test]
 fn report_loads_nothing_from_the_network() {
-    let html = html::render(&full_report());
+    assert_report_loads_nothing_from_the_network(&full_report());
+}
+
+#[test]
+fn a_signed_report_loads_nothing_from_the_network() {
+    assert_report_loads_nothing_from_the_network(&signed_report());
+}
+
+fn assert_report_loads_nothing_from_the_network(report: &Report) {
+    let html = html::render(report);
     assert!(
         !html.contains("http:") && !html.contains("https:"),
         "no address at all"
@@ -765,4 +793,57 @@ fn console_summary_names_the_errors_and_the_files() {
     assert!(text.contains("[DOC-001] Message of DOC-001."));
     assert!(text.contains("[veraPDF 7.3-1]"), "{text}");
     assert!(text.contains("Wrote C:/g/Guide.accessibility.html"));
+}
+
+#[test]
+fn the_json_of_a_report_reads_back_to_the_same_report() {
+    // The app signs a report by reading its JSON, changing the checklist and
+    // writing both files again (row A-08), so the JSON must carry everything.
+    for report in [full_report(), pass_report()] {
+        let json = report.to_json();
+        let back: Report = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, report);
+        assert_eq!(back.to_json(), json);
+    }
+}
+
+#[test]
+fn the_html_shows_a_sign_off_that_the_report_holds() {
+    let mut report = pass_report();
+    for item in report.checklist.items.iter_mut().take(5) {
+        item.done = true;
+    }
+    report.checklist.name = Some("A. <Reviewer> & \"Co\"".to_string());
+    report.checklist.date = Some("2026-03-06".to_string());
+    let html = html::render(&report);
+    let doc = xml(&html);
+    let ticked: Vec<bool> = elements(&doc, "input")
+        .iter()
+        .filter(|n| n.attribute("type") == Some("checkbox"))
+        .map(|n| n.attribute("checked").is_some())
+        .collect();
+    assert_eq!(ticked, [true, true, true, true, true, false, false]);
+    assert_eq!(
+        by_id(&doc, "signoff-name").attribute("value"),
+        Some("A. <Reviewer> & \"Co\"")
+    );
+    assert_eq!(
+        by_id(&doc, "signoff-date").attribute("value"),
+        Some("2026-03-06")
+    );
+    let section = section_text(&doc, 7);
+    assert!(
+        section.contains(
+            "Signed off by A. <Reviewer> & \"Co\", on 2026-03-06. 5 of 7 checks are ticked."
+        ),
+        "{section}"
+    );
+    // An unsigned report has no such sentence and no value.
+    let unsigned = html::render(&pass_report());
+    assert!(!unsigned.contains("Signed off by"));
+    assert!(
+        by_id(&xml(&unsigned), "signoff-name")
+            .attribute("value")
+            .is_none()
+    );
 }

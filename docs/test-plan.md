@@ -8,7 +8,9 @@ Word export as a library), M4b (stage 4, the PDF metadata fixes, and stage 5, th
 veraPDF run, as library code) and M4c (stage 6, the report, and the command
 `adapdf export`, which joins stages 1, 3, 4, 5 and 6), and the rules LNK-004 and
 LNK-005 with their fixes, which the first S5-10 run asked for (decided
-2026-11-16). This plan says what is tested now and what is only planned. A row
+2026-11-16), and M5a (the desktop app: Tauri and IBM Carbon, its commands, the
+front-end tests and the check of the built page). The installer (M5b) is not
+built. This plan says what is tested now and what is only planned. A row
 marked "planned" has no test yet.
 
 ## Scope
@@ -63,8 +65,15 @@ and S5-10 was run again on 35 pass fixtures: see "S5-10 result" for both runs.
 "How M4c reads stage 6 and export", "How M2b reads the rules" and "Known gaps in
 M4c" say what was found, what was decided and what is left.
 
-Not built: the app and the installer. "Planned tests (not built)" lists each of
-them, requirement by requirement.
+M5a built the desktop app in `app/` (a Vite, React and TypeScript page with
+`@carbon/react`, and a Tauri 2 shell in `app/src-tauri/`), the Tauri commands that
+call the library, the saving of the sign-off into the report (row A-08), and the
+checks of the built page (N-05, the window's content security policy, the
+permissions). "How M5a builds the app" and "Known gaps in M5a" below say what was
+decided and what is left.
+
+Not built: the installer (M5b). "Planned tests (not built)" lists each of the
+rows that still have no test, requirement by requirement.
 
 **Milestones and phases.** The milestone numbers are not the phase numbers of
 [spec 01](specs/01-product.md#phases). M1 and M2 (with M2a and M2b) together
@@ -73,8 +82,9 @@ fixes, veraPDF and the report) is phase 3. M5 (app and installer) is phase 5.
 Phase 0 (test with real guides) and phase 1 (template) have no milestone. M3a is
 the first part of M3: the Word automation layer, test W-01 and the table style
 colours. M4a is stage 3 (the Word export, as a library); stages 4 and 5 are M4b,
-and stage 6 with `adapdf export` is M4c. M4a, M4b and M4c are built. The
-milestone numbers are the plan at the time of writing.
+and stage 6 with `adapdf export` is M4c. M4a, M4b and M4c are built. M5a is the app; M5b is the
+installer and the bundled tools. The milestone numbers are the plan at the time of
+writing.
 
 ## Test levels
 
@@ -92,8 +102,9 @@ milestone numbers are the plan at the time of writing.
 | veraPDF on Word exports (features `windows_word` and `verapdf`) | A PDF exported from a fixture has 0 veraPDF PDF/UA-1 failures (S5-10, S5-11). The real `adapdf export` on a pass fixture (C-05). | `tests/export_verapdf.rs`, behind both cargo features, because it needs Word to export and veraPDF to check | implemented (M4c; S5-12 added with LNK-004 and LNK-005). All 6 tests of the file pass; `verapdf_zero_failures_on_pass_fixtures` passed for 35 of 35 fixtures (it failed for 4 of 33 before the two rules; see "S5-10 result") |
 | Report (stage 6) | The report as a value: the verdict, the seven sections, the escaping of text, the JSON against the HTML, and the accessibility of the HTML (headings, tables, labels, contrast, no outside resources) with no browser (S6-01 to S6-08, S6-10) | unit tests in `src/report/tests.rs` | implemented (M4c) |
 | Export command without Word or Java | `pipeline::export_docx` with fake stages: every exit code and the report files (C-05 to C-07, S3-12, S3-13, S3-16, S5-06 to S5-08, S6-09); the real `adapdf export` in the cases that need neither Word nor veraPDF (stage 1 errors, tool failures that come first) | `tests/export_pipeline.rs`, `tests/cli_export.rs`, `tests/cli.rs` (C-08) | implemented (M4c) |
-| No network | No HTTP client in the dependency graph (N-01) | `tests/no_network.rs` | implemented (M4b); N-02 to N-05 are planned |
-| Front-end | The Carbon views in the web UI: each screen, axe-core checks for WCAG 2.1 A and AA, and the focus order (TypeScript) | front-end folder, with Vitest and axe-core | planned (M5) |
+| No network | No HTTP client in the dependency graph (N-01), and a built web UI that loads nothing from the network, with a content security policy that blocks it (N-05) | `tests/no_network.rs`, `app/src-tauri/tests/frontend_bundle.rs` | N-01 implemented (M4b; M5a made its scope explicit for the workspace, see "How M5a builds the app"); N-05 implemented (M5a); N-02 to N-04 are planned |
+| Front-end | The Carbon views in the web UI: each screen, axe-core checks for WCAG 2.1 A and AA, the focus order, the view model (grouping, buttons, never pre-filled text) and the sign-off form, with the Tauri layer replaced (TypeScript) | `app/src/viewModel.test.ts`, `app/src/App.test.tsx`, `app/src/test/axe.test.tsx` (helpers in `app/src/test/`), Vitest, Testing Library, jsdom and axe-core | implemented (M5a, 48 tests) |
+| App commands (Rust) | The functions behind the Tauri commands give the same findings, fix results and export result as the library calls of the command line (A-07), and the sign-off is saved into the report (A-08). The built page, the window's content security policy, the permissions and the installer settings (N-05, I-02, I-08) | unit tests in `app/src-tauri/src/tests.rs` and `signoff.rs` (`cargo test -p adapdf-app --lib`), and `app/src-tauri/tests/frontend_bundle.rs` (after `pnpm build`) | implemented (M5a, 17 + 6 tests; 1 more behind `windows_word` and `verapdf`) |
 | Installer | The per-user installer installs without admin rights, runs, and removes cleanly on a clean Windows 11 machine | manual checklist | planned (M5) |
 | Manual: Phase 0 and PAC | Real guides exported from Word, checked with veraPDF and PAC. A person confirms PAC reports 0 errors. | manual, with files in `samples/` | planned. Phase 0 is postponed until real guides are in `samples/`. |
 
@@ -107,7 +118,7 @@ milestone numbers are the plan at the time of writing.
 | Fix (stage 2, without Word) | The crate builds. No Word, Java or network is needed. Tests write only in their own folders under `target/tmp/`, and remove them. | `cargo test` passes with 0 failed, 0 ignored. Every S2 row that does not need Word and every `fix` row has a test with the name in the row. After each fix, only the target bytes changed (S2-08), the file is valid (S2-09) and stage 1 gives the expected findings (S2-10). |
 | `windows_word` | A Windows machine with desktop Word 16.0 (Microsoft 365). The tests start their own Word instances; no Word window of a person needs to be closed. The Word build number is noted. | `cargo test --features windows_word` passes. After the run the number of `WINWORD.EXE` processes is the same as before. No file the tests made is left in the temp folder. |
 | veraPDF | The bundled veraPDF and Java runtime are in `vendor/` (run `scripts/fetch-vendor.ps1` once). For tests on Word exports, the `windows_word` entry applies too. | `cargo test --features verapdf` passes with 0 failed. The exit criterion in "Stage 5" below (S5-10) holds for the named fixtures: `cargo test --features windows_word,verapdf --test export_verapdf` passes. Met on the evening of 2026-11-16 (local time) for 35 of 35 fixtures and the 6 picture fixtures; the first run, before LNK-004 and LNK-005, failed for 4 of 33 (see "S5-10 result"). |
-| Front-end (M5) | The web UI builds (its front-end and the Tauri shell). No Word or Java is needed. | `pnpm test` passes with 0 failed. axe-core reports 0 violations for WCAG 2.1 A and AA on each screen. The build passes N-05. |
+| Front-end (M5a) | `pnpm install` was done in `app/` (from the lock file). No Word, Java or network is needed. | `pnpm test` passes with 0 failed. `pnpm exec tsc --noEmit` and `pnpm build` pass. axe-core reports 0 violations for WCAG 2.1 A and AA on each screen. After `pnpm build`, `cargo test -p adapdf-app --test frontend_bundle` passes (N-05). `cargo test -p adapdf-app --lib` passes. |
 | Installer (manual) | A clean Windows 11 machine or snapshot with a standard (non-admin) user, no Java and no earlier install. | Every row of the installer table is signed with a date, the installer version and the machine used. |
 | Phase 0 and PAC (manual) | At least 5 real guides in `samples/` (git ignores them), PAC installed (version noted), the Word build noted. | Every row of the Phase 0 tables has a result. Changes to specs 02 and 03 that the results ask for are made. |
 
@@ -135,8 +146,12 @@ milestone numbers are the plan at the time of writing.
 | Get the bundled veraPDF and Java (once; needs the network) | `powershell -ExecutionPolicy Bypass -File scripts/fetch-vendor.ps1` (checks pinned SHA-256 values; does nothing if `vendor/` is up to date; `-Force` to fetch again) |
 | Tests with the real veraPDF (need `vendor/`; about 40 seconds) | `cargo test --features verapdf` (also runs everything above). One file: `cargo test --features verapdf --test verapdf_real`. With the feature on and `vendor/` missing, these tests fail and say what to run. A plain `cargo test` does not build them. |
 | No network (N-01) | `cargo test --test no_network` |
-| Front-end tests (none yet) | `pnpm test` in the front-end folder |
-| Format, lint | `cargo fmt --check` and `cargo clippy --all-targets --all-features -- -D warnings` |
+| Front-end tests (in `app/`; after `pnpm install`) | `pnpm test` (48 tests), `pnpm exec tsc --noEmit`, `pnpm build` |
+| Tests of the app commands and the sign-off (Rust; need no Node and no window) | `cargo test -p adapdf-app --lib` |
+| N-05 and the settings of the window (after `pnpm build`) | `cargo test -p adapdf-app --test frontend_bundle`. A plain `cargo test -p adapdf-app` also builds the program of the app, which reads `app/dist` when it is compiled, so it needs `pnpm build` first. |
+| The command `export` of the app with the real Word and veraPDF (about 10 seconds; set `ADAPDF_VENDOR` when `vendor/` is not in the source tree) | `cargo test -p adapdf-app --lib --features windows_word,verapdf app_export_with_word` |
+| Build or start the app | `pnpm tauri dev` and `pnpm tauri build --no-bundle` in `app/` (the program is `target/release/adapdf-app.exe`); the installer is M5b |
+| Format, lint | `cargo fmt --check` and `cargo clippy --all-targets --all-features -- -D warnings` (the root package only). The app: `cargo fmt --all --check` and, after `pnpm build`, `cargo clippy -p adapdf-app --all-targets -- -D warnings` |
 
 Installer and manual tests will get their steps here when they exist.
 
@@ -217,6 +232,13 @@ Installer and manual tests will get their steps here when they exist.
 - **No real documents** are in the repository.
 
 ## Counts at the time of writing
+
+**After M5a**, `cargo test` at the root runs **774** tests (the 769 below plus 4 in
+`src/report/tests.rs` and 1 in `tests/no_network.rs`), and the app has its own:
+23 with `cargo test -p adapdf-app` and 48 with `pnpm test`. The table is in "How M5a
+builds the app". The measurements below are those of M4 and are not repeated for M5a
+(the `windows_word` and `verapdf` rows were not run again, except
+`app_export_with_word_matches_the_cli`).
 
 Measured on 2026-11-17 (local time) on the tree after M4 review round 1 (the tree
 with LNK-004 and LNK-005, plus the changes of round 1: the PDF is checked before it
@@ -382,10 +404,10 @@ The model parts for IMG, TXB and TBL are tested in `model::drawings::tests::*`
 | Interface `adapdf export` | C-05 to C-08 and C-11: `tests/export_pipeline.rs`, `tests/cli_export.rs`, `tests/cli.rs`, `tests/export_verapdf.rs` | implemented (M4c) |
 | Fixtures open in Word (spec 02, Testing) | W-01 (`word_opens_every_fixture`) | implemented (M3a) |
 | Word automation base: own hidden Word, always quit (spec 02, "Rules for COM") | `tests/word.rs`: `the_session_quits_word_after_a_panic`, `the_session_quits_word_after_an_error`, `a_damaged_docx_gives_an_error_and_not_a_hang`, `a_missing_file_is_an_error` (windows_word). These cover the base only; the export rows S3-01 to S3-20 were built later (M4a, M4c, M4 review round 1: see "Stage 3: Word export"), and S3-17 is still planned. | implemented (M3a) |
-| App (file picker, findings list, export, report) | A-01 to A-08 | planned (M5) |
+| App (file picker, findings list, export, report) | A-01 to A-08 | implemented (M5a): A-01 to A-04, A-07 and A-08, and the part of A-06 that a test can do. A-05 (manual walkthrough) and the manual part of A-06 are planned |
 | Installer | I-01 to I-10 | planned (M5); the unit part of I-10 is built |
 | Word template and acceptance (spec 04) | T-01 to T-10 | planned (phase 1, template) |
-| No network (spec 01) | N-01 to N-05 | N-01 implemented (M4b: `tests/no_network.rs`; round 1 added the check of `src/`); N-02 to N-05 planned |
+| No network (spec 01) | N-01 to N-05 | N-01 implemented (M4b: `tests/no_network.rs`; round 1 added the check of `src/`; M5a: the app's Windows tree, and the check of `app/src-tauri/src/`); N-05 implemented (M5a: `app/src-tauri/tests/frontend_bundle.rs`); N-02 to N-04 planned |
 | Phase 0 and PAC | The Phase 0 tables and P0-01 to P0-09 | planned (postponed) |
 
 ## Planned tests (not built)
@@ -653,23 +675,24 @@ the test needs a parser, which needs a decision.
 | N-02 | A full run works with the network off | `export_runs_with_the_network_disabled` | manual | A pass fixture, on a machine with the network adapters disabled | The same PDF and the same veraPDF result as with the network on. |
 | N-03 | The tool, the bundled Java and WebView2 make no connection | `no_connection_attempts_in_a_full_run` | manual | A Windows Firewall rule that blocks outbound traffic for `adapdf.exe`, the bundled `java.exe` and `msedgewebview2.exe`, with logging on, and a full `export` | The run succeeds and the firewall log has no entry for those three programs. |
 | N-04 | Only made-up documents are in git (AGENTS.md) | `repo_has_only_made_up_documents` | unit | `git ls-files` | The tracked `.docx` and `.pdf` files are the catalogue, the PDF fixtures and the template files, and nothing else. |
-| N-05 | The web UI loads nothing from the network (spec 01, constraints) | `frontend_bundle_has_no_remote_urls` | CLI, after the front-end build | The built front-end assets, and `tauri.conf.json` | 0 matches for `http://` and `https://` in `src`, `href`, `url()` and `@import`, except Tauri's own IPC origin (`http://ipc.localhost`, a local address inside WebView2) and XML namespace strings, which the test lists by name. In the CSP, `default-src`, `connect-src`, `font-src` and `img-src` allow only `'self'` and Tauri's IPC scheme. The URL scan finds addresses written into the files; the CSP check also blocks script requests such as `fetch()`, so both are needed. |
+| N-05 | The web UI loads nothing from the network (spec 01, constraints) | `frontend_bundle_has_no_remote_urls` (`app/src-tauri/tests/frontend_bundle.rs`), with `the_remote_url_scan_finds_an_address`, `the_fonts_are_bundled` and `the_csp_allows_only_the_app_and_its_ipc` | Rust, after the front-end build (`pnpm build`) | The built front-end assets in `app/dist`, and `tauri.conf.json` | No `http://` or `https://` address in the built files (HTML, JavaScript, CSS) except the entries of an explicit list, each with its reason: XML namespace names (`http://www.w3.org/`), React's text for a minified error message (`https://react.dev/errors/`), a warning text of `prop-types` (`http://fb.me/use-check-prop-types`) and Tauri's own IPC origin (`http://ipc.localhost`). No protocol-relative `url(//`, `src="//"`, `href="//"` and no `@import`. `index.html` loads only `/assets/`. The style sheet names only IBM Plex Sans files that are in `dist/assets`. In the content security policy, `default-src`, `font-src`, `img-src`, `script-src` and `style-src` are `'self'` only, `connect-src` is `'self' ipc: http://ipc.localhost`, there is no `unsafe-inline`, `unsafe-eval`, `data:` or `blob:`, and `object-src` is `'none'`. The URL scan finds addresses written into the files; the policy also blocks a request that code makes at run time (`fetch()`), so both are needed. **Implemented (M5a).** Checked by mutation: a `<link href="https://fonts.googleapis.com/...">` added to `dist/index.html` fails the test (the file was restored). Also checked on the running app (see "How M5a builds the app"). |
 
-Carbon's Sass loads IBM Plex from a CDN by default. The build must point the
-font path at the bundled files, or N-05 fails.
+Carbon's Sass can load IBM Plex from IBM's servers (`$use-akamai-cdn`) or from a
+package path that only webpack understands (`~@ibm/plex`). M5a turns Carbon's
+`@font-face` rules off and bundles the files itself: see "How M5a builds the app".
 
 ### App (spec 02, "Interfaces"; spec 01, technology)
 
 | # | Requirement | Planned test name | Level | Fixture or input | Pass condition |
 |---|---|---|---|---|---|
-| A-01 | Findings are grouped by severity | `app_groups_findings_by_severity` | front-end (TypeScript) | The view model for `LST-002-fail.docx` | Errors first, then warnings, with counts. |
-| A-02 | Fix and export buttons follow the state | `app_buttons_follow_the_state` | front-end (TypeScript) | The view model with no fix picked; with errors; with none | "Apply fixes" is off when nothing is picked. "Export" is off while errors remain. |
-| A-03 | The tool never fills in alt text or a title (AGENTS.md) | `app_never_prefills_typed_text` | front-end (TypeScript) | `DOC-001-fail.docx` and `IMG-001-fail.docx` | The input field is empty. The suggestion is shown as a separate hint. |
-| A-04 | The app is usable with a screen reader (spec 01: Carbon in WebView2) | `app_widgets_have_names_and_roles` | front-end (TypeScript) | Each screen, tested with Vitest and axe-core (`pnpm test`) | axe-core reports 0 violations for WCAG 2.1 A and AA on each screen. The keyboard focus order follows the reading order. |
-| A-05 | Keyboard, screen reader and display settings | `app_manual_walkthrough` | manual | The app on Windows 11 | The whole flow (choose a file, see findings, apply a fix, export, open the report) works with the keyboard alone; Narrator and NVDA read each step; the app is usable at 200% scaling and in a high-contrast theme; dragging a file onto the window works. |
-| A-06 | The report opens from the app | `app_opens_the_report` | manual | After an export | The report opens from a local file path in the default browser. |
-| A-07 | The Tauri commands call the same pipeline as the CLI | `app_commands_match_the_cli` | unit (Rust); the `export` case is windows_word | `check`, `fix` and `export` commands on `LST-002-fail.docx`, `TXB-004-fail.docx` and a pass fixture | Each command returns the same findings, fix results and the same pass, errors or tool-failure result (exit 0, 1 or 2 in the CLI) as the matching CLI command on the same input. |
-| A-08 | The sign-off is saved as evidence. A static HTML file cannot save what is typed or ticked without a script, so the app saves the human checklist and the sign-off (name, date, the state of each of the seven items) into the report evidence, the JSON and the HTML (spec 02, stage 6, point 7; "Known gaps in M4c") | `app_saves_the_signoff_in_the_report` | front-end (TypeScript) and unit (Rust, for the file write) | A report from `LST-002-fail.docx`; in the app: tick 5 of the 7 items, type a name, pick a date, save | After the sign-off in the app, the saved JSON has `checklist.name`, `checklist.date` and `done` true for the 5 items and false for the 2, and the saved HTML shows the same name, date and states (checked boxes, the typed values). Opening the report in the app again shows the same name, date and ticks. The report written by `export` is still unsigned, and the sign-off does not change the verdict, the findings or any other part of the file. An empty name or no date is saved as it is and is not filled in by the app (A-03). |
+| A-01 | Findings are grouped by severity | `app_groups_findings_by_severity` | front-end (TypeScript) | The findings of `LST-002-fail.docx` (the view model, and the findings screen) | Errors first, then warnings, with counts. **Implemented (M5a)** as the `describe` block of that name in `app/src/viewModel.test.ts` (3 tests) and `the findings screen` in `app/src/App.test.tsx`: the headings "Errors (1)" and "Warnings (1)" in that order, with the rule, message, place and how to fix of each finding, and the words Error and Warning in the text, not only a colour. |
+| A-02 | Fix and export buttons follow the state | `app_buttons_follow_the_state` | front-end (TypeScript) | The view model with no fix picked; with errors; with none | "Apply fixes" is off when nothing is picked. "Export" is off while errors remain. **Implemented (M5a)**: `app/src/viewModel.test.ts` and, on the page, `turns Apply fixes on when a fix is ticked` and `turns Export off while errors remain, and says why` (a disabled button has no key stop, so the page says why in text next to it) in `app/src/App.test.tsx`. Export is also off while the app is busy. |
+| A-03 | The tool never fills in alt text or a title (AGENTS.md) | `app_never_prefills_typed_text` | front-end (TypeScript) | `DOC-001-fail.docx` and `IMG-001-fail.docx` | The input field is empty. The suggestion is shown as a separate hint. **Implemented (M5a)**: the view model makes no choice from a suggestion (`app/src/viewModel.test.ts`), the page has an empty field whose helper text (its accessible description) holds "Suggestion, not filled in: ...", and nothing is sent until the person types (`never fills in the title...`, `has an empty alt text field...` in `app/src/App.test.tsx`). The Rust side takes a fix as the rule and the position of a finding and the person's input, and never a text of its own (`offers_carry_the_suggestion_and_no_text`). |
+| A-04 | The app is usable with a screen reader (spec 01: Carbon in WebView2) | `app_widgets_have_names_and_roles` | front-end (TypeScript) | Each screen, tested with Vitest and axe-core (`pnpm test`) | axe-core reports 0 violations for WCAG 2.1 A and AA on each screen. The keyboard focus order follows the reading order. **Implemented (M5a)** as one test for each screen state in `app/src/App.test.tsx` (`has no WCAG 2.1 A or AA violation` for: the first screen, the findings, the fix flow with every kind of fix, the export in progress, the export result, the sign-off form empty, with an error and filled in, and an earlier report), and tests of the Tab order (findings, fix flow, sign-off form). Another test (`app/src/test/axe.test.tsx`) shows that axe finds a button with no name and a picture with no alt text, so a pass means something. **The colour contrast rule is off** in jsdom (no layout, no canvas): see "Known gaps in M5a". The focus goes to the heading of the screen after each action, and one live region (`role="status"`) carries the messages. |
+| A-05 | Keyboard, screen reader and display settings | `app_manual_walkthrough` | manual | The app on Windows 11 | The whole flow (choose a file, see findings, apply a fix, export, open the report) works with the keyboard alone; Narrator and NVDA read each step; the app is usable at 200% scaling and in a high-contrast theme; dragging a file onto the window works. **Planned.** Not done by the worker: it needs a person, Narrator or NVDA, and the file dialog of Windows. M5a started the real program and called its commands through the real IPC (see "How M5a builds the app"); that is not this row. |
+| A-06 | The report opens from the app | `app_opens_the_report` | manual | After an export | The report opens from a local file path in the default browser. **Partly built.** `only_the_html_of_a_report_can_be_opened` (Rust) tests the check that the command makes before it opens anything: only a file that ends with `.accessibility.html`, that exists, on a local drive, with an absolute path. The page test `opens the report in the browser, and shows why when it does not open` checks the call and the message. That the default browser really opens the file is **planned** (manual). |
+| A-07 | The Tauri commands call the same pipeline as the CLI | `app_commands_match_the_cli` | unit (Rust); the `export` case with Word is windows_word and verapdf | `check`, `fix` and `export` commands on `LST-002-fail.docx`, `TXB-004-fail.docx` and a pass fixture | Each command returns the same findings, fix results and the same pass, errors or tool-failure result (exit 0, 1 or 2 in the CLI) as the matching CLI command on the same input. **Implemented (M5a)** in `app/src-tauri/src/tests.rs`. `app_commands_match_the_cli_check`: the findings, the counts and the exit result equal `check_file` and the JSON of `adapdf check --json`, on `LST-002-fail` (1 error, 1 warning, exit 1), `TXB-004-fail` (warning only, exit 0) and `DOC-001-pass` (exit 0); a missing file and a file that is not a .docx are an error (exit 2 in the CLI). `app_commands_match_the_cli`: for the fixes of 5 fixtures (`TXB-004`, `LST-002`, `TBL-001`, `DOC-001` with typed text, `DOC-002`), the offers equal `fix::offers`, and the fix chosen in the app gives the same .docx bytes, the same backup name, the same findings and the same exit result as `fix::interactive::run` (the code of `adapdf fix`) fed with the matching answers. Also: nothing to fix, refusals, a file that Word has open. The export: `app_export_matches_the_cli_when_stage_1_finds_errors` and `app_export_gives_an_error_for_what_the_cli_exits_2` (the same report, the same console text and the same files as `export_docx`, with fake stages that fail the test if Word is started), and `app_export_with_word_matches_the_cli` (features `windows_word` and `verapdf`; passed on 2026-11-17 with `ADAPDF_VENDOR` set; no `WINWORD.EXE` before or after). |
+| A-08 | The sign-off is saved as evidence. A static HTML file cannot save what is typed or ticked without a script, so the app saves the human checklist and the sign-off (name, date, the state of each of the seven items) into the report evidence, the JSON and the HTML (spec 02, stage 6, point 7; "Known gaps in M4c") | `app_saves_the_signoff_in_the_report` | front-end (TypeScript) and unit (Rust, for the file write) | A report from `LST-002-fail.docx`; in the app: tick 5 of the 7 items, type a name, pick a date, save | After the sign-off in the app, the saved JSON has `checklist.name`, `checklist.date` and `done` true for the 5 items and false for the 2, and the saved HTML shows the same name, date and states (checked boxes, the typed values). Opening the report in the app again shows the same name, date and ticks. The report written by `export` is still unsigned, and the sign-off does not change the verdict, the findings or any other part of the file. **Implemented (M5a), with one change to the text of this row, decided by the orchestrator's brief: an empty name is refused** (it was "saved as it is"). A missing date is still saved as it is (`null`) and never filled in. A date that is given must be a real date (`yyyy-mm-dd`). Rust (`app/src-tauri/src/tests.rs`): `app_saves_the_signoff_in_the_report` (the JSON, the HTML equal to `html::render` of the signed report, 5 boxes `checked`, the typed values, the rest of the JSON unchanged, `read_report` gives the same, signing again replaces it), `the_signoff_never_touches_the_pdf_and_leaves_no_temporary_file`, `a_date_that_was_not_given_is_not_filled_in`, `an_empty_name_or_a_bad_request_is_refused_and_nothing_changes`, `a_failed_move_leaves_the_old_report_and_no_temporary_file`, `a_file_that_is_not_a_report_of_this_tool_is_refused`, `a_signoff_does_not_change_the_verdict`. The report library (root, `src/report/tests.rs`): `the_json_of_a_report_reads_back_to_the_same_report`, `the_html_shows_a_sign_off_that_the_report_holds`, and the accessibility and no-network checks of the HTML run on a signed report too. Page (`app/src/App.test.tsx`, `the sign-off`): the call with the name, date and 7 states; no call and a focused, labelled error without a name; the same name, date and ticks when an earlier report is opened. |
 
 ### Installer (spec 01, constraints and technology)
 
@@ -1872,6 +1895,143 @@ same command (`adapdf export`); the fixtures were not changed.
 - **One Word build** (16.0.20527) and one veraPDF (1.28.2). A run takes about 10
   seconds (Word 5 to 7 seconds, and the rest is veraPDF, which is started twice,
   for UA-1 and for WCAG, and each start is a Java process).
+
+## How M5a builds the app
+
+**Layout.** `app/` is a Vite, React and TypeScript page with `@carbon/react`
+(Carbon v11), and `app/src-tauri/` is the Tauri 2 package `adapdf-app`, which
+depends on the `adapdf` library by path. The repository root is a Cargo workspace
+with the members `.` and `app/src-tauri`. The root package is the only default
+member, so `cargo test`, `cargo clippy` and `cargo build` at the root work as
+before and need no Node: they do not build the app. The app has its own commands
+(see "How to run"). The lock file is shared.
+
+**Tauri commands** (`app/src-tauri/src/shell.rs`, thin) call functions in
+`commands.rs` and `signoff.rs` (the logic, tested without a window). They run on a
+worker thread (`spawn_blocking`): a command that is not `async` runs on the main
+thread, and the window would freeze while Word exports. A tool failure (exit 2 in
+the CLI) is an `Err` with a plain message, and the page shows it in the live
+region. The commands: `check`, `fix_offers`, `apply_fixes`, `export`,
+`open_report`, `read_report` (to open an earlier report) and `save_signoff`.
+`apply_fixes` names a finding by its rule and its position and takes the
+person's input, so the page cannot send a finding of its own; the backup and the
+lock checks are those of `fix::fix_file`, which the app does not repeat.
+
+**Pages and keys.** The first screen has the button to choose a document (the
+Tauri dialog) and a button to open an earlier report; a file dropped on the window
+does the same (a Tauri drag and drop event, `dragDropEnabled`). The findings
+screen groups findings by severity. The fix screen has a check box for each auto
+fix, a labelled text field for each ask fix (empty; the suggestion is its helper
+text) and "Mark as decorative" for alt text. The export has a progress state; the
+result says Pass or Fail in words, with the counts and the veraPDF result, and has
+the sign-off form. After each action the heading of the screen gets the focus, and
+one live region (`role="status"`), in the page from the start, carries the messages
+(Carbon's `InlineNotification` is inside it with `aria-live="off"`, so that a
+message is announced once).
+
+**Fonts.** Carbon's `@font-face` rules are turned off (`$css--font-face: false` in
+`app/src/styles.scss`). `app/src/fonts.css` has the four faces that Carbon uses
+(IBM Plex Sans 300, 400, 400 italic and 600), pointing at the `woff2` files of the
+package `@ibm/plex-sans`; Vite copies them to `dist/assets` and rewrites the
+`url()` (`assetsInlineLimit: 0`, so no `data:` URL is needed). IBM Plex Mono is not
+bundled: the page has no code text, and Carbon's mono stack falls back to a system
+font.
+
+**Content security policy** (`tauri.conf.json`): `default-src 'self'; connect-src
+'self' ipc: http://ipc.localhost; font-src 'self'; img-src 'self'; script-src
+'self'; style-src 'self'; object-src 'none'; base-uri 'self'`. No `unsafe-inline`:
+Carbon and React set styles through the style object of the DOM, which the policy
+allows. The running app showed no policy violation (below).
+
+**Capabilities** (`capabilities/default.json`): `core:event:allow-listen`,
+`core:event:allow-unlisten` (to hear a dropped file) and `dialog:allow-open`. No
+shell, no HTTP, no file system plugin and no opener permission for the page: the
+report is opened by the Rust command `open_report`, which checks the path first.
+The page cannot call a plugin that it has no permission for (checked on the
+running app: `plugin:fs|read_text_file` gave "not allowed by ACL"). The opener
+plugin is used from Rust only, so its JavaScript package is not installed.
+
+**Installer settings** (`bundle.windows.webviewInstallMode` is `skip`, and NSIS
+`installMode` is `currentUser`; rows I-02 and I-08 are tested in
+`frontend_bundle.rs`). M5b builds the installer.
+
+**N-01 and Tauri.** Tauri's manifest lists `reqwest` (with `hyper` and
+`hyper-util`) for Android and iOS only. They are in `Cargo.lock`, because the lock
+file lists every target, and they are not in the Windows tree of the app or of the
+library (`cargo tree -p adapdf-app -e normal,build --target x86_64-pc-windows-msvc`
+has none of the 17 crates of N-01). N-01 was changed to say so: the lock file test
+allows exactly those three names (`MOBILE_ONLY`), and a new test,
+`no_http_client_in_the_app_windows_tree`, checks the Windows tree of the app. This
+test runs `cargo tree -p adapdf-app`, so it needs the app's crates in the cargo
+cache (or the network, the first time). The other crates that the app adds are Tauri
+and its plugins, `webview2-com`, `wry` and `tao`.
+
+**Checked on the running program** (2026-11-17, by a script in the scratch folder,
+through the debugging port of WebView2; it started the program itself and ended it).
+With `target/release/adapdf-app.exe` (from `pnpm tauri build --no-bundle`) and
+with `pnpm tauri dev`: the window started and the page loaded; the heading had the
+focus; the fonts were IBM Plex Sans from the bundle; the page made only requests to
+`tauri.localhost` (and, in `tauri dev`, `localhost:5173`) and to `ipc.localhost`;
+no console message and no policy violation in the release build; the command
+`check` through the real IPC gave 1 error and 1 warning for `LST-002-fail.docx`;
+a missing file, and `open_report` with a web address, gave the plain error messages;
+a plugin that the page has no permission for was refused. The one thing in
+`tauri dev` was a 404 for `favicon.ico` from the Vite server (the page has no icon).
+No `WINWORD.EXE` was running before or after, and no program was left running.
+
+**Counts** (measured 2026-11-17 on the tree of M5a):
+
+| Command | Tests run | Failed |
+|---|---|---|
+| `cargo test` (root) | 774 (769 before: +4 in `src/report/tests.rs`, +1 in `tests/no_network.rs`) | 0 |
+| `cargo test -p adapdf-app` (after `pnpm build`) | 23: 17 in the library (16 in `src/tests.rs`, 1 in `src/signoff.rs`) and 6 in `tests/frontend_bundle.rs` | 0 |
+| `cargo test -p adapdf-app --lib --features windows_word,verapdf` | 18 (the 17 and `app_export_with_word_matches_the_cli`) | 0 |
+| `pnpm test` (in `app/`) | 48: 37 in `App.test.tsx`, 10 in `viewModel.test.ts`, 1 in `test/axe.test.tsx` | 0 |
+
+Versions and publish dates are in the report of the milestone (the commit message
+has the Tauri and Carbon versions); `app/pnpm-lock.yaml` and `Cargo.lock` have the
+rest.
+
+## Known gaps in M5a
+
+- **The colour contrast of the app was not measured by a tool.** jsdom has no
+  layout and no canvas, so axe-core cannot work out contrast there, and the rule is
+  off in the tests. Carbon's white theme is built to WCAG AA, and the colours that
+  `app/src/styles.scss` sets itself are the report's pass and fail colours and a
+  grey, which reach 4.5:1 (the report's own test checks the same values). The way to
+  close this is to run axe-core with the contrast rule in the real WebView2 on each
+  screen (A-05).
+- **A-05 (keyboard, Narrator, NVDA, 200% scaling, high contrast, a real drop of a
+  file) and the browser part of A-06 are not done.** The file dialog and the drop
+  are Windows features that the tests replace. A person must walk the flow.
+- **The Tauri shell (`shell.rs`) has no test of its own.** It only starts the
+  commands on a worker thread; the commands were called through the real IPC once, by
+  hand (above).
+- **A sign-off with unticked items can be saved.** The report keeps each item's
+  state, and says "n of 7 checks are ticked", but nothing stops a person from
+  signing with items open (a person may stop half way). The name is required; the
+  date is not.
+- **A report that `export` writes again replaces a signed report.** `export` always
+  writes an unsigned report (decided in M4c), so the sign-off is lost when a document
+  is exported again. This is by design (the new PDF needs a new check), but the app
+  does not warn about it.
+- **The sign-off changes the JSON and the HTML, not the PAC fields.** The PAC report
+  file, version and result are still fields of the HTML page that a browser cannot
+  save (a static page); the app does not save them.
+- **The first version of the page shows the PDF path, not a link to it.** The report
+  is opened in the browser; the PDF is not opened by the app.
+- **Dependencies.** `pnpm add` of a second group of packages fails with the pnpm
+  error `ERR_PNPM_EXOTIC_SUBDEP` once `pnpm-lock.yaml` has a Tauri package in it (pnpm
+  10.26 with `block-exotic-subdeps`). The packages were added by writing
+  `package.json` with exact versions and adding one package into an empty folder
+  (the lock file was made by `pnpm add`). `@tauri-apps/api` and `@tauri-apps/cli`
+  are 2.12.4 and not 2.12.5, which was less than 48 hours old. Twelve crates that
+  Tauri 2.12.4 needs are in `Cargo.lock` at a version that is less than 48 hours old
+  (see the report of the milestone); `cargo update -p ... --precise` is blocked in
+  the build environment, so they were not lowered.
+- **The page needs `app/dist` to compile the program** (`generate_context!`). The
+  library and its tests are separate for this reason (`cargo test -p adapdf-app
+  --lib` needs no build of the page).
 
 ## Known gaps in M1
 

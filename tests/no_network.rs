@@ -1,5 +1,14 @@
 //! N-01: the program has no HTTP client (spec 01, constraints; AGENTS.md: no
 //! network calls).
+//!
+//! The repository is a Cargo workspace of two packages: the `adapdf` library and
+//! command (the root), and the desktop app `adapdf-app` (`app/src-tauri`). The
+//! lock file is shared, and it lists the packages for every target. Tauri lists
+//! `reqwest` for Android and iOS only (its development proxy for mobile builds),
+//! so the lock file has `reqwest`, `hyper` and `hyper-util` ([`MOBILE_ONLY`]). The
+//! program ships for Windows, so the checks that matter are on the Windows
+//! dependency tree of each package: neither has any of the crates in
+//! [`FORBIDDEN`].
 
 use std::collections::BTreeSet;
 use std::process::Command;
@@ -24,6 +33,13 @@ const FORBIDDEN: &[&str] = &[
     "hyper-util",
     "http-client",
 ];
+
+/// The crates of [`FORBIDDEN`] that are in `Cargo.lock` because Tauri lists them
+/// for mobile targets only (`cfg(any(target_os = "android", all(target_vendor =
+/// "apple", not(target_os = "macos"))))` in its manifest). They are not in the
+/// Windows tree of either package, which `no_http_client_in_the_app_windows_tree`
+/// checks.
+const MOBILE_ONLY: &[&str] = &["reqwest", "hyper", "hyper-util"];
 
 /// `windows` crate features that give access to the network.
 const FORBIDDEN_WINDOWS_FEATURES: &[&str] = &["Win32_Networking", "Win32_NetworkManagement"];
@@ -52,20 +68,71 @@ fn no_http_client_in_the_dependency_graph() {
         .collect();
     assert!(packages.contains("adapdf"), "the lock file was read");
     assert!(packages.contains("lopdf"), "the lock file is up to date");
+    assert!(packages.contains("tauri"), "the app is in the lock file");
+    let unexpected: Vec<&str> = forbidden_in(&packages)
+        .into_iter()
+        .filter(|name| !MOBILE_ONLY.contains(name))
+        .collect();
     assert_eq!(
-        forbidden_in(&packages),
+        unexpected,
         Vec::<&str>::new(),
         "an HTTP or TLS crate is in Cargo.lock"
     );
 
-    // No `windows` feature for networking.
-    let manifest = std::fs::read_to_string(manifest_path("Cargo.toml")).unwrap();
-    for feature in FORBIDDEN_WINDOWS_FEATURES {
-        assert!(
-            !manifest.contains(feature),
-            "Cargo.toml turns on the windows feature {feature}"
-        );
+    // No `windows` feature for networking, in either package.
+    for file in ["Cargo.toml", "app/src-tauri/Cargo.toml"] {
+        let manifest = std::fs::read_to_string(manifest_path(file)).unwrap();
+        for feature in FORBIDDEN_WINDOWS_FEATURES {
+            assert!(
+                !manifest.contains(feature),
+                "{file} turns on the windows feature {feature}"
+            );
+        }
     }
+}
+
+/// The app (`adapdf-app`, with Tauri and its plugins) for Windows, the system it
+/// ships for: no crate of [`FORBIDDEN`] in what it runs (`normal`) or in what
+/// builds it (`build`). `--target` is given so that the answer does not depend on
+/// the system that runs the test. This needs the crates of the app in the cargo
+/// cache, or the network for the first run: it does not run the app.
+#[test]
+fn no_http_client_in_the_app_windows_tree() {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let output = Command::new(cargo)
+        .args([
+            "tree",
+            "-p",
+            "adapdf-app",
+            "-e",
+            "normal,build",
+            "--target",
+            "x86_64-pc-windows-msvc",
+            "--prefix",
+            "none",
+            "--locked",
+        ])
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .expect("cargo tree can run");
+    assert!(
+        output.status.success(),
+        "cargo tree failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8_lossy(&output.stdout);
+    let packages: BTreeSet<String> = text
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+        .map(str::to_string)
+        .collect();
+    assert!(packages.contains("adapdf-app") && packages.contains("tauri"));
+    assert!(packages.contains("adapdf") && packages.contains("webview2-com"));
+    assert_eq!(
+        forbidden_in(&packages),
+        Vec::<&str>::new(),
+        "an HTTP or TLS crate is in the Windows dependency tree of the app"
+    );
 }
 
 /// The same check on what is built for the program: `cargo tree -e normal`.
@@ -115,7 +182,7 @@ fn the_check_finds_a_client_when_there_is_one() {
 }
 
 /// The program makes no socket itself: no `std::net` type is used anywhere in
-/// `src/` (a connection made with the standard library would not be in the
+/// `src/` or `app/src-tauri/src/` (a connection made with the standard library would not be in the
 /// dependency graph, so the two tests above cannot see it).
 #[test]
 fn the_source_makes_no_socket() {
@@ -139,6 +206,7 @@ fn the_source_makes_no_socket() {
     }
     let mut files = Vec::new();
     rust_files(&manifest_path("src"), &mut files);
+    rust_files(&manifest_path("app/src-tauri/src"), &mut files);
     assert!(
         files.len() > 40,
         "the source tree was read: {}",

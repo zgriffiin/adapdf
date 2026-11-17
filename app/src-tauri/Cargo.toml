@@ -1,0 +1,28 @@
+[package]
+name = "adapdf-app"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "The Adapdf desktop app: Tauri and IBM Carbon over the adapdf library."
+publish = false
+
+[lib]
+name = "adapdf_app"
+
+[features]
+# Same meaning as in the root package: tests that need desktop Word, and tests
+# that run the bundled veraPDF (see "How to run" in docs/test-plan.md).
+windows_word = []
+verapdf = []
+
+# Versions are pinned to releases that were at least 48 hours old when chosen.
+[build-dependencies]
+tauri-build = { version = "=2.7.3", features = [] }
+
+[dependencies]
+adapdf = { path = "../.." }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+tauri = { version = "=2.12.4", features = [] }
+tauri-plugin-dialog = "=2.8.4"
+tauri-plugin-opener = "=2.7.3"

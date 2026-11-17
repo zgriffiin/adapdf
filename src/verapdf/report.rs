@@ -12,7 +12,7 @@ use super::rules;
 use crate::findings::{RuleId, Severity};
 
 /// The profile that a result is for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Profile {
     /// The PDF/UA-1 profile. A failure means the PDF does not pass.
@@ -22,7 +22,7 @@ pub enum Profile {
 }
 
 /// One failed rule of a veraPDF profile.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VeraFinding {
     pub profile: Profile,
     /// `error` for the PDF/UA-1 profile, `warning` for the WCAG profile.
@@ -52,7 +52,7 @@ pub struct VeraFinding {
 }
 
 /// The result of one veraPDF run with one profile.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProfileResult {
     pub profile: Profile,
     /// veraPDF's name of the profile, for example `PDF/UA-1 validation profile`.

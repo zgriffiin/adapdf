@@ -1,0 +1,749 @@
+//! Tests of the commands of the app: rows A-07 and A-08 of the test plan. They
+//! need no window, no Node, and (except the last test, behind the features
+//! `windows_word` and `verapdf`) no Word or Java.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use adapdf::findings::{FixId, FixKind, RuleId};
+use adapdf::fix::{Environment, FixOptions, RealFs, Timestamp};
+use adapdf::fixtures::{FixtureFonts, catalogue};
+use adapdf::render;
+use adapdf::report::{self, Input, Report, html};
+use serde_json::Value;
+
+use crate::commands::{
+    self, Availability, Choice, Input as Answer, check, fix_offers, read_report, report_paths,
+};
+use crate::signoff::{Signoff, save_signoff};
+
+// ------------------------------------------------------------ helpers
+
+/// A folder under `target/tmp` that is removed at the end of the test.
+struct TempDir(PathBuf);
+
+impl TempDir {
+    fn new(name: &str) -> TempDir {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/tmp/app-tests")
+            .join(format!(
+                "{name}-{}-{}",
+                std::process::id(),
+                COUNTER.fetch_add(1, Ordering::Relaxed)
+            ));
+        fs::create_dir_all(&dir).unwrap();
+        TempDir(dir)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+
+    fn write(&self, name: &str, bytes: &[u8]) -> PathBuf {
+        let path = self.0.join(name);
+        fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    /// The names of the files, sorted.
+    fn names(&self) -> Vec<String> {
+        let mut names: Vec<String> = fs::read_dir(&self.0)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn fixture(rule: RuleId, fails: bool) -> Vec<u8> {
+    catalogue()
+        .into_iter()
+        .find(|f| f.rule == rule && f.fails == fails)
+        .expect("the catalogue has this fixture")
+        .bytes
+}
+
+fn clock() -> Timestamp {
+    Timestamp {
+        year: 2026,
+        month: 3,
+        day: 5,
+        hour: 10,
+        minute: 15,
+        second: 30,
+    }
+}
+
+fn environment() -> Environment<'static> {
+    Environment {
+        fs: &RealFs,
+        now: clock(),
+        fonts: &FixtureFonts,
+    }
+}
+
+// --------------------------------------------------------------- A-07
+
+/// The same findings and the same exit result as `adapdf check` (which calls
+/// `check_file` and prints `render::to_json`), on a fixture with only a warning,
+/// one with errors, a passing one, and a file that cannot be read.
+#[test]
+fn app_commands_match_the_cli_check() {
+    let dir = TempDir::new("a07-check");
+    for (rule, fails, errors, warnings, exit) in [
+        (RuleId::Lst002, true, 1, 1, 1),
+        (RuleId::Txb004, true, 0, 1, 0),
+        (RuleId::Doc001, true, 1, 0, 1),
+        (RuleId::Doc001, false, 0, 0, 0),
+    ] {
+        let path = dir.write("Guide.docx", &fixture(rule, fails));
+        let app = check(&path, &FixtureFonts).unwrap();
+        let cli = adapdf::check_file(&path, &FixtureFonts).unwrap();
+        assert_eq!(app.findings, cli, "{rule} {fails}");
+        // The JSON of `adapdf check --json` has the same findings, counts and file.
+        let json: Value =
+            serde_json::from_str(&render::to_json(&path.display().to_string(), &cli)).unwrap();
+        assert_eq!(
+            serde_json::to_value(&app.findings).unwrap(),
+            json["findings"]
+        );
+        assert_eq!(app.errors, json["errors"]);
+        assert_eq!(app.warnings, json["warnings"]);
+        assert_eq!(app.file, json["file"]);
+        assert_eq!((app.errors, app.warnings), (errors, warnings), "{rule}");
+        assert_eq!(app.exit_code, exit, "{rule} {fails}");
+        assert_eq!(app.exit_code == 1, render::has_errors(&cli));
+    }
+    // The CLI exits with 2 and prints a message. The app gives an error.
+    let missing = dir.path().join("Missing.docx");
+    assert!(adapdf::check_file(&missing, &FixtureFonts).is_err());
+    let error = check(&missing, &FixtureFonts).unwrap_err();
+    assert!(
+        error
+            .message
+            .starts_with("Missing.docx: the file cannot be read"),
+        "{error}"
+    );
+    let not_docx = dir.write("Text.docx", b"this is not a zip file");
+    assert!(
+        check(&not_docx, &FixtureFonts)
+            .unwrap_err()
+            .message
+            .contains("not a .docx")
+    );
+}
+
+/// The offers are those of `adapdf fix`, and a fix chosen in the app gives the
+/// same file, the same backup name, the same findings and the same exit result as
+/// the answers `y` (or the typed text) given to `adapdf fix`.
+#[test]
+fn app_commands_match_the_cli() {
+    // Fixtures whose fixes the person only confirms or types text for.
+    for (rule, answer_line) in [
+        (RuleId::Txb004, "y"),
+        (RuleId::Lst002, "y"),
+        (RuleId::Tbl001, "y"),
+        (RuleId::Doc001, "A title typed by a person"),
+        (RuleId::Doc002, "y"),
+    ] {
+        let bytes = fixture(rule, true);
+        let a = TempDir::new("a07-app");
+        let b = TempDir::new("a07-cli");
+        let app_path = a.write("Guide.docx", &bytes);
+        let cli_path = b.write("Guide.docx", &bytes);
+        let options = FixOptions::default();
+        let env = environment();
+
+        let offers = fix_offers(&app_path, &env, &options).unwrap();
+        let library = adapdf::fix::offers(&bytes, &options, &FixtureFonts).unwrap();
+        assert_eq!(offers.len(), library.len(), "{rule}");
+        for (view, offer) in offers.iter().zip(&library) {
+            assert_eq!(view.finding, offer.finding, "{rule}");
+            assert_eq!(view.position, offer.position);
+            assert_eq!(view.fix, offer.fix);
+            assert_eq!(view.ask, offer.ask);
+            assert_eq!(view.description, adapdf::fix::describe(offer.fix, &options));
+        }
+
+        // The app: choose every fix that is ready.
+        let choices: Vec<Choice> = offers
+            .iter()
+            .filter(|o| o.availability == Availability::Ready)
+            .map(|o| Choice {
+                rule_id: o.finding.rule_id,
+                position: o.position,
+                input: if o.ask {
+                    Answer::Text {
+                        text: answer_line.to_string(),
+                    }
+                } else {
+                    Answer::Confirm
+                },
+            })
+            .collect();
+        assert!(!choices.is_empty(), "{rule}");
+        let result = commands::apply_fixes(&app_path, &choices, &env, &options).unwrap();
+
+        // The command line: one answer for each offer, in order.
+        let answers: String = offers
+            .iter()
+            .map(|o| match o.availability {
+                Availability::Ready => format!("{answer_line}\n"),
+                _ => String::new(),
+            })
+            .collect();
+        let mut input = answers.as_bytes();
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let code = adapdf::fix::interactive::run(&cli_path, &mut input, &mut out, &mut err, &env);
+
+        assert_eq!(
+            fs::read(&app_path).unwrap(),
+            fs::read(&cli_path).unwrap(),
+            "{rule}"
+        );
+        assert_eq!(a.names(), b.names(), "{rule}: the same backup name");
+        assert_eq!(result.backup.is_some(), a.names().len() == 2);
+        assert!(result.refused.is_empty(), "{rule}: {:?}", result.refused);
+        assert_eq!(result.exit_code, code, "{rule}");
+        assert_eq!(
+            result.findings,
+            adapdf::check_file(&cli_path, &FixtureFonts).unwrap(),
+            "{rule}"
+        );
+        let text = String::from_utf8(out).unwrap();
+        assert!(
+            text.contains(&render::to_text(
+                &cli_path.display().to_string(),
+                &result.findings
+            )),
+            "{text}"
+        );
+        for applied in &result.applied {
+            assert!(
+                text.contains(&format!("[{}] {}", applied.rule_id, applied.summary)),
+                "{text}"
+            );
+        }
+    }
+}
+
+/// A fixture with no fix: no offers, nothing written, the same result as the CLI.
+#[test]
+fn app_commands_match_the_cli_when_there_is_nothing_to_fix() {
+    let dir = TempDir::new("a07-none");
+    let path = dir.write("Guide.docx", &fixture(RuleId::Doc003, true));
+    let before = fs::read(&path).unwrap();
+    let options = FixOptions::default();
+    let env = environment();
+    assert!(fix_offers(&path, &env, &options).unwrap().is_empty());
+    let result = commands::apply_fixes(&path, &[], &env, &options).unwrap();
+    assert_eq!(result.backup, None);
+    assert!(result.applied.is_empty() && result.refused.is_empty());
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(fs::read(&path).unwrap(), before);
+    assert_eq!(dir.names(), ["Guide.docx"]);
+}
+
+/// The text of an ask fix comes from the person. An empty text is refused (as the
+/// CLI refuses it), the finding that the page names must still be in the file,
+/// and a file that Word has open is not written.
+#[test]
+fn apply_fixes_refuses_what_the_cli_refuses() {
+    let dir = TempDir::new("a07-refuse");
+    let path = dir.write("Guide.docx", &fixture(RuleId::Doc001, true));
+    let before = fs::read(&path).unwrap();
+    let options = FixOptions::default();
+    let env = environment();
+    let offers = fix_offers(&path, &env, &options).unwrap();
+    assert_eq!(offers.len(), 1);
+    assert!(offers[0].ask);
+    assert_eq!(offers[0].fix, FixId::SetTitle);
+    assert_eq!(offers[0].finding.fix, FixKind::Ask(FixId::SetTitle));
+
+    let blank = Choice {
+        rule_id: RuleId::Doc001,
+        position: 0,
+        input: Answer::Text {
+            text: "   ".to_string(),
+        },
+    };
+    let gone = Choice {
+        rule_id: RuleId::Img001,
+        position: 3,
+        input: Answer::Decorative,
+    };
+    let result = commands::apply_fixes(&path, &[blank, gone], &env, &options).unwrap();
+    assert!(result.applied.is_empty());
+    assert_eq!(result.refused.len(), 2);
+    assert!(
+        result
+            .refused
+            .iter()
+            .any(|r| r.reason.contains("No text was typed"))
+    );
+    assert!(
+        result
+            .refused
+            .iter()
+            .any(|r| r.reason.contains("changed since the check"))
+    );
+    assert_eq!(result.backup, None);
+    assert_eq!(fs::read(&path).unwrap(), before, "nothing was written");
+
+    // Word has the file open: its lock file is next to it.
+    fs::write(dir.path().join("~$Guide.docx"), b"lock").unwrap();
+    let error = fix_offers(&path, &env, &options).unwrap_err();
+    assert!(error.message.contains("open in Word"), "{error}");
+    let error = commands::apply_fixes(&path, &[], &env, &options).unwrap_err();
+    assert!(error.message.contains("open in Word"), "{error}");
+}
+
+/// A pass fixture has no offers that need text, and the app never fills text in:
+/// the suggestion is only in the finding.
+#[test]
+fn offers_carry_the_suggestion_and_no_text() {
+    let dir = TempDir::new("a03-offers");
+    let path = dir.write("Guide.docx", &fixture(RuleId::Doc001, true));
+    let offers = fix_offers(&path, &environment(), &FixOptions::default()).unwrap();
+    let json = serde_json::to_value(&offers[0]).unwrap();
+    assert!(json.get("input").is_none() && json.get("text").is_none());
+    assert_eq!(json["ask"], true);
+    assert_eq!(json["availability"]["status"], "ready");
+}
+
+// The export of the app is the export of the command: stage 1 comes first, so
+// a document with an error gets a Fail report and no PDF, and a missing file is
+// a tool failure. Neither starts Word.
+#[cfg(windows)]
+mod export {
+    use super::*;
+    use adapdf::export::{ExportError, ExportResult};
+    use adapdf::pipeline::{Exit, Stages, export_docx, output_paths};
+    use adapdf::verapdf::{Validation, VeraPdfError};
+
+    /// Stages that fail the test when they are used: Word and veraPDF must not
+    /// be asked for.
+    struct NoStages;
+
+    impl Stages for NoStages {
+        fn check_tools(&self) -> Result<(), VeraPdfError> {
+            panic!("the tools must not be checked");
+        }
+        fn export(&self, _: &Path, _: &Path) -> Result<ExportResult, ExportError> {
+            panic!("Word must not be started");
+        }
+        fn validate(&self, _: &Path) -> Result<Validation, VeraPdfError> {
+            panic!("veraPDF must not be run");
+        }
+    }
+
+    #[test]
+    fn app_export_matches_the_cli_when_stage_1_finds_errors() {
+        let bytes = fixture(RuleId::Doc001, true);
+        let a = TempDir::new("a07-export-app");
+        let b = TempDir::new("a07-export-cli");
+        let app_path = a.write("Guide.docx", &bytes);
+        let cli_path = b.write("Guide.docx", &bytes);
+
+        let app = commands::export(&app_path, &NoStages, &FixtureFonts, clock()).unwrap();
+        let cli = export_docx(&cli_path, &NoStages, &FixtureFonts, clock());
+
+        assert_eq!(cli.exit, Exit::ErrorsFound);
+        assert_eq!(app.exit_code, cli.exit.code());
+        assert_eq!(app.view.report, cli.report.clone().unwrap());
+        let in_dir =
+            |text: &str, dir: &TempDir| text.replace(&dir.path().display().to_string(), "<dir>");
+        assert_eq!(in_dir(&app.console, &a), in_dir(&cli.stdout, &b));
+        // The same files, written next to the document.
+        assert_eq!(a.names(), b.names());
+        assert_eq!(
+            a.names(),
+            [
+                "Guide.accessibility.html",
+                "Guide.accessibility.json",
+                "Guide.docx"
+            ]
+        );
+        let (_, html_path, json_path) = output_paths(&app_path);
+        assert_eq!(app.view.report_html, html_path.display().to_string());
+        assert_eq!(app.view.report_json, json_path.display().to_string());
+        assert_eq!(app.view.pdf, None, "no PDF for a document with errors");
+        assert_eq!(app.files.len(), 2);
+        assert_eq!(app.view.report.summary.verdict, report::Verdict::Fail);
+        // What the app reads back is what was written.
+        assert_eq!(read_report(&json_path).unwrap(), app.view);
+    }
+
+    #[test]
+    fn app_export_gives_an_error_for_what_the_cli_exits_2() {
+        let dir = TempDir::new("a07-export-fail");
+        let missing = dir.path().join("Guide.docx");
+        let cli = export_docx(&missing, &NoStages, &FixtureFonts, clock());
+        assert_eq!(cli.exit, Exit::ToolFailure);
+        let error = commands::export(&missing, &NoStages, &FixtureFonts, clock()).unwrap_err();
+        assert!(!error.message.starts_with("adapdf:"), "{error}");
+        assert!(
+            cli.stderr.contains(&error.message),
+            "{error}: {}",
+            cli.stderr
+        );
+        assert!(error.message.contains("cannot be read"), "{error}");
+        assert!(dir.names().is_empty(), "no report for a tool failure");
+    }
+
+    /// The real Word and the real veraPDF, as `adapdf export` runs them. Needs
+    /// desktop Word and the bundled veraPDF (set `ADAPDF_VENDOR` when `vendor/` is
+    /// not in the source tree).
+    #[cfg(all(feature = "windows_word", feature = "verapdf"))]
+    #[test]
+    fn app_export_with_word_matches_the_cli() {
+        let dir = TempDir::new("a07-export-word");
+        let docx = dir.write("Guide.docx", &fixture(RuleId::Doc001, false));
+        let result = commands::export_with_word(&docx, &FixtureFonts).unwrap();
+        assert_eq!(result.exit_code, 0, "{}", result.console);
+        let report = &result.view.report;
+        assert_eq!(report.summary.verdict, report::Verdict::Pass);
+        assert_eq!(report.summary.pdf.as_deref(), Some("Guide.pdf"));
+        assert!(
+            result
+                .console
+                .starts_with("Guide.docx: Pass (0 errors, 0 warnings).")
+        );
+        assert_eq!(
+            dir.names(),
+            [
+                "Guide.accessibility.html",
+                "Guide.accessibility.json",
+                "Guide.docx",
+                "Guide.pdf"
+            ]
+        );
+        assert_eq!(
+            result.view.pdf,
+            Some(dir.path().join("Guide.pdf").display().to_string())
+        );
+        assert_eq!(result.files.len(), 3);
+        // The report that was written is the report that came back.
+        assert_eq!(
+            read_report(&dir.path().join("Guide.accessibility.json")).unwrap(),
+            result.view
+        );
+        assert_eq!(
+            report.console_summary(&[]),
+            result
+                .console
+                .lines()
+                .take_while(|l| !l.starts_with("Wrote "))
+                .map(|l| format!("{l}\n"))
+                .collect::<String>()
+        );
+    }
+}
+
+// --------------------------------------------------------- the report
+
+#[test]
+fn only_the_html_of_a_report_can_be_opened() {
+    let dir = TempDir::new("a06-open");
+    let html = dir.write("Guide.accessibility.html", b"<html></html>");
+    assert_eq!(commands::check_report_html(&html).unwrap(), html);
+    for bad in [
+        "Guide.pdf",
+        "Guide.docx",
+        "Guide.html",
+        ".accessibility.html",
+        "Guide.accessibility.json",
+    ] {
+        let path = dir.write(bad, b"x");
+        assert!(commands::check_report_html(&path).is_err(), "{bad}");
+    }
+    // Not there, not absolute, a web address, and a network share.
+    assert!(commands::check_report_html(&dir.path().join("Other.accessibility.html")).is_err());
+    assert!(commands::check_report_html(Path::new("Guide.accessibility.html")).is_err());
+    for address in [
+        "https://example.com/Guide.accessibility.html",
+        r"\\server\share\Guide.accessibility.html",
+    ] {
+        assert!(
+            commands::check_report_html(Path::new(address)).is_err(),
+            "{address}"
+        );
+    }
+}
+
+#[test]
+fn report_paths_need_the_name_of_a_report() {
+    let (json, html) = report_paths(Path::new("C:/g/Guide.accessibility.json")).unwrap();
+    assert_eq!(json, Path::new("C:/g/Guide.accessibility.json"));
+    assert_eq!(html, Path::new("C:/g/Guide.accessibility.html"));
+    for bad in [
+        "C:/g/Guide.json",
+        "C:/g/.accessibility.json",
+        "C:/g/Guide.accessibility.html",
+    ] {
+        assert!(report_paths(Path::new(bad)).is_err(), "{bad}");
+    }
+}
+
+// --------------------------------------------------------------- A-08
+
+/// An unsigned report from `LST-002-fail.docx`, as `adapdf export` writes it, with
+/// a PDF next to it.
+struct Saved {
+    dir: TempDir,
+    json: PathBuf,
+    html: PathBuf,
+    pdf: PathBuf,
+    report: Report,
+}
+
+fn saved_report() -> Saved {
+    let dir = TempDir::new("a08");
+    let findings = adapdf::check_bytes(&fixture(RuleId::Lst002, true), &FixtureFonts).unwrap();
+    let report = report::build(Input {
+        document: "Guide.docx".to_string(),
+        generated_local: "2026-03-05 10:15:30".to_string(),
+        findings,
+        applied_fixes: Vec::new(),
+        backup: None,
+        pdf: Some("Guide.pdf".to_string()),
+        export: None,
+        metadata: None,
+        verapdf: None,
+    });
+    let json = dir.write("Guide.accessibility.json", report.to_json().as_bytes());
+    let html = dir.write("Guide.accessibility.html", html::render(&report).as_bytes());
+    let pdf = dir.write("Guide.pdf", b"%PDF-1.7 pretend bytes \x00\xff");
+    Saved {
+        dir,
+        json,
+        html,
+        pdf,
+        report,
+    }
+}
+
+fn five_of_seven(name: &str, date: &str) -> Signoff {
+    Signoff {
+        name: name.to_string(),
+        date: date.to_string(),
+        items: vec![true, true, true, true, true, false, false],
+    }
+}
+
+fn json_without_checklist(path: &Path) -> Value {
+    let mut json: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+    json.as_object_mut().unwrap().remove("checklist");
+    json
+}
+
+/// Tick 5 of the 7 items, type a name, pick a date, save: the JSON and the HTML
+/// have them, and opening the report again shows the same.
+#[test]
+fn app_saves_the_signoff_in_the_report() {
+    let saved = saved_report();
+    assert_eq!(saved.report.checklist.items.len(), 7);
+    assert!(saved.report.checklist.name.is_none());
+    let json_before = json_without_checklist(&saved.json);
+    let summary_before = saved.report.summary.clone();
+
+    let view = save_signoff(&saved.json, &five_of_seven("A. Reviewer", "2026-03-06")).unwrap();
+
+    // The JSON.
+    let json: Value = serde_json::from_str(&fs::read_to_string(&saved.json).unwrap()).unwrap();
+    assert_eq!(json["checklist"]["name"], "A. Reviewer");
+    assert_eq!(json["checklist"]["date"], "2026-03-06");
+    let done: Vec<bool> = json["checklist"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["done"].as_bool().unwrap())
+        .collect();
+    assert_eq!(done, [true, true, true, true, true, false, false]);
+    // The text of the items did not change.
+    for (item, expected) in json["checklist"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(report::CHECKLIST)
+    {
+        assert_eq!(item["text"], expected);
+    }
+    // Nothing else in the JSON changed: not the verdict, the findings or the rest.
+    assert_eq!(json_without_checklist(&saved.json), json_before);
+    assert_eq!(view.report.summary, summary_before);
+
+    // The HTML is the page of the signed report: checked boxes and typed values.
+    let html_text = fs::read_to_string(&saved.html).unwrap();
+    assert_eq!(html_text, html::render(&view.report));
+    assert_eq!(html_text.matches("checked=\"checked\"").count(), 5);
+    assert!(html_text.contains("id=\"signoff-name\" name=\"signoff-name\" value=\"A. Reviewer\""));
+    assert!(html_text.contains("id=\"signoff-date\" name=\"signoff-date\" value=\"2026-03-06\""));
+    assert!(
+        html_text.contains("Signed off by A. Reviewer, on 2026-03-06. 5 of 7 checks are ticked.")
+    );
+
+    // Opening it again shows the same name, date and ticks.
+    let again = read_report(&saved.json).unwrap();
+    assert_eq!(again, view);
+    assert_eq!(again.report.checklist.name.as_deref(), Some("A. Reviewer"));
+    assert_eq!(again.report.checklist.date.as_deref(), Some("2026-03-06"));
+    assert_eq!(again.pdf, Some(saved.pdf.display().to_string()));
+
+    // Signing again replaces the sign-off.
+    let second = Signoff {
+        name: "B. Second".to_string(),
+        date: String::new(),
+        items: vec![true; 7],
+    };
+    let view = save_signoff(&saved.json, &second).unwrap();
+    assert_eq!(view.report.checklist.name.as_deref(), Some("B. Second"));
+    assert_eq!(view.report.checklist.date, None);
+    assert!(view.report.checklist.items.iter().all(|i| i.done));
+    assert_eq!(read_report(&saved.json).unwrap(), view);
+    assert_eq!(
+        fs::read_to_string(&saved.html).unwrap(),
+        html::render(&view.report)
+    );
+}
+
+#[test]
+fn the_signoff_never_touches_the_pdf_and_leaves_no_temporary_file() {
+    let saved = saved_report();
+    let pdf_before = fs::read(&saved.pdf).unwrap();
+    let modified = fs::metadata(&saved.pdf).unwrap().modified().unwrap();
+    save_signoff(&saved.json, &five_of_seven("A. Reviewer", "2026-03-06")).unwrap();
+    assert_eq!(fs::read(&saved.pdf).unwrap(), pdf_before);
+    assert_eq!(
+        fs::metadata(&saved.pdf).unwrap().modified().unwrap(),
+        modified
+    );
+    assert_eq!(
+        saved.dir.names(),
+        [
+            "Guide.accessibility.html",
+            "Guide.accessibility.json",
+            "Guide.pdf"
+        ]
+    );
+}
+
+#[test]
+fn a_date_that_was_not_given_is_not_filled_in() {
+    let saved = saved_report();
+    let view = save_signoff(&saved.json, &five_of_seven("  A. Reviewer  ", "")).unwrap();
+    assert_eq!(
+        view.report.checklist.name.as_deref(),
+        Some("A. Reviewer"),
+        "trimmed"
+    );
+    assert_eq!(view.report.checklist.date, None);
+    let json: Value = serde_json::from_str(&fs::read_to_string(&saved.json).unwrap()).unwrap();
+    assert_eq!(json["checklist"]["date"], Value::Null);
+    assert!(
+        !fs::read_to_string(&saved.html)
+            .unwrap()
+            .contains("id=\"signoff-date\" name=\"signoff-date\" value=")
+    );
+}
+
+#[test]
+fn an_empty_name_or_a_bad_request_is_refused_and_nothing_changes() {
+    let saved = saved_report();
+    let json_before = fs::read(&saved.json).unwrap();
+    let html_before = fs::read(&saved.html).unwrap();
+    let mut short = five_of_seven("A. Reviewer", "2026-03-06");
+    short.items.pop();
+    let cases = [
+        (five_of_seven("", "2026-03-06"), "Type your name"),
+        (five_of_seven("   \t ", "2026-03-06"), "Type your name"),
+        (five_of_seven("A. Reviewer", "2026-02-30"), "not a date"),
+        (five_of_seven("A. Reviewer", "yesterday"), "not a date"),
+        (short, "7 items"),
+    ];
+    for (signoff, message) in cases {
+        let error = save_signoff(&saved.json, &signoff).unwrap_err();
+        assert!(error.message.contains(message), "{error}");
+        assert_eq!(fs::read(&saved.json).unwrap(), json_before);
+        assert_eq!(fs::read(&saved.html).unwrap(), html_before);
+    }
+    assert_eq!(saved.dir.names().len(), 3);
+}
+
+/// The files are written under temporary names and then moved. A move that fails
+/// leaves the old files as they were and no temporary file. Here the page cannot
+/// be replaced because a folder has its name.
+#[test]
+fn a_failed_move_leaves_the_old_report_and_no_temporary_file() {
+    let saved = saved_report();
+    let json_before = fs::read(&saved.json).unwrap();
+    fs::remove_file(&saved.html).unwrap();
+    fs::create_dir(&saved.html).unwrap();
+    let error = save_signoff(&saved.json, &five_of_seven("A. Reviewer", "2026-03-06")).unwrap_err();
+    assert!(
+        error.message.contains("Guide.accessibility.html"),
+        "{error}"
+    );
+    assert!(error.message.contains("not saved"), "{error}");
+    assert_eq!(fs::read(&saved.json).unwrap(), json_before);
+    assert_eq!(
+        saved.dir.names(),
+        [
+            "Guide.accessibility.html",
+            "Guide.accessibility.json",
+            "Guide.pdf"
+        ]
+    );
+}
+
+#[test]
+fn a_file_that_is_not_a_report_of_this_tool_is_refused() {
+    let saved = saved_report();
+    let not_ours = saved
+        .dir
+        .write("Other.accessibility.json", b"{\"hello\": 1}");
+    let error = save_signoff(&not_ours, &five_of_seven("A. Reviewer", "2026-03-06")).unwrap_err();
+    assert!(
+        error.message.contains("not a report that this tool wrote"),
+        "{error}"
+    );
+    let wrong_name = saved
+        .dir
+        .write("Guide.json", saved.report.to_json().as_bytes());
+    assert!(save_signoff(&wrong_name, &five_of_seven("A. Reviewer", "2026-03-06")).is_err());
+    // A later layout of the report is not changed by an older tool.
+    let mut json: Value = serde_json::from_str(&saved.report.to_json()).unwrap();
+    json["schema_version"] = Value::from(2);
+    let later = saved
+        .dir
+        .write("Later.accessibility.json", json.to_string().as_bytes());
+    let before = fs::read(&later).unwrap();
+    let error = save_signoff(&later, &five_of_seven("A. Reviewer", "2026-03-06")).unwrap_err();
+    assert!(error.message.contains("layout version 2"), "{error}");
+    assert_eq!(fs::read(&later).unwrap(), before);
+    assert!(!saved.dir.path().join("Later.accessibility.html").exists());
+}
+
+/// A report that came from a real run has a checklist of 7 items, and the
+/// verdict of a report is not changed by a sign-off.
+#[test]
+fn a_signoff_does_not_change_the_verdict() {
+    let saved = saved_report();
+    assert_eq!(saved.report.summary.verdict, report::Verdict::Fail);
+    let view = save_signoff(&saved.json, &five_of_seven("A. Reviewer", "2026-03-06")).unwrap();
+    assert_eq!(view.report.summary.verdict, report::Verdict::Fail);
+    assert_eq!(view.report.precheck, saved.report.precheck);
+    assert_eq!(
+        (view.report.summary.errors, view.report.summary.warnings),
+        (saved.report.summary.errors, saved.report.summary.warnings)
+    );
+}

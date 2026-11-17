@@ -3,7 +3,7 @@
 //! Messages are for staff who are not accessibility specialists. They say
 //! what is wrong in plain words and how to fix it in Word.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::docx::DOCUMENT_PART;
 use crate::model::{Document, Paragraph};
@@ -11,7 +11,7 @@ use crate::model::{Document, Paragraph};
 /// Number of characters of paragraph text kept in a [`Location`] snippet.
 pub const SNIPPET_CHARS: usize = 60;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum RuleId {
     #[serde(rename = "DOC-001")]
     Doc001,
@@ -97,7 +97,7 @@ pub enum RuleId {
     Txt004,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     /// Blocks export.
@@ -108,7 +108,7 @@ pub enum Severity {
 
 /// A fix that a later milestone can apply. The rule says which fix exists; the
 /// fix code itself is not part of the pre-check.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum FixId {
     SetTitle,
@@ -129,7 +129,7 @@ pub enum FixId {
     RemoveTocLinks,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "id", rename_all = "kebab-case")]
 pub enum FixKind {
     /// The tool can fix it after the user confirms.
@@ -284,7 +284,7 @@ impl std::fmt::Display for RuleId {
 
 /// Where a problem is. Page numbers are not known without Word, so a
 /// location is the nearest heading, the start of the paragraph and its index.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Location {
     /// Text of the nearest heading above the paragraph (first 60 characters).
     pub heading: Option<String>,
@@ -338,7 +338,7 @@ pub fn snippet(text: &str) -> String {
         .collect()
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Finding {
     pub rule_id: RuleId,
     pub severity: Severity,

@@ -23,7 +23,7 @@ mod tests;
 
 use std::path::Path;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::findings::{Finding, FixId, RuleId, Severity};
 use crate::pdfmeta;
@@ -44,7 +44,7 @@ pub const CHECKLIST: [&str; 7] = [
     "Tables are data tables, not layout.",
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Verdict {
     Pass,
@@ -62,7 +62,7 @@ impl Verdict {
 }
 
 /// Section 1: pass or fail, the counts, the tool version and the date.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Summary {
     pub verdict: Verdict,
     pub errors: usize,
@@ -80,14 +80,14 @@ pub struct Summary {
 }
 
 /// One export parameter, as it was passed to Word.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Parameter {
     pub name: String,
     pub value: String,
 }
 
 /// How Word made the PDF (stage 3). Part of the summary section.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExportInfo {
     /// For example `16.0.20527.20000`.
     pub word_build: String,
@@ -101,7 +101,7 @@ pub struct ExportInfo {
 }
 
 /// One fix that was applied before the export (section 3).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FixEntry {
     pub fix: FixId,
     pub rule: RuleId,
@@ -112,14 +112,14 @@ pub struct FixEntry {
 /// Section 3. The `export` command applies no fixes, so `applied` is empty
 /// there. `backup` is then the newest backup of the document that is next to it
 /// (made by an earlier `adapdf fix`), if there is one.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FixesSection {
     pub applied: Vec<FixEntry>,
     pub backup: Option<String>,
 }
 
 /// Section 4: stage 4, or why it did not run.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "kebab-case")]
 pub enum MetadataSection {
     NotRun { reason: String },
@@ -127,7 +127,7 @@ pub enum MetadataSection {
 }
 
 /// Section 5: stage 5, or why it did not run.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "kebab-case")]
 pub enum VeraPdfSection {
     NotRun {
@@ -141,7 +141,7 @@ pub enum VeraPdfSection {
 
 /// Section 6: what a person records from PAC. It is empty when the report is
 /// made.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PacSection {
     /// The PAC report file, or a link to it.
     pub report_file: Option<String>,
@@ -150,14 +150,14 @@ pub struct PacSection {
     pub result: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChecklistItem {
     pub text: String,
     pub done: bool,
 }
 
 /// Section 7: the checklist and the sign-off, empty when the report is made.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HumanChecklist {
     pub items: Vec<ChecklistItem>,
     pub name: Option<String>,
@@ -165,7 +165,7 @@ pub struct HumanChecklist {
 }
 
 /// The whole report. The field order is the section order.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Report {
     pub schema_version: u32,
     pub summary: Summary,

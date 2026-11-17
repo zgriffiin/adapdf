@@ -11,8 +11,8 @@ Status: the pipeline is built (stages 1 to 6 of the [pipeline spec](docs/specs/0
 `adapdf check` runs the pre-check rules. `adapdf fix` applies the fixes (stage 2)
 after it asks about each one. `adapdf export` exports the PDF through Word (stage
 3), adds the missing PDF metadata (stage 4), runs veraPDF (stage 5) and writes
-the accessibility report as HTML and JSON (stage 6). The app and the installer
-are not built yet. See the [test plan](docs/test-plan.md) for what is tested and
+the accessibility report as HTML and JSON (stage 6). The desktop app (Tauri and
+IBM Carbon, in `app/`) is built: see "The app". The installer is not built yet. See the [test plan](docs/test-plan.md) for what is tested and
 what is not, and for what the first runs with real Word and veraPDF found (a
 Word-made link has no description for assistive technology unless it has a
 ScreenTip, and a table of contents made of links cannot have one; the rules
@@ -32,7 +32,9 @@ LNK-004 and LNK-005 and their fixes follow from this: see "S5-10 result").
 ## Layout
 
 ```
-Cargo.toml        Rust package: the `adapdf` library and command
+Cargo.toml        Rust package: the `adapdf` library and command, and the Cargo workspace
+app/              The desktop app: `app/src` is the page (Vite, React, Carbon),
+                  `app/src-tauri` is the Tauri shell (package `adapdf-app`)
 src/              Application code (Rust). src/word drives Word through COM,
                   src/export is stage 3, src/pdfmeta stage 4, src/verapdf stage 5,
                   src/report stage 6, src/pipeline the `export` command.
@@ -97,6 +99,32 @@ cargo test --features windows_word     # needs desktop Word; starts its own hidd
 cargo test --features verapdf          # needs vendor/ (see "Bundled tools"); runs the real veraPDF
 cargo test --features windows_word,verapdf   # also runs the real `export` (long: about 25 minutes)
 ```
+
+## The app
+
+The app is a Tauri 2 window with a page made with IBM Carbon. It calls the same
+library as the command line: choose a Word document (or drop one on the window),
+see the findings by severity, apply fixes, export, open the report, and sign off
+the checklist (the app saves the checklist, your name and the date into the report;
+the PDF is not changed). It needs Node 22 or later with pnpm, and the Rust tools.
+Run these in `app/`:
+
+```
+pnpm install --frozen-lockfile   # once
+pnpm tauri dev                   # starts the window, with the page on http://localhost:5173
+pnpm test                        # the page's tests (Vitest, Testing Library, axe-core)
+pnpm exec tsc --noEmit           # type check
+pnpm build                       # builds the page into app/dist
+pnpm tauri build --no-bundle     # builds target/release/adapdf-app.exe (no installer yet)
+```
+
+Tests of the app's commands: `cargo test -p adapdf-app --lib`. After `pnpm build`:
+`cargo test -p adapdf-app --test frontend_bundle` (the built page loads nothing from
+the network, and the window's security settings). The `cargo` commands at the root
+do not build the app and do not need Node. The export needs Word and `vendor/`, as
+for the command line (`ADAPDF_VENDOR` names another `vendor` folder in a debug
+build). The fonts (IBM Plex Sans) are bundled, and the app makes no network calls.
+See "How M5a builds the app" in the [test plan](docs/test-plan.md).
 
 ## Bundled tools
 

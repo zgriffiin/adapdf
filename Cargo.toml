@@ -1,3 +1,10 @@
+# The desktop app (Tauri) is a second package in this workspace. The root package
+# is the only default member, so `cargo test`, `cargo clippy` and `cargo build`
+# at the root build and test only the library and the command, and need no Node.
+# Build the app with `-p adapdf-app` (see "How M5a builds the app" in the test plan).
+[workspace]
+members = ["app/src-tauri"]
+
 [package]
 name = "adapdf"
 version = "0.1.0"

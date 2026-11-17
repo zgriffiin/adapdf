@@ -159,7 +159,10 @@ adapdf export Guide.docx            # stages 1, 3, 4, 5, 6
 Exit codes: 0 = pass, 1 = errors found, 2 = tool failure.
 
 App (phase 5): choose a file (or drag it onto the window), see the findings
-grouped by severity, apply fixes, export, and open the report. Optional, if
+grouped by severity, apply fixes, export, open the report, and sign off the
+human checklist. A static HTML page cannot save a name or a tick, so the app saves the
+checklist, the name and the date into the report (the JSON and the HTML). It never
+changes the PDF, and the report that `export` writes is always unsigned. Optional, if
 Phase 0 shows COM can do it reliably: a "Show in Word" button that opens the
 document and selects the problem.
 

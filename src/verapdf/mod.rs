@@ -29,7 +29,7 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub use report::{Profile, ProfileResult, VeraFinding, parse};
 
@@ -272,7 +272,7 @@ fn read_in_thread<R: Read + Send + 'static>(pipe: Option<R>) -> thread::JoinHand
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(180);
 
 /// What the WCAG machine-check profile gave.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "status", content = "result", rename_all = "kebab-case")]
 pub enum WcagOutcome {
     /// This veraPDF has no WCAG machine-check profile, so it was not run.
@@ -285,7 +285,7 @@ pub enum WcagOutcome {
 }
 
 /// The result of stage 5 for one PDF.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Validation {
     /// The PDF/UA-1 profile. Any failure here means the PDF does not pass.
     pub ua1: ProfileResult,

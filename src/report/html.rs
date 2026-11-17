@@ -548,25 +548,56 @@ fn pac(out: &mut String) {
 }
 
 fn checklist(out: &mut String, report: &Report) {
+    let list = &report.checklist;
     paragraph(
         out,
         "A person checks each item in the PDF and ticks it. The automatic checks cannot decide these.",
     );
+    // A report that was signed in the app has the sign-off in it. The same
+    // facts are in the form below, so a reader of the page sees them twice: as
+    // text, and as the state of the controls.
+    if let Some(name) = &list.name {
+        let done = list.items.iter().filter(|item| item.done).count();
+        let date = list
+            .date
+            .as_deref()
+            .map_or_else(|| "no date was given".to_string(), |d| format!("on {d}"));
+        paragraph(
+            out,
+            &format!(
+                "Signed off by {name}, {date}. {done} of {} checks are ticked.",
+                list.items.len()
+            ),
+        );
+    }
     out.push_str("<fieldset>\n<legend>Checks that a person makes</legend>\n");
-    for (n, item) in report.checklist.items.iter().enumerate() {
+    for (n, item) in list.items.iter().enumerate() {
+        let checked = if item.done {
+            " checked=\"checked\""
+        } else {
+            ""
+        };
         let _ = writeln!(
             out,
-            "<div class=\"check\"><input type=\"checkbox\" id=\"check-{n}\" name=\"check-{n}\" /> <label for=\"check-{n}\">{}</label></div>",
+            "<div class=\"check\"><input type=\"checkbox\" id=\"check-{n}\" name=\"check-{n}\"{checked} /> <label for=\"check-{n}\">{}</label></div>",
             escape(&item.text),
             n = n + 1
         );
     }
     out.push_str("</fieldset>\n<fieldset>\n<legend>Sign-off</legend>\n");
-    out.push_str(
-        "<div class=\"field\"><label for=\"signoff-name\">Name</label> <input type=\"text\" id=\"signoff-name\" name=\"signoff-name\" /></div>\n",
+    let value = |v: &Option<String>| {
+        v.as_deref()
+            .map_or_else(String::new, |v| format!(" value=\"{}\"", escape(v)))
+    };
+    let _ = writeln!(
+        out,
+        "<div class=\"field\"><label for=\"signoff-name\">Name</label> <input type=\"text\" id=\"signoff-name\" name=\"signoff-name\"{} /></div>",
+        value(&list.name)
     );
-    out.push_str(
-        "<div class=\"field\"><label for=\"signoff-date\">Date</label> <input type=\"date\" id=\"signoff-date\" name=\"signoff-date\" /></div>\n",
+    let _ = writeln!(
+        out,
+        "<div class=\"field\"><label for=\"signoff-date\">Date</label> <input type=\"date\" id=\"signoff-date\" name=\"signoff-date\"{} /></div>",
+        value(&list.date)
     );
     out.push_str("</fieldset>\n");
 }

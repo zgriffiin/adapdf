@@ -23,7 +23,7 @@ use std::io;
 use std::path::Path;
 
 use lopdf::{Dictionary, Document, Object, ObjectId, Stream};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::findings::Severity;
 use crate::model::Document as DocxDocument;
@@ -70,7 +70,7 @@ impl SourceMetadata {
 }
 
 /// The value that a check looked at.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Field {
     /// XMP `pdfuaid:part`.
     #[serde(rename = "xmp-pdfuaid-part")]
@@ -103,7 +103,7 @@ impl Field {
 }
 
 /// One change that stage 4 made.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Change {
     pub field: Field,
     /// `describe()` of the field.
@@ -114,7 +114,7 @@ pub struct Change {
 }
 
 /// Why stage 4 reports an error finding.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum IssueKind {
     /// `/MarkInfo /Marked true` is missing.
@@ -130,7 +130,7 @@ pub enum IssueKind {
 }
 
 /// A problem that stage 4 does not fix. It is an error: the exit code is 1.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Issue {
     pub kind: IssueKind,
     pub severity: Severity,
@@ -152,7 +152,7 @@ impl Issue {
 }
 
 /// The result of stage 4 for one PDF.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Report {
     /// The changes that were made, in a fixed order.
     pub changes: Vec<Change>,
