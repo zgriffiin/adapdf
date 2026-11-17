@@ -6,6 +6,7 @@
 //
 //   pnpm tauri build --no-bundle        (in app/: makes ../target/release/adapdf-app.exe)
 //   node scripts/axe-webview.mjs [--exe <adapdf-app.exe>] [--vendor <vendor folder>]
+//   node scripts/axe-webview.mjs --installed <installed adapdf-app.exe> [--no-java] [--watch] [--default-profile]
 //
 // How it works, with no package beyond axe-core (already a dev dependency) and
 // Node's own WebSocket:
@@ -24,13 +25,31 @@
 // * The documents are copies of fixtures in a scratch folder, which is removed at
 //   the end.
 //
+// With `--installed` the script starts the program of an installation in place (rows
+// I-05, I-07, I-10, I-11): no copy, and no `vendor/` is joined, so the program must
+// find the `vendor/` that the installer placed next to it. `ADAPDF_VENDOR=C:/nowhere`
+// is in its environment, to show that the override is ignored. The other options are
+// for this mode:
+// * `--no-java` takes every Java folder out of PATH, and JAVA_HOME and its kin out of
+//   the environment, of the started program only (row I-07), and shows that `where java`
+//   finds nothing there.
+// * `--watch` looks about once a second at the processes that the program started (its
+//   own process tree) and at the network connections that they own (`netstat -ano`).
+//   It lists each `java.exe` that was started (its path and command line) and fails
+//   when one is not the bundled one, when none was seen, or when a process of the tree
+//   has a connection to an address that is not on this machine (rows I-07 and N-03).
+//   This is sampling: a connection that opens and closes between two looks is missed.
+// * `--default-profile` leaves WebView2's user data folder at its default
+//   (`%LOCALAPPDATA%\com.adapdf.desktop`), as when a person starts the program, so that
+//   what an uninstall leaves behind can be seen (row I-04).
+//
 // Exit code 0: no violation on any screen. 1: a violation, or a step failed.
 
 import { spawn, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -42,8 +61,13 @@ function option(name, fallback) {
   return at >= 0 ? process.argv[at + 1] : fallback;
 }
 
-const exeSource = resolve(option("--exe", join(root, "target", "release", "adapdf-app.exe")));
+const installedExe = option("--installed", undefined);
+const exeSource = resolve(installedExe ?? option("--exe", join(root, "target", "release", "adapdf-app.exe")));
 const vendorSource = option("--vendor", process.env.ADAPDF_AXE_VENDOR ?? join(root, "vendor"));
+const noJava = process.argv.includes("--no-java");
+const watch = process.argv.includes("--watch");
+const defaultProfile = process.argv.includes("--default-profile");
+const extraBrowserArgs = option("--browser-args", "");
 const axeSource = readFileSync(join(appDir, "node_modules", "axe-core", "axe.min.js"), "utf8");
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 
@@ -57,11 +81,18 @@ const appCopy = join(scratch, "app");
 const docs = join(scratch, "docs");
 mkdirSync(appCopy);
 mkdirSync(docs);
-const exe = join(appCopy, "adapdf-app.exe");
-copyFileSync(exeSource, exe);
-const haveVendor = existsSync(join(vendorSource, "jre")) && existsSync(join(vendorSource, "verapdf"));
-if (haveVendor) {
-  symlinkSync(resolve(vendorSource), join(appCopy, "vendor"), "junction");
+const exe = installedExe ? exeSource : join(appCopy, "adapdf-app.exe");
+const exeName = basename(exe);
+let haveVendor;
+if (installedExe) {
+  const installedVendor = join(dirname(exe), "vendor");
+  haveVendor = existsSync(join(installedVendor, "jre", "bin", "java.exe")) && existsSync(join(installedVendor, "verapdf", "bin"));
+} else {
+  copyFileSync(exeSource, exe);
+  haveVendor = existsSync(join(vendorSource, "jre")) && existsSync(join(vendorSource, "verapdf"));
+  if (haveVendor) {
+    symlinkSync(resolve(vendorSource), join(appCopy, "vendor"), "junction");
+  }
 }
 for (const name of ["LST-002-fail", "DOC-001-fail", "DOC-001-pass", "IMG-001-fail"]) {
   copyFileSync(join(root, "tests", "fixtures", `${name}.docx`), join(docs, `${name}.docx`));
@@ -83,6 +114,125 @@ const pids = (image) => {
   const out = spawnSync("tasklist", ["/FI", `IMAGENAME eq ${image}`, "/FO", "CSV", "/NH"], { encoding: "utf8" }).stdout;
   return out.split(/\r?\n/).filter((l) => l.startsWith('"')).map((l) => Number(l.split('","')[1]));
 };
+
+// ----------------------------------------------------- environment and watching
+
+/** The environment of the started program. */
+function programEnvironment(port) {
+  const env = { ...process.env };
+  // Windows names are not case sensitive, so find the real spelling of each name.
+  const key = (name) => Object.keys(env).find((k) => k.toLowerCase() === name.toLowerCase());
+  if (noJava) {
+    const removed = [];
+    for (const name of ["JAVA_HOME", "JDK_HOME", "JRE_HOME", "CLASSPATH", "_JAVA_OPTIONS", "JAVA_TOOL_OPTIONS"]) {
+      const k = key(name);
+      if (k) {
+        delete env[k];
+        removed.push(name);
+      }
+    }
+    const pathKey = key("PATH");
+    const kept = [];
+    for (const dir of env[pathKey].split(";").filter(Boolean)) {
+      const hasJava = ["java.exe", "javaw.exe", "javac.exe"].some((f) => existsSync(join(dir, f)));
+      if (hasJava || /java|jdk|jre|adoptium|temurin/i.test(dir)) {
+        removed.push(`PATH entry ${dir}`);
+      } else {
+        kept.push(dir);
+      }
+    }
+    env[pathKey] = kept.join(";");
+    const where = spawnSync("where", ["java"], { env, encoding: "utf8" });
+    console.log(`--no-java: removed from the environment of the program: ${removed.join("; ") || "nothing"}`);
+    console.log(`           \`where java\` in that environment: ${where.status === 0 ? "FOUND " + where.stdout.trim() : "finds nothing"}`);
+    if (where.status === 0) {
+      throw new Error("Java is still on the PATH of the program.");
+    }
+  }
+  env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = `--remote-debugging-port=${port} --remote-allow-origins=* ${extraBrowserArgs}`.trim();
+  if (!defaultProfile) {
+    env.WEBVIEW2_USER_DATA_FOLDER = join(scratch, "webview2");
+  }
+  if (installedExe) {
+    // A release build must ignore this (row I-10); the installed program is one.
+    env.ADAPDF_VENDOR = "C:/nowhere";
+  }
+  return env;
+}
+
+const isLoopback = (address) => /^(127\.|\[::1\]|\[::ffff:127\.)/.test(address);
+
+/** Looks at the process tree of `rootPid` (and its network endpoints) until `stop()`. */
+function startWatch(rootPid) {
+  const look = join(here, "look-at-process-tree.ps1");
+  const procs = new Map(); // pid -> the process, at the first look that saw it
+  const connections = new Map(); // "pid proto local remote state" -> the endpoint
+  let looks = 0;
+  let running = true;
+  const loop = (async () => {
+    while (running) {
+      const run = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", look, String(rootPid)], {
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      try {
+        const seen = JSON.parse(run.stdout);
+        looks++;
+        for (const p of [].concat(seen.procs ?? [])) {
+          // A process that is ending can show no path in one look and have it in another.
+          const known = procs.get(p.pid);
+          procs.set(p.pid, known ? { ...p, exe: p.exe ?? known.exe, cmd: p.cmd ?? known.cmd } : p);
+        }
+        for (const c of [].concat(seen.conns ?? [])) {
+          const id = `${c.pid} ${c.proto} ${c.local} ${c.remote} ${c.state}`;
+          if (!connections.has(id)) connections.set(id, c);
+        }
+      } catch {
+        // A look that failed is not counted.
+      }
+      await sleep(200);
+    }
+  })();
+  return {
+    async stop() {
+      running = false;
+      await loop;
+      return { looks, procs: [...procs.values()], connections: [...connections.values()] };
+    },
+  };
+}
+
+/** Prints what the watch saw. Gives the problems found (an empty list is a pass). */
+function reportWatch(seen, vendorJre, exportRan) {
+  const problems = [];
+  const byName = new Map();
+  for (const p of seen.procs) byName.set(p.name, (byName.get(p.name) ?? 0) + 1);
+  console.log(`\nWatch: ${seen.looks} looks at the process tree of the program.`);
+  console.log(`  processes seen (${seen.procs.length}): ${[...byName].map(([n, c]) => `${n} x${c}`).join(", ")}`);
+  const javas = seen.procs.filter((p) => /^java\.exe$/i.test(p.name));
+  for (const j of javas) {
+    const path = j.exe ?? /^"([^"]+)"/.exec(j.cmd ?? "")?.[1];
+    console.log(`  java.exe pid ${j.pid} (parent ${j.ppid}): ${path}`);
+    console.log(`    command line: ${(j.cmd ?? "").slice(0, 400)}`);
+    if (!path || !path.toLowerCase().startsWith(vendorJre.toLowerCase())) {
+      problems.push(`a java.exe that is not the bundled one: ${path}`);
+    }
+  }
+  if (exportRan && javas.length === 0) {
+    problems.push("no java.exe was seen during the export (a run of veraPDF is shorter than a look?)");
+  }
+  const remote = seen.connections.filter((c) => c.remote && !isLoopback(c.remote) && !/^(\*:\*|0\.0\.0\.0:0|\[::\]:0)$/.test(c.remote));
+  const local = seen.connections.filter((c) => !remote.includes(c));
+  console.log(`  endpoints seen: ${seen.connections.length} (${local.length} on this machine only: listening, or the debugging port; ${remote.length} to other addresses)`);
+  for (const c of remote) {
+    const owned = seen.procs.find((p) => p.pid === c.pid);
+    const owner = owned?.name ?? "?";
+    const kind = /--type=[^ ]+( --utility-sub-type=[^ ]+)?/.exec(owned?.cmd ?? "")?.[0] ?? "(the main process of WebView2, or another)";
+    console.log(`    to another address: ${c.proto} ${c.local} -> ${c.remote} ${c.state} (pid ${c.pid}, ${owner}, ${kind})`);
+    problems.push(`a connection to another address: ${c.proto} ${c.local} -> ${c.remote} (${owner})`);
+  }
+  return problems;
+}
 
 // ------------------------------------------------------------------ DevTools
 
@@ -211,22 +361,23 @@ async function axeScreen(page, name) {
 // -------------------------------------------------------------------- run
 
 let child;
+let watcher;
+let exportRan = false;
 let failed = false;
-const before = { app: pids("adapdf-app.exe"), word: pids("WINWORD.EXE") };
+const before = { app: pids(exeName), word: pids("WINWORD.EXE") };
 console.log(`WINWORD.EXE before: ${before.word.length ? before.word.join(",") : "none"}`);
 
 try {
   const port = await freePort();
   child = spawn(exe, [], {
-    cwd: appCopy,
+    cwd: installedExe ? dirname(exe) : appCopy,
     stdio: "ignore",
-    env: {
-      ...process.env,
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-allow-origins=*`,
-      WEBVIEW2_USER_DATA_FOLDER: join(scratch, "webview2"),
-    },
+    env: programEnvironment(port),
   });
-  console.log(`Started adapdf-app.exe (process ${child.pid}), debugging port ${port}, folder ${scratch}`);
+  console.log(`Started ${exeName} (process ${child.pid}), debugging port ${port}, folder ${scratch}`);
+  if (watch) {
+    watcher = startWatch(child.pid);
+  }
 
   let target;
   for (let i = 0; i < 100 && !target; i++) {
@@ -352,6 +503,14 @@ try {
     await page.until("the result", hasHeading("Result for DOC-001-pass.docx"), 240);
     const verdict = await page.run(`document.querySelector(".verdict")?.textContent`);
     console.log(`     the real export of DOC-001-pass.docx gave: ${verdict}`);
+    exportRan = true;
+    const veraLines = await page.run(
+      `document.body.innerText.split("\\n").filter((l) => /veraPDF/.test(l)).slice(0, 4).join(" | ")`,
+    );
+    console.log(`     the result names veraPDF: ${veraLines}`);
+    if (installedExe && !/pass/i.test(verdict ?? "")) {
+      throw new Error(`The export from the installed program did not give a Pass: ${verdict}`);
+    }
     await axeScreen(page, `result: ${verdict}, with the empty sign-off form`);
     for (let i = 1; i <= 5; i++) {
       await page.run(`document.querySelector("#check-${i}").click()`);
@@ -370,13 +529,20 @@ try {
   failed = true;
   console.error(`FAILED: ${error.message}`);
 } finally {
+  if (watcher) {
+    const problems = reportWatch(await watcher.stop(), join(dirname(exe), "vendor", "jre", "bin") + "\\", exportRan);
+    if (problems.length > 0) {
+      failed = true;
+      for (const problem of problems) console.error(`FAILED: ${problem}`);
+    }
+  }
   // Only the process that this script started, and what it started.
   if (child?.pid) {
     spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
   }
   await sleep(1500);
-  const after = { app: pids("adapdf-app.exe"), word: pids("WINWORD.EXE") };
-  console.log(`adapdf-app.exe after: ${after.app.length ? after.app.join(",") : "none"}; WINWORD.EXE after: ${after.word.length ? after.word.join(",") : "none"}`);
+  const after = { app: pids(exeName), word: pids("WINWORD.EXE") };
+  console.log(`${exeName} after: ${after.app.length ? after.app.join(",") : "none"}; WINWORD.EXE after: ${after.word.length ? after.word.join(",") : "none"}`);
   try {
     rmSync(scratch, { recursive: true, force: true });
   } catch (error) {

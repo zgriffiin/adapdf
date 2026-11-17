@@ -34,6 +34,10 @@
       "icons/128x128@2x.png",
       "icons/icon.ico"
     ],
+    "publisher": "Adapdf",
+    "licenseFile": "../../THIRD-PARTY.md",
+    "shortDescription": "Accessible PDFs from Word documents",
+    "longDescription": "Checks Word training guides for accessibility problems, fixes what it safely can, and exports a tagged PDF with a report.",
     "windows": {
       "webviewInstallMode": { "type": "skip" },
       "nsis": { "installMode": "currentUser" }

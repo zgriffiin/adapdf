@@ -1,0 +1,10 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "resources": {
+      "bundle-staging/vendor/": "vendor/",
+      "../../THIRD-PARTY.md": "THIRD-PARTY.md",
+      "../node_modules/@ibm/plex-sans/LICENSE.txt": "licenses/IBM-Plex-OFL-1.1.txt"
+    }
+  }
+}

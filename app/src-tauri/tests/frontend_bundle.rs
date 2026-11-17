@@ -374,20 +374,9 @@ fn the_capabilities_are_minimal() {
     }
 }
 
-/// Rows I-02 and I-08 (the settings only; M5b builds the installer): a per-user
-/// install, and no download of WebView2.
+/// The window accepts a dropped file (a Tauri drag and drop event). The installer
+/// settings (rows I-02, I-08 and I-11) are tested in `installer_config.rs`.
 #[test]
-fn the_installer_settings_are_per_user_and_download_nothing() {
-    let config = config();
-    assert_eq!(
-        config["bundle"]["windows"]["webviewInstallMode"],
-        serde_json::json!({ "type": "skip" })
-    );
-    assert_eq!(
-        config["bundle"]["windows"]["nsis"]["installMode"],
-        "currentUser"
-    );
-    assert_eq!(config["bundle"]["targets"], serde_json::json!(["nsis"]));
-    // The window accepts a dropped file (a Tauri drag and drop event).
-    assert_eq!(config["app"]["windows"][0]["dragDropEnabled"], true);
+fn the_window_accepts_a_dropped_file() {
+    assert_eq!(config()["app"]["windows"][0]["dragDropEnabled"], true);
 }
