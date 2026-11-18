@@ -1,13 +1,17 @@
-//! What the tool does before and while it writes a .docx (spec 02, stage 2):
+//! What the tool does before and while it writes a .docx (spec 02, stage 2).
 //!
-//! 1. refuse when Word has the file open (the `~$` owner file, then an
-//!    exclusive open of the file),
-//! 2. write the backup `Guide.backup-<yyyymmdd-hhmmss>.docx` and read it back,
-//! 3. write the new file to a temporary file in the same folder, then replace
-//!    the original with it.
+//! The user's original is never written. Everything the tool makes goes into
+//! one folder next to it, `Guide - Adapdf`. Fixes go into the accessible copy
+//! `Guide - Adapdf\Guide (accessible).docx`:
 //!
-//! If anything fails, the original file is as it was. All file calls go
-//! through [`FileSystem`], so a test can record them or make one fail.
+//! 1. refuse when Word has the file that will be written open (the `~$` owner
+//!    file, then an exclusive open of the file),
+//! 2. write the new file to a temporary file in the same folder, then move it
+//!    over the copy (or into place, when the copy is new).
+//!
+//! If anything fails, the copy is as it was (or not there) and the original is
+//! untouched. All file calls go through [`FileSystem`], so a test can record
+//! them or make one fail.
 
 use std::any::Any;
 use std::io::{self, Read, Write};
@@ -16,8 +20,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::FixError;
 
-/// How many backups and temporary files with the same name are tried before
-/// the tool gives up.
+/// How many temporary files with the same name are tried before the tool
+/// gives up.
 const MAX_NAME_TRIES: u32 = 100;
 
 /// The file calls of stage 2.
@@ -34,6 +38,9 @@ pub trait FileSystem {
     /// Moves a file over another one.
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()>;
     fn remove_file(&self, path: &Path) -> io::Result<()>;
+    /// Makes a folder and the folders above it. It is not an error when the
+    /// folder exists.
+    fn create_dir_all(&self, path: &Path) -> io::Result<()>;
 }
 
 /// The real file system.
@@ -79,10 +86,14 @@ impl FileSystem for RealFs {
     fn remove_file(&self, path: &Path) -> io::Result<()> {
         std::fs::remove_file(path)
     }
+
+    fn create_dir_all(&self, path: &Path) -> io::Result<()> {
+        std::fs::create_dir_all(path)
+    }
 }
 
-/// A date and time, for the name of the backup. [`Timestamp::now`] is the
-/// clock; a test gives a fixed one.
+/// A date and time, for the report. [`Timestamp::now`] is the clock; a test
+/// gives a fixed one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Timestamp {
     pub year: i64,
@@ -145,14 +156,6 @@ impl Timestamp {
             self.year, self.month, self.day, self.hour, self.minute, self.second
         )
     }
-
-    /// `yyyymmdd-hhmmss`.
-    pub fn backup_stamp(&self) -> String {
-        format!(
-            "{:04}{:02}{:02}-{:02}{:02}{:02}",
-            self.year, self.month, self.day, self.hour, self.minute, self.second
-        )
-    }
 }
 
 /// The name Word gives the owner (lock) file of a document, for the file name
@@ -197,7 +200,8 @@ pub fn find_lock_file(fs: &dyn FileSystem, path: &Path) -> Option<PathBuf> {
 /// let go of the file.
 pub struct Opened {
     pub bytes: Vec<u8>,
-    handle: Box<dyn Any>,
+    /// Held only to keep the file locked until the value is dropped.
+    _handle: Box<dyn Any>,
 }
 
 /// Checks that Word does not have the file open, and opens it for writing with
@@ -215,89 +219,185 @@ pub fn open_for_fixing(fs: &dyn FileSystem, path: &Path) -> Result<Opened, FixEr
             file: path.to_path_buf(),
             source,
         })?;
-    Ok(Opened { bytes, handle })
+    Ok(Opened {
+        bytes,
+        _handle: handle,
+    })
 }
 
-/// `Guide.docx` in the same folder as `path` with `.backup-<stamp>` added.
-fn backup_path(path: &Path, stamp: &str, attempt: u32) -> PathBuf {
-    let stem = path.file_stem().map_or_else(
-        || "document".to_string(),
-        |s| s.to_string_lossy().into_owned(),
-    );
-    let suffix = if attempt == 0 {
-        String::new()
-    } else {
-        format!("-{attempt}")
+/// The ending that the name of an accessible copy has before `.docx`.
+pub const COPY_SUFFIX: &str = " (accessible)";
+
+fn stem_of(path: &Path) -> Option<String> {
+    Some(path.file_stem()?.to_string_lossy().into_owned())
+}
+
+fn is_docx(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|e| e.to_string_lossy().eq_ignore_ascii_case("docx"))
+}
+
+/// The name of a copy without [`COPY_SUFFIX`], when `path` names a copy
+/// (`Guide (accessible).docx` gives `Guide`). The check ignores case, as
+/// Windows does.
+pub fn original_stem(path: &Path) -> Option<String> {
+    if !is_docx(path) {
+        return None;
+    }
+    let stem = stem_of(path)?;
+    let cut = stem.len().checked_sub(COPY_SUFFIX.len())?;
+    let (start, end) = (stem.get(..cut)?, stem.get(cut..)?);
+    (end.eq_ignore_ascii_case(COPY_SUFFIX) && !start.trim().is_empty()).then(|| start.to_string())
+}
+
+/// True when the file name is `<name> (accessible).docx`: the working copy.
+pub fn is_accessible_copy(path: &Path) -> bool {
+    original_stem(path).is_some()
+}
+
+/// The ending of the folder that holds everything made for a guide.
+pub const FOLDER_SUFFIX: &str = " - Adapdf";
+
+/// The folder for the original `Guide.docx`: `Guide - Adapdf`, next to it.
+pub fn adapdf_folder(original: &Path) -> PathBuf {
+    let stem = stem_of(original).unwrap_or_else(|| "document".to_string());
+    original.with_file_name(format!("{stem}{FOLDER_SUFFIX}"))
+}
+
+/// The accessible copy that fixes go into: `Guide (accessible).docx` in the
+/// folder `Guide - Adapdf` next to `Guide.docx`. For a file that is already a
+/// copy, the file itself.
+pub fn accessible_copy_path(path: &Path) -> PathBuf {
+    if is_accessible_copy(path) {
+        return path.to_path_buf();
+    }
+    let stem = stem_of(path).unwrap_or_else(|| "document".to_string());
+    adapdf_folder(path).join(format!("{stem}{COPY_SUFFIX}.docx"))
+}
+
+/// The original of a copy: `Guide.docx` for `Guide - Adapdf\Guide
+/// (accessible).docx`. A copy that is not in a folder of that name (it was moved)
+/// has its original named in its own folder. For a file that is not a copy, the
+/// file itself.
+pub fn original_path(path: &Path) -> PathBuf {
+    let Some(stem) = original_stem(path) else {
+        return path.to_path_buf();
     };
-    path.with_file_name(format!("{stem}.backup-{stamp}{suffix}.docx"))
+    let folder = path.parent();
+    let in_its_folder = folder.and_then(|f| f.file_name()).is_some_and(|name| {
+        name.to_string_lossy()
+            .eq_ignore_ascii_case(&format!("{stem}{FOLDER_SUFFIX}"))
+    });
+    match folder {
+        Some(folder) if in_its_folder => folder.with_file_name(format!("{stem}.docx")),
+        _ => path.with_file_name(format!("{stem}.docx")),
+    }
 }
 
-/// Writes the backup (and reads it back), then replaces the file with `new`.
-/// Returns the path of the backup.
+/// The folder where the PDF and the reports of `docx` go: the folder of the
+/// file when it is an accessible copy, and `Guide - Adapdf` for an original.
+pub fn output_folder(docx: &Path) -> PathBuf {
+    if is_accessible_copy(docx) {
+        match docx.parent() {
+            Some(folder) if !folder.as_os_str().is_empty() => folder.to_path_buf(),
+            _ => PathBuf::from("."),
+        }
+    } else {
+        adapdf_folder(docx)
+    }
+}
+
+/// The name that the PDF and the reports have, without the extension: the
+/// name of the original, so `Guide` for `Guide (accessible).docx`.
+pub fn output_stem(docx: &Path) -> String {
+    original_stem(docx)
+        .or_else(|| stem_of(docx))
+        .unwrap_or_else(|| "document".to_string())
+}
+
+/// What to do when the accessible copy of an original already exists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExistingCopy {
+    /// Stop with [`FixError::CopyExists`]. Nothing is written.
+    Refuse,
+    /// Replace the copy, with everything that was changed in it since.
+    Replace,
+}
+
+/// What a write to the copy needs: the bytes to start from, the copy, and the
+/// hold on the copy while it exists.
+pub struct Prepared {
+    /// The bytes that the fixes start from: the original, or the copy.
+    pub bytes: Vec<u8>,
+    /// The file that is written.
+    pub copy: PathBuf,
+    held: Option<Opened>,
+}
+
+/// Checks everything that can stop a write and reads the file that the fixes
+/// start from. Nothing is written.
 ///
-/// The original is not changed unless the last step, the move of the
-/// temporary file over it, succeeds.
-pub fn write_with_backup(
+/// - `path` is a copy: Word must not have it open (the lock file, then an
+///   exclusive open), and it is both the start and the target.
+/// - `path` is an original: it is only read. If its copy exists, `existing`
+///   says what to do, and a copy that is going to be replaced must not be open
+///   in Word either.
+pub fn prepare(
     fs: &dyn FileSystem,
     path: &Path,
-    opened: Opened,
-    new: &[u8],
-    now: Timestamp,
-) -> Result<PathBuf, FixError> {
-    let original = &opened.bytes;
-    let stamp = now.backup_stamp();
-    let backup = write_backup(fs, path, original, &stamp)?;
-
-    let temp = write_temp(fs, path, new)?;
-    drop(opened.handle); // let go of the file so it can be replaced
-    if let Err(source) = fs.rename(&temp, path) {
-        let _ = fs.remove_file(&temp);
-        return Err(FixError::Write {
-            file: path.to_path_buf(),
-            source,
+    existing: ExistingCopy,
+) -> Result<Prepared, FixError> {
+    let copy = accessible_copy_path(path);
+    if is_accessible_copy(path) {
+        let opened = open_for_fixing(fs, path)?;
+        return Ok(Prepared {
+            bytes: opened.bytes.clone(),
+            copy,
+            held: Some(opened),
         });
     }
-    Ok(backup)
+    let held = if fs.exists(&copy) {
+        if existing == ExistingCopy::Refuse {
+            return Err(FixError::CopyExists {
+                original: path.to_path_buf(),
+                copy,
+            });
+        }
+        Some(open_for_fixing(fs, &copy)?)
+    } else {
+        None
+    };
+    let bytes = fs.read(path).map_err(|source| FixError::CannotRead {
+        file: path.to_path_buf(),
+        source,
+    })?;
+    Ok(Prepared { bytes, copy, held })
 }
 
-fn write_backup(
-    fs: &dyn FileSystem,
-    path: &Path,
-    original: &[u8],
-    stamp: &str,
-) -> Result<PathBuf, FixError> {
-    for attempt in 0..MAX_NAME_TRIES {
-        let backup = backup_path(path, stamp, attempt);
-        let failed = |source: io::Error| FixError::Backup {
-            backup: backup.clone(),
-            source,
-        };
-        match fs.write_new(&backup, original) {
-            Ok(()) => {}
-            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(e) => {
-                let _ = fs.remove_file(&backup);
-                return Err(failed(e));
-            }
+impl Prepared {
+    /// Writes `new` to the copy: a temporary file in the same folder first,
+    /// then a move over the copy. When this fails, the copy is as it was.
+    pub fn write(self, fs: &dyn FileSystem, new: &[u8]) -> Result<PathBuf, FixError> {
+        if let Some(folder) = self.copy.parent().filter(|f| !f.as_os_str().is_empty())
+            && !fs.exists(folder)
+        {
+            fs.create_dir_all(folder)
+                .map_err(|source| FixError::Write {
+                    file: self.copy.clone(),
+                    source,
+                })?;
         }
-        match fs.read(&backup) {
-            Ok(copy) if copy == original => return Ok(backup),
-            Ok(_) => {
-                let _ = fs.remove_file(&backup);
-                return Err(failed(io::Error::other(
-                    "the copy is not the same as the file",
-                )));
-            }
-            Err(e) => {
-                let _ = fs.remove_file(&backup);
-                return Err(failed(e));
-            }
+        let temp = write_temp(fs, &self.copy, new)?;
+        drop(self.held); // let go of the copy so it can be replaced
+        if let Err(source) = fs.rename(&temp, &self.copy) {
+            let _ = fs.remove_file(&temp);
+            return Err(FixError::Write {
+                file: self.copy,
+                source,
+            });
         }
+        Ok(self.copy)
     }
-    Err(FixError::Backup {
-        backup: backup_path(path, stamp, 0),
-        source: io::Error::other("every backup name is already used"),
-    })
 }
 
 fn write_temp(fs: &dyn FileSystem, path: &Path, new: &[u8]) -> Result<PathBuf, FixError> {
@@ -333,13 +433,13 @@ mod tests {
     #[test]
     fn timestamps_from_unix_seconds() {
         let t = Timestamp::from_unix_seconds(0);
-        assert_eq!(t.backup_stamp(), "19700101-000000");
+        assert_eq!(t.display(), "1970-01-01 00:00:00");
         // 2026-03-05 10:15:30 UTC
         let t = Timestamp::from_unix_seconds(1_772_705_730);
-        assert_eq!(t.backup_stamp(), "20260305-101530");
+        assert_eq!(t.display(), "2026-03-05 10:15:30");
         // 2024-02-29 23:59:59 UTC (a leap day)
         let t = Timestamp::from_unix_seconds(1_709_251_199);
-        assert_eq!(t.backup_stamp(), "20240229-235959");
+        assert_eq!(t.display(), "2024-02-29 23:59:59");
     }
 
     #[test]
@@ -360,15 +460,55 @@ mod tests {
     }
 
     #[test]
-    fn backup_names() {
-        let p = Path::new("C:/guides/Guide.docx");
+    fn copy_names() {
+        let original = Path::new("C:/guides/Guide.docx");
+        let copy = Path::new("C:/guides/Guide - Adapdf/Guide (accessible).docx");
         assert_eq!(
-            backup_path(p, "20260305-101530", 0),
-            Path::new("C:/guides/Guide.backup-20260305-101530.docx")
+            adapdf_folder(original),
+            Path::new("C:/guides/Guide - Adapdf")
         );
+        assert_eq!(accessible_copy_path(original), copy);
+        assert!(!is_accessible_copy(original));
+        assert!(is_accessible_copy(copy));
+        // A copy is its own copy: no `(accessible) (accessible)`.
+        assert_eq!(accessible_copy_path(copy), copy);
+        assert_eq!(original_path(copy), original);
+        assert_eq!(original_path(original), original);
+        // The outputs: in the folder of the guide, named after the original.
         assert_eq!(
-            backup_path(p, "20260305-101530", 2),
-            Path::new("C:/guides/Guide.backup-20260305-101530-2.docx")
+            output_folder(original),
+            Path::new("C:/guides/Guide - Adapdf")
+        );
+        assert_eq!(output_folder(copy), Path::new("C:/guides/Guide - Adapdf"));
+        assert_eq!(output_stem(original), "Guide");
+        assert_eq!(output_stem(copy), "Guide");
+        // A copy that is somewhere else: its original is named next to it, and
+        // the outputs are next to it.
+        let elsewhere = Path::new("D:/other/Guide (accessible).docx");
+        assert!(is_accessible_copy(elsewhere));
+        assert_eq!(original_path(elsewhere), Path::new("D:/other/Guide.docx"));
+        assert_eq!(output_folder(elsewhere), Path::new("D:/other"));
+        // The ending is found whatever its case, as Windows sees the name.
+        assert!(is_accessible_copy(Path::new("a/Guide (ACCESSIBLE).DOCX")));
+        // Not a copy: another ending, another extension, or no name before it.
+        for other in [
+            "Guide (accessible).doc",
+            "Guide (accessible) 2.docx",
+            "Guide(accessible).docx",
+            " (accessible).docx",
+            "Guide.docx",
+        ] {
+            assert!(!is_accessible_copy(Path::new(other)), "{other}");
+        }
+        // The copy of a name that holds dots, spaces and non-ASCII letters.
+        assert_eq!(
+            accessible_copy_path(Path::new("x/2026.11.18 - Guía v2.1.docx")),
+            Path::new("x/2026.11.18 - Guía v2.1 - Adapdf/2026.11.18 - Guía v2.1 (accessible).docx")
+        );
+        // A relative name.
+        assert_eq!(
+            accessible_copy_path(Path::new("Guide.docx")),
+            Path::new("Guide - Adapdf/Guide (accessible).docx")
         );
     }
 }

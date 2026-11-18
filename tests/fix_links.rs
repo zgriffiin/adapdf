@@ -700,7 +700,7 @@ fn fix_both_link_fixes_in_one_run_clear_both_findings() {
 }
 
 #[test]
-fn fix_the_link_fixes_write_a_backup_and_the_new_file() {
+fn fix_the_link_fixes_write_the_accessible_copy_and_leave_the_original() {
     let original = guide_with_both_problems();
     let dir = TempDir::new("link-fixes");
     let path = dir.write("Guide.docx", &original);
@@ -709,9 +709,13 @@ fn fix_the_link_fixes_write_a_backup_and_the_new_file() {
     requests.extend(requests_for(&found, RuleId::Lnk005, ""));
     let outcome = fix_file(&path, &requests).expect("the run works");
     assert!(outcome.refused.is_empty());
-    let backup = outcome.backup.expect("a backup");
-    assert_eq!(fs::read(&backup).unwrap(), original);
-    assert_ne!(fs::read(&path).unwrap(), original);
+    let copy = outcome.copy.expect("an accessible copy");
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        original,
+        "the original is not changed"
+    );
+    assert_ne!(fs::read(&copy).unwrap(), original);
     assert!(of(&outcome.findings, RuleId::Lnk004).is_empty());
     assert!(of(&outcome.findings, RuleId::Lnk005).is_empty());
 }
@@ -760,7 +764,13 @@ fn cli_fix_offers_both_link_fixes_and_applies_them() {
         "{stdout}"
     );
     assert!(stdout.contains("No problems found."), "{stdout}");
-    let model = Document::open(&path).unwrap();
+    let copy = adapdf::fix::accessible_copy_path(&path);
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        original,
+        "the original is not changed"
+    );
+    let model = Document::open(&copy).unwrap();
     assert!(model.links.iter().all(|l| l.has_screen_tip() || l.in_toc));
 }
 

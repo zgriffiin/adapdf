@@ -7,7 +7,7 @@ members = ["app/src-tauri"]
 
 [package]
 name = "adapdf"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.88"
 description = "Checks Word training guides for accessibility problems before PDF export."

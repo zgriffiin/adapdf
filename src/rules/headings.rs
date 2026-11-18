@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 
-use crate::docx::{DOCUMENT_PART, STYLES_PART};
+use crate::docx::DOCUMENT_PART;
 use crate::findings::{Finding, Location, RuleId};
 use crate::model::{Document, Paragraph};
 
@@ -63,7 +63,7 @@ pub fn hdg_002(doc: &Document) -> Vec<Finding> {
             findings.push(Finding::new(
                 RuleId::Hdg002,
                 message,
-                format!("Change this heading to Heading {missing}, or add a Heading {missing} before it. Use the heading levels in order, and do not choose a level for its size."),
+                format!("Click in this heading and choose Heading {missing} in the Styles gallery (Home tab > Styles), or add a Heading {missing} before it. Use the heading levels in order, and do not choose a level for its size."),
                 Location::paragraph(doc, h),
             ));
         }
@@ -175,7 +175,7 @@ pub fn hdg_006(doc: &Document) -> Vec<Finding> {
                 RuleId::Hdg006,
                 format!("The style \"{name}\" has outline level {level} but is not a built-in Heading style. Word may not export its paragraphs as headings."),
                 "Use the built-in Heading 1 to Heading 4 styles for headings. Remove the outline level from the style (Modify Style > Format > Paragraph > Outline level: Body Text), or change these paragraphs to a Heading style.",
-                Location::paragraph_in(doc, p, STYLES_PART),
+                Location::style(doc, p),
             ));
         }
     }

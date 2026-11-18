@@ -1,4 +1,4 @@
-//! The local time on Windows, for the name of the backup. The one call here
+//! The local time on Windows, for the fix log and the report. The one call here
 //! is the only `unsafe` code outside `src/word`.
 
 use windows::Win32::System::SystemInformation::GetLocalTime;

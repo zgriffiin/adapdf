@@ -1,5 +1,7 @@
 {
-  "backup": "Guide.backup-20260305-101530.docx",
+  "copy": "C:\\Docs\\Guide - Adapdf\\Guide (accessible).docx",
+  "working_file": "C:\\Docs\\Guide - Adapdf\\Guide (accessible).docx",
+  "original": "C:\\Docs\\Guide.docx",
   "applied": [
     {
       "rule_id": "LST-001",

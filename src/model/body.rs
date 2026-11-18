@@ -8,7 +8,7 @@ use super::styles::Styles;
 use super::table_styles::{CellFmt, CellPos, TableProps};
 use super::tables::{self, Table};
 use super::theme::{Rgb, Theme};
-use super::{Drawing, Paragraph, Run, Section, drawings};
+use super::{Drawing, HeaderFooterKind, HeaderFooterRef, Paragraph, Run, Section, drawings};
 use crate::docx::{DOCUMENT_PART, MC_NS, WordNode, parse_xml};
 use crate::error::{Error, Result};
 
@@ -17,6 +17,8 @@ pub(super) struct Context<'a> {
     pub theme: &'a Theme,
     pub styles: &'a Styles,
     pub numbering: &'a Numbering,
+    /// The relationship id and part name of each header and footer.
+    pub header_footer_rels: &'a [(String, String)],
 }
 
 pub(super) struct Body {
@@ -72,12 +74,12 @@ pub(super) fn parse(text: &str, ctx: &Context) -> Result<Body> {
         let section = sections.len();
         paragraphs.push(parse_paragraph(node, ppr, paragraphs.len(), section, ctx));
         if let Some(sect) = ppr.and_then(|p| p.w_child("sectPr")) {
-            sections.push(parse_section(sect));
+            sections.push(parse_section(sect, ctx));
         }
     }
     sections.push(
         body.w_child("sectPr")
-            .map_or(Section::default(), parse_section),
+            .map_or(Section::default(), |sect| parse_section(sect, ctx)),
     );
 
     let tables = tables::parse(body, &paragraphs);
@@ -100,13 +102,37 @@ pub(super) fn is_alternative_content(p: Node) -> bool {
     })
 }
 
-fn parse_section(sect: Node) -> Section {
+fn parse_section(sect: Node, ctx: &Context) -> Section {
+    let header_footers = sect
+        .children()
+        .filter(|n| n.is_w("headerReference") || n.is_w("footerReference"))
+        .filter_map(|n| {
+            let id = n.attribute((super::R_NS, "id"))?;
+            let part = ctx
+                .header_footer_rels
+                .iter()
+                .find(|(rel_id, _)| rel_id == id)?
+                .1
+                .clone();
+            let kind = match n.w_attr("type") {
+                Some("first") => HeaderFooterKind::First,
+                Some("even") => HeaderFooterKind::Even,
+                _ => HeaderFooterKind::Default,
+            };
+            Some(HeaderFooterRef {
+                part,
+                footer: n.is_w("footerReference"),
+                kind,
+            })
+        })
+        .collect();
     Section {
         columns: sect
             .w_child("cols")
             .and_then(|c| c.w_attr("num"))
             .and_then(|v| v.parse().ok())
             .unwrap_or(1),
+        header_footers,
     }
 }
 

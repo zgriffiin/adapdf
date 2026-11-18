@@ -4,8 +4,9 @@
       "rule_id": "DOC-001",
       "severity": "error",
       "message": "The document has no title in its properties. PDF viewers show this title in the window bar, and screen readers read it out.",
-      "how_to_fix": "In Word, choose File > Info and type a title in the Title box.",
+      "how_to_fix": "In Word, choose File > Info, and type a title in the Title box on the right (choose Show All Properties if the box is not there).",
       "location": {
+        "place": "The document's properties (File > Info)",
         "heading": null,
         "snippet": null,
         "paragraph_index": null,
@@ -15,8 +16,20 @@
         "kind": "ask",
         "id": "set-title"
       },
-      "suggestion": "Test guide"
+      "suggestion": null
     },
+    "suggestions": [
+      {
+        "source": "file-name",
+        "label": "Use the file name",
+        "text": "Guide"
+      },
+      {
+        "source": "first-heading1",
+        "label": "Use the first Heading 1",
+        "text": "Test guide"
+      }
+    ],
     "position": 0,
     "fix": "set-title",
     "ask": true,

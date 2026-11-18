@@ -11,12 +11,21 @@ import type {
   OfferView,
   ReportView,
   Signoff,
+  WorkingInfo,
 } from "./types";
 
 export const check = (path: string) => invoke<CheckResult>("check", { path });
+export const workingInfo = (path: string) => invoke<WorkingInfo>("working_info", { path });
+/** Makes the accessible copy with no fix. `startOver` replaces a copy that exists. */
+export const createCopy = (path: string, startOver: boolean) =>
+  invoke<WorkingInfo>("create_copy", { path, startOver });
+/** Opens the accessible copy in the person's own Word. The app does not control it afterwards. */
+export const openInWord = (path: string) => invoke<void>("open_in_word", { path });
+/** Opens the folder that holds a document or a report. */
+export const openFolder = (path: string) => invoke<void>("open_folder", { path });
 export const fixOffers = (path: string) => invoke<OfferView[]>("fix_offers", { path });
-export const applyFixes = (path: string, choices: Choice[]) =>
-  invoke<ApplyResult>("apply_fixes", { path, choices });
+export const applyFixes = (path: string, choices: Choice[], startOver: boolean) =>
+  invoke<ApplyResult>("apply_fixes", { path, choices, startOver });
 export const exportPdf = (path: string) => invoke<ExportResult>("export", { path });
 export const openReport = (path: string) => invoke<void>("open_report", { path });
 export const readReport = (path: string) => invoke<ReportView>("read_report", { path });
@@ -41,6 +50,17 @@ export async function chooseReport(): Promise<string | null> {
     directory: false,
     title: "Choose an accessibility report",
     filters: [{ name: "Accessibility reports", extensions: ["json"] }],
+  });
+  return typeof chosen === "string" ? chosen : null;
+}
+
+/** Asks for the PAC report file, starting in the folder of the guide. `null` when the person cancels. */
+export async function choosePacReport(folder: string): Promise<string | null> {
+  const chosen = await open({
+    multiple: false,
+    directory: false,
+    title: "Choose the PAC report file",
+    defaultPath: folder,
   });
   return typeof chosen === "string" ? chosen : null;
 }

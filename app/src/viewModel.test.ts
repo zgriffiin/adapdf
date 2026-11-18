@@ -3,11 +3,15 @@ import { describe, expect, it } from "vitest";
 
 import { doc001, img001, img007, lst002, offerOf, txb004 } from "./test/backend";
 import {
+  applyHint,
   canApply,
   canExport,
   choicesFrom,
   emptySelection,
+  fileNameOf,
+  folderOf,
   groupBySeverity,
+  precheckText,
   offerKey,
   summaryText,
 } from "./viewModel";
@@ -56,8 +60,8 @@ describe("app_never_prefills_typed_text (A-03)", () => {
   const alt = offerOf(img001);
 
   it("makes no choice from a suggestion", () => {
-    // The finding has a suggestion, and the person has typed nothing.
-    expect(title.finding.suggestion).not.toBeNull();
+    // The offer has texts from the document, and the person has typed or chosen nothing.
+    expect(title.suggestions.length).toBeGreaterThan(0);
     expect(choicesFrom([title, alt], emptySelection)).toEqual([]);
     expect(canApply([title, alt], emptySelection, false)).toBe(false);
   });
@@ -94,5 +98,45 @@ describe("app_never_prefills_typed_text (A-03)", () => {
     });
     const selection = { ...emptySelection, ticked: new Set([offerKey(blocked)]) };
     expect(choicesFrom([blocked], selection)).toEqual([]);
+  });
+});
+
+describe("what the screen says while Apply is off (D)", () => {
+  it("says nothing when a fix is chosen", () => {
+    expect(applyHint([offerOf(lst002.lst001)], 1)).toBeNull();
+  });
+
+  it("says to choose a fix when there is no title to give", () => {
+    expect(applyHint([offerOf(lst002.lst001)], 0)).toBe("Choose at least one fix to apply.");
+    expect(applyHint([], 0)).toBe("Choose at least one fix to apply.");
+  });
+
+  it("names the title when it is the only fix", () => {
+    expect(applyHint([offerOf(doc001)], 0)).toBe("Type a title, or choose a suggestion, to apply this fix.");
+  });
+
+  it("names both when the title and other fixes are there", () => {
+    expect(applyHint([offerOf(doc001), offerOf(lst002.lst001)], 0)).toBe(
+      "Choose at least one fix to apply. For the title, type it, or choose a suggestion.",
+    );
+  });
+
+  it("leaves out a title that cannot be fixed now", () => {
+    const blocked = offerOf(doc001, { availability: { status: "unavailable", reason: "Not now." } });
+    expect(applyHint([blocked], 0)).toBe("Choose at least one fix to apply.");
+  });
+});
+
+describe("the names of files and folders", () => {
+  it("are cut from a Windows path", () => {
+    expect(fileNameOf("C:\\Docs\\Guide - Adapdf\\Guide (accessible).docx")).toBe("Guide (accessible).docx");
+    expect(folderOf("C:\\Docs\\Guide - Adapdf\\Guide (accessible).docx")).toBe("C:\\Docs\\Guide - Adapdf");
+    expect(fileNameOf("Guide.docx")).toBe("Guide.docx");
+    expect(folderOf("Guide.docx")).toBe("");
+  });
+
+  it("say the pre-check counts with the plural", () => {
+    expect(precheckText(1, 0)).toBe("1 error, 0 warnings");
+    expect(precheckText(2, 1)).toBe("2 errors, 1 warning");
   });
 });

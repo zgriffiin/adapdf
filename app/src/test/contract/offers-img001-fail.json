@@ -6,6 +6,7 @@
       "message": "A picture has no alt text and is not marked decorative. Screen reader users get nothing for it.",
       "how_to_fix": "Right-click it and choose View Alt Text. Describe what it shows, for the purpose of this guide. If it adds no information, select Mark as decorative.",
       "location": {
+        "place": "paragraph 3 (no text), after the heading \"Test guide\"",
         "heading": "Test guide",
         "snippet": "",
         "paragraph_index": 2,
@@ -17,6 +18,7 @@
       },
       "suggestion": null
     },
+    "suggestions": [],
     "position": 0,
     "fix": "set-alt-text",
     "ask": true,

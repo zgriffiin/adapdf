@@ -19,6 +19,7 @@
 //! (`profiles/*/PDF_UA/WCAG-2-2-Machine.xml`), it is run as well, and its
 //! results are warnings. They do not change pass or fail.
 
+mod place;
 mod report;
 pub mod rules;
 
@@ -31,6 +32,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
+pub use place::{StructIndex, add_places, describe as describe_place};
 pub use report::{Profile, ProfileResult, VeraFinding, parse};
 
 /// Stage 5 could not run, or it did not give a result. These are tool
@@ -304,6 +306,16 @@ pub struct Validation {
 }
 
 impl Validation {
+    /// Puts the place in words in each finding that has a path (see
+    /// [`describe_place`]). `index` is the structure tree of the PDF, for the
+    /// numbers.
+    pub fn add_places(&mut self, index: Option<&StructIndex>) {
+        add_places(&mut self.ua1.findings, index);
+        if let WcagOutcome::Ran(wcag) = &mut self.wcag {
+            add_places(&mut wcag.findings, index);
+        }
+    }
+
     /// The version of veraPDF that gave the result, if its report says it.
     pub fn verapdf_version(&self) -> Option<&str> {
         self.ua1.verapdf_version.as_deref()

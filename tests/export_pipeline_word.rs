@@ -53,7 +53,7 @@ fn long() -> WordOnly {
     })
 }
 
-/// Writes the PDF and the reports of an earlier run next to `Guide.docx`.
+/// Writes the PDF and the reports of an earlier run next to `Guide (accessible).docx`.
 fn write_earlier_outputs(dir: &TempDir) {
     dir.write("Guide.pdf", b"%PDF-1.4 an earlier export");
     dir.write(
@@ -68,9 +68,9 @@ fn assert_earlier_outputs_untouched(dir: &TempDir) {
     assert_eq!(
         names(dir.path()),
         [
+            "Guide (accessible).docx",
             "Guide.accessibility.html",
             "Guide.accessibility.json",
-            "Guide.docx",
             "Guide.pdf"
         ],
         "no new or temporary file"
@@ -101,12 +101,19 @@ fn pipeline_word_exit_2_when_word_cannot_open_the_file() {
     let _lock = exclusive();
     let before = word_pids();
     let dir = TempDir::new("pipeline-word-open");
-    let docx = dir.write("Guide.docx", &without_content_types(&clean().build()));
+    let docx = dir.write(
+        "Guide (accessible).docx",
+        &without_content_types(&clean().build()),
+    );
     write_earlier_outputs(&dir);
     let run = export_docx(&docx, &long(), &FixtureFonts, Timestamp::now());
     assert_eq!(run.exit, Exit::ToolFailure, "{}", run.stdout);
     assert!(run.stdout.is_empty());
-    assert!(run.stderr.contains("Guide.docx"), "{}", run.stderr);
+    assert!(
+        run.stderr.contains("Guide (accessible).docx"),
+        "{}",
+        run.stderr
+    );
     assert!(run.stderr.contains("corrupted"), "{}", run.stderr);
     assert_earlier_outputs_untouched(&dir);
     assert_eq!(wait_for_word_pids(&before), before);
@@ -118,7 +125,7 @@ fn pipeline_word_exit_2_on_a_timeout() {
     let _lock = exclusive();
     let before = word_pids();
     let dir = TempDir::new("pipeline-word-timeout");
-    let docx = dir.write("Guide.docx", &clean().build());
+    let docx = dir.write("Guide (accessible).docx", &clean().build());
     write_earlier_outputs(&dir);
     let stages = WordOnly(ExportOptions {
         timeout: Duration::from_millis(1),
@@ -174,7 +181,7 @@ fn pipeline_word_exit_2_for_a_locked_pdf_and_exit_0_for_one_to_replace() {
     let _lock = exclusive();
     let before = word_pids();
     let dir = TempDir::new("pipeline-word-locked");
-    let docx = dir.write("Guide.docx", &clean().build());
+    let docx = dir.write("Guide (accessible).docx", &clean().build());
     let pdf = dir.write("Guide.pdf", b"%PDF-1.4 an earlier export");
 
     let holder = fs::OpenOptions::new()
@@ -189,7 +196,7 @@ fn pipeline_word_exit_2_for_a_locked_pdf_and_exit_0_for_one_to_replace() {
     assert!(run.stderr.contains("Guide.pdf"), "{}", run.stderr);
     drop(holder);
     assert_eq!(fs::read(&pdf).unwrap(), b"%PDF-1.4 an earlier export");
-    assert_eq!(names(dir.path()), ["Guide.docx", "Guide.pdf"]);
+    assert_eq!(names(dir.path()), ["Guide (accessible).docx", "Guide.pdf"]);
 
     // Not locked any more: the old PDF is replaced.
     let run = export_docx(&docx, &long(), &FixtureFonts, Timestamp::now());

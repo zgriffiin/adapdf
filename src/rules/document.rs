@@ -22,29 +22,14 @@ pub fn doc_001(doc: &Document) -> Vec<Finding> {
     if has_title {
         return Vec::new();
     }
-    let finding = Finding::new(
+    // The tool offers titles taken from the document (`fix::title_suggestions`)
+    // for the person to choose. The finding itself carries none.
+    vec![Finding::new(
         RuleId::Doc001,
         "The document has no title in its properties. PDF viewers show this title in the window bar, and screen readers read it out.",
-        "In Word, choose File > Info and type a title in the Title box.",
+        "In Word, choose File > Info, and type a title in the Title box on the right (choose Show All Properties if the box is not there).",
         Location::document(CORE_PART),
-    );
-    // The first Title or Heading 1 paragraph is only a suggestion.
-    let suggestion = doc
-        .paragraphs
-        .iter()
-        .filter(|p| !p.is_blank())
-        .find(|p| is_title_style(p) || p.heading_level == Some(1))
-        .map(|p| p.text.trim());
-    vec![match suggestion {
-        Some(text) => finding.with_suggestion(text),
-        None => finding,
-    }]
-}
-
-fn is_title_style(p: &Paragraph) -> bool {
-    p.style_name
-        .as_deref()
-        .is_some_and(|n| n.eq_ignore_ascii_case("title"))
+    )]
 }
 
 /// DOC-002: the default language is not set.
@@ -143,7 +128,7 @@ pub fn doc_003(doc: &Document) -> Vec<Finding> {
                     "This text looks like it is written in {}, but its language is not marked. A screen reader would read it in the document language.",
                     script.description()
                 ),
-                "Select the text, choose Review > Language > Set Proofing Language, and pick the language of that text.",
+                "Select the text shown under Where, choose Review > Language > Set Proofing Language, and pick the language of that text.",
                 Location::paragraph(doc, p),
             ));
         }
@@ -230,11 +215,11 @@ pub fn doc_006(doc: &Document, fonts: &dyn FontLookup) -> Vec<Finding> {
                 FontStatus::Embeddable => return None,
                 FontStatus::Restricted => (
                     format!("The font \"{font}\" does not allow embedding, so Word cannot put it in the PDF. The PDF would show a different font or fail the check."),
-                    "Change the text to a font that allows embedding, for example Arial.".to_string(),
+                    "Select the text that uses this font, and choose a font that allows embedding in the Font box (Home tab), for example Arial. To change all of it at once, choose Home > Replace > More > Format > Font.".to_string(),
                 ),
                 FontStatus::NotInstalled => (
                     format!("The font \"{font}\" is not installed on this computer, so Adapdf cannot tell whether it can be embedded in the PDF."),
-                    "Install the font, or change the text to a font that is installed and allows embedding, for example Arial.".to_string(),
+                    "Install the font, or select the text that uses it and choose a font that is installed and allows embedding in the Font box (Home tab), for example Arial.".to_string(),
                 ),
             };
             Some(Finding::new(RuleId::Doc006, message, how, Location::paragraph(doc, p)))

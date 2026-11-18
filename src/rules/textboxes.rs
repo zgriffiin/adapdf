@@ -56,7 +56,7 @@ pub fn txb_001(doc: &Document) -> Vec<Finding> {
                         "A text box contains text (\"{}\"). Text boxes are often skipped or read in the wrong order by screen readers.",
                         snippet(&d.text)
                     ),
-                    "Move the text into the body of the document and delete the text box. To keep the look, use a paragraph style (for example a callout style) with a border or shading.",
+                    "Click the edge of the text box and copy its text (Ctrl+C). Press Delete to remove the box, click in the body of the document where the text belongs, and paste (Ctrl+V). To keep the look, give the paragraph a style (for example a callout style) with a border or shading (Home > Borders).",
                 )
             };
             found.push((
@@ -65,10 +65,7 @@ pub fn txb_001(doc: &Document) -> Vec<Finding> {
                     RuleId::Txb001,
                     message,
                     how_to_fix,
-                    Location {
-                        snippet: Some(snippet(&d.text)),
-                        ..Location::paragraph(doc, p)
-                    },
+                    Location::paragraph(doc, p).with_snippet(&d.text),
                 ),
             ));
         }
@@ -91,10 +88,7 @@ pub fn txb_001(doc: &Document) -> Vec<Finding> {
                     snippet(&text)
                 ),
                 "Put the text in the step text or in the alt text of the screenshot, then delete the text from the shape. If the text only repeats the step text, mark the shape as decorative instead (right-click it, choose Edit Alt Text, and select Mark as decorative).",
-                Location {
-                    snippet: Some(snippet(&text)),
-                    ..Location::paragraph(doc, s.paragraph)
-                },
+                Location::paragraph(doc, s.paragraph).with_snippet(&text),
             ),
         ));
     }
@@ -126,7 +120,7 @@ pub fn txb_002(doc: &Document) -> Vec<Finding> {
             "The document has {count} section{} with more than one column. The reading order of columns may be wrong in the PDF.",
             if count == 1 { "" } else { "s" }
         ),
-        "Check the reading order in PAC. If it is wrong, use one column (Layout > Columns > One) or a table.",
+        "Check the reading order in PAC. If it is wrong, click in the section shown under Where and choose Layout > Columns > One, or use a table.",
         location,
     )]
 }
@@ -163,7 +157,7 @@ pub fn txb_003(doc: &Document) -> Vec<Finding> {
                     MAX_SPACES_IN_A_ROW + 1,
                     MAX_TABS_IN_A_ROW + 1
                 ),
-                "Delete the extra spaces or tabs. Use paragraph indents, spacing before or after, or a table with real columns.",
+                "Choose Home > Show/Hide (the paragraph mark button) to see the spaces and tabs, and delete the extra ones. Use paragraph indents and spacing (Home > Paragraph, the small arrow at the bottom right), or a table with real columns (Insert > Table).",
                 Location::paragraph(doc, p),
             )
         })

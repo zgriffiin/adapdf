@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::docx::DOCUMENT_PART;
+use crate::docx::{CORE_PART, DOCUMENT_PART, SETTINGS_PART, STYLES_PART};
 use crate::model::{Document, Paragraph};
 
 /// Number of characters of paragraph text kept in a [`Location`] snippet.
@@ -284,8 +284,15 @@ impl std::fmt::Display for RuleId {
 
 /// Where a problem is. Page numbers are not known without Word, so a
 /// location is the nearest heading, the start of the paragraph and its index.
+/// [`Location::place`] says the same in Word's own terms, for people. The
+/// other fields are for tooling.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Location {
+    /// Where the problem is, in words that a Word user knows, for example
+    /// `paragraph 5 "3. Close the file.", after the heading "Setup"`, or `In
+    /// the page header of section 2 (all pages)`. The apps and the reports
+    /// show this text.
+    pub place: String,
     /// Text of the nearest heading above the paragraph (first 60 characters).
     pub heading: Option<String>,
     /// First 60 characters of the paragraph text.
@@ -294,14 +301,74 @@ pub struct Location {
     /// it counting from 1.
     pub paragraph_index: Option<usize>,
     /// The part of the .docx that holds the problem, for example
-    /// `word/document.xml`.
+    /// `word/document.xml`. For tooling; people read [`Location::place`].
     pub part: String,
+}
+
+/// `paragraph 5 "text", after the heading "Heading"`.
+fn paragraph_place(index: usize, snippet: &str, heading: Option<&str>) -> String {
+    let mut place = if snippet.is_empty() {
+        format!("paragraph {} (no text)", index + 1)
+    } else {
+        format!("paragraph {} \"{snippet}\"", index + 1)
+    };
+    if let Some(heading) = heading {
+        place.push_str(&format!(", after the heading \"{heading}\""));
+    }
+    place
+}
+
+/// "section 2", "sections 2 and 3" or "sections 1, 2 and 3", for sections
+/// counted from 0.
+fn sections_text(sections: &[usize]) -> String {
+    let numbers: Vec<String> = sections.iter().map(|s| (s + 1).to_string()).collect();
+    match numbers.as_slice() {
+        [one] => format!("section {one}"),
+        [first @ .., last] => format!("sections {} and {last}", first.join(", ")),
+        [] => "the document".to_string(),
+    }
+}
+
+/// `In the page header of section 2 (all pages)`. A document with one section
+/// does not say "of section 1". A part that no section uses has no place.
+pub fn header_footer_place(doc: &Document, part: &str) -> String {
+    let places = doc.header_footer_places(part);
+    if places.is_empty() {
+        let what = if part.contains("footer") {
+            "footer"
+        } else {
+            "header"
+        };
+        return format!("In a page {what} that no section of the document uses");
+    }
+    let single = doc.sections.len() <= 1;
+    let phrases: Vec<String> = places
+        .iter()
+        .map(|place| {
+            let what = if place.footer { "footer" } else { "header" };
+            let of = if single {
+                String::new()
+            } else {
+                format!(" of {}", sections_text(&place.sections))
+            };
+            format!("the page {what}{of} ({})", place.kind.pages())
+        })
+        .collect();
+    format!("In {}", phrases.join(" and "))
 }
 
 impl Location {
     /// A problem with the document as a whole, found in `part`.
     pub fn document(part: &str) -> Location {
+        let place = match part {
+            CORE_PART => "The document's properties (File > Info)",
+            SETTINGS_PART => "Word's template setting (Developer > Document Template)",
+            STYLES_PART => "The whole document (its default language)",
+            DOCUMENT_PART => "The whole document",
+            _ => "The whole document",
+        };
         Location {
+            place: place.to_string(),
             heading: None,
             snippet: None,
             paragraph_index: None,
@@ -311,19 +378,81 @@ impl Location {
 
     /// A problem in one body paragraph.
     pub fn paragraph(doc: &Document, paragraph: &Paragraph) -> Location {
+        let heading = doc.heading_above(paragraph.index).map(|h| snippet(&h.text));
+        let snippet = snippet(&paragraph.text);
         Location {
-            heading: doc.heading_above(paragraph.index).map(|h| snippet(&h.text)),
-            snippet: Some(snippet(&paragraph.text)),
+            place: paragraph_place(paragraph.index, &snippet, heading.as_deref()),
+            heading,
+            snippet: Some(snippet),
             paragraph_index: Some(paragraph.index),
             part: DOCUMENT_PART.to_string(),
         }
     }
 
-    /// The same, but the problem is defined in another part (a style, say).
-    pub fn paragraph_in(doc: &Document, paragraph: &Paragraph, part: &str) -> Location {
+    /// The same paragraph, but with other text as the snippet (the text in a
+    /// text box that the paragraph holds, say).
+    pub fn with_snippet(mut self, text: &str) -> Location {
+        let shown = snippet(text);
+        if let Some(index) = self.paragraph_index {
+            self.place = paragraph_place(index, &shown, self.heading.as_deref());
+        }
+        self.snippet = Some(shown);
+        self
+    }
+
+    /// A problem in a style, found through the first paragraph that uses it.
+    pub fn style(doc: &Document, paragraph: &Paragraph) -> Location {
+        let name = paragraph
+            .style_name
+            .as_deref()
+            .or(paragraph.style_id.as_deref())
+            .unwrap_or("Normal");
+        let at = Location::paragraph(doc, paragraph);
         Location {
-            part: part.to_string(),
-            ..Location::paragraph(doc, paragraph)
+            place: format!(
+                "The style \"{name}\" (Home > Styles), first used in {}",
+                at.place
+            ),
+            part: STYLES_PART.to_string(),
+            ..at
+        }
+    }
+
+    /// A problem in a header or footer part. `text` is the text that is wrong.
+    pub fn header_footer(doc: &Document, part: &str, text: &str) -> Location {
+        Location {
+            place: header_footer_place(doc, part),
+            snippet: Some(snippet(text)),
+            ..Location::document(part)
+        }
+    }
+
+    /// A problem in one table (counting from 1 in the order of the document).
+    pub fn table(
+        doc: &Document,
+        number: usize,
+        first_cell: &str,
+        paragraph: Option<usize>,
+    ) -> Location {
+        let heading = paragraph
+            .and_then(|i| doc.heading_above(i))
+            .map(|h| snippet(&h.text));
+        let first = snippet(first_cell);
+        let under = heading
+            .as_deref()
+            .map(|h| format!(" under the heading \"{h}\""))
+            .unwrap_or_default();
+        let cell = if first.is_empty() {
+            String::new()
+        } else {
+            format!(", first cell \"{first}\"")
+        };
+        Location {
+            place: format!("The table{under} (table {number}{cell})"),
+            heading,
+            snippet: Some(first),
+            paragraph_index: paragraph,
+            part: DOCUMENT_PART.to_string(),
         }
     }
 }

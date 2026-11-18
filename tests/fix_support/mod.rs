@@ -16,7 +16,7 @@ pub const BOM: &[u8] = b"\xEF\xBB\xBF";
 /// The typed text that the escaping tests use.
 pub const AWKWARD_TEXT: &str = "A & B <C> \"D\" é 日本";
 
-/// The 2026-03-05 10:15:30 clock of the backup tests.
+/// The 2026-03-05 10:15:30 clock of the tests (the time in the fix log).
 pub fn fixed_clock() -> Timestamp {
     Timestamp {
         year: 2026,
@@ -353,12 +353,22 @@ pub fn fix_file_with(
     path: &Path,
     requests: &[FixRequest],
 ) -> Result<fix::FixOutcome, fix::FixError> {
+    fix_file_existing(fs, path, requests, fix::ExistingCopy::Refuse)
+}
+
+/// The same, with what to do when the accessible copy exists.
+pub fn fix_file_existing(
+    fs: &dyn fix::FileSystem,
+    path: &Path,
+    requests: &[FixRequest],
+    existing: fix::ExistingCopy,
+) -> Result<fix::FixOutcome, fix::FixError> {
     let env = fix::Environment {
         fs,
         now: fixed_clock(),
         fonts: &FixtureFonts,
     };
-    fix::fix_file(path, requests, &options(), &env)
+    fix::fix_file(path, requests, &options(), &env, existing)
 }
 
 /// The request for the one finding of a rule in a document, with a yes.

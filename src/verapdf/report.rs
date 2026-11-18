@@ -38,6 +38,11 @@ pub struct VeraFinding {
     pub failed_checks: u32,
     /// Where the first failure is, in veraPDF's own path form.
     pub context: Option<String>,
+    /// The same place in words that a Word user knows (`Table 1, body row 1,
+    /// cell 2`). `None` when the path does not name an element that the tool
+    /// knows. See [`super::place`].
+    #[serde(default)]
+    pub place: Option<String>,
     /// veraPDF's message for the first failure.
     pub error_message: Option<String>,
     /// What is wrong, in plain language. For a rule that is not in the table,
@@ -305,6 +310,7 @@ fn finding(profile: Profile, severity: Severity, rule: RuleSummary) -> VeraFindi
         description: rule.description,
         failed_checks: rule.failed_checks,
         context,
+        place: None,
         error_message,
         message,
         how_to_fix,

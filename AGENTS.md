@@ -8,10 +8,16 @@ pick one.
 
 - **Fix the source, not the PDF.** The only change to a PDF after export is
   document-level metadata (spec 02, stage 4). Never edit tags or content.
-- **Never write a .docx without a backup first**, and never while Word has it
-  open.
+- **Never change the user's original .docx.** Fixes go into
+  `<name> (accessible).docx`, in the folder `<name> - Adapdf` next to the original.
+  The copy is written atomically, and never while Word has it open. Everything
+  else that Adapdf makes (the PDF and the reports) goes into the same folder.
 - **No network calls and no paid services.** Documents stay on the machine.
-- **Never invent content** such as alt text or titles. Ask the user.
+- **Never invent content** such as alt text or titles. Ask the user. The app may
+  offer a one-click suggestion that is taken from the document itself (the file
+  name, the Title paragraph, the first Heading 1 for the title). It fills nothing in
+  until the user chooses it, and the user can change it. Alt text has no
+  suggestion.
 - **No real city documents in git.** Real guides go in `samples/`, which git
   ignores. Test fixtures are small documents made for testing.
 - Word COM: start your own hidden instance, and always close it. Never touch

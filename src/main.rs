@@ -8,6 +8,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
+use adapdf::fix::interactive::CopyChoice;
 use adapdf::fonts::SystemFonts;
 use adapdf::render;
 
@@ -31,11 +32,18 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Fix problems in a .docx file. Asks before each fix, and writes a
-    /// backup copy first.
+    /// Fix problems in a .docx file. Asks before each fix. The original is
+    /// never changed: the fixes go into "<name> - Adapdf\<name> (accessible).docx".
     Fix {
-        /// The .docx file to fix.
+        /// The .docx file to fix (the original, or its accessible copy).
         file: PathBuf,
+        /// The accessible copy exists: keep working in it.
+        #[arg(long = "continue", conflicts_with = "start_over")]
+        continue_copy: bool,
+        /// The accessible copy exists: replace it with a new copy of the
+        /// original. This loses every change that was made in the copy.
+        #[arg(long)]
+        start_over: bool,
     },
     /// Export a .docx file to a tagged PDF with Word, check the PDF, and write
     /// the accessibility report (HTML and JSON) next to it.
@@ -49,7 +57,18 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
         Command::Check { file, json } => check(&file, json),
-        Command::Fix { file } => fix(&file),
+        Command::Fix {
+            file,
+            continue_copy,
+            start_over,
+        } => fix(
+            &file,
+            match (continue_copy, start_over) {
+                (true, _) => CopyChoice::Continue,
+                (_, true) => CopyChoice::StartOver,
+                _ => CopyChoice::Ask,
+            },
+        ),
         Command::Export { file } => export(&file),
     }
 }
@@ -78,7 +97,7 @@ fn export(file: &std::path::Path) -> ExitCode {
     ExitCode::from(2)
 }
 
-fn fix(file: &std::path::Path) -> ExitCode {
+fn fix(file: &std::path::Path, choice: CopyChoice) -> ExitCode {
     let fonts = SystemFonts::from_environment();
     let env = adapdf::fix::Environment {
         fs: &adapdf::fix::RealFs,
@@ -88,6 +107,7 @@ fn fix(file: &std::path::Path) -> ExitCode {
     let stdin = std::io::stdin();
     let code = adapdf::fix::interactive::run(
         file,
+        choice,
         &mut stdin.lock(),
         &mut std::io::stdout().lock(),
         &mut std::io::stderr().lock(),

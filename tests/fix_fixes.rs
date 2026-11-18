@@ -1465,7 +1465,15 @@ fn offers_list_each_fixable_finding_with_its_kind() {
     let offer = offers.iter().find(|o| o.fix == FixId::SetTitle).unwrap();
     assert!(offer.ask);
     assert_eq!(offer.availability, Availability::Ready);
-    assert_eq!(offer.finding.suggestion.as_deref(), Some("Test guide"));
+    assert_eq!(offer.finding.suggestion, None);
+    // The texts that the person can choose come from the document, never from
+    // the request.
+    let doc = adapdf::model::Document::from_bytes(&original).unwrap();
+    let texts: Vec<String> = fix::title_suggestions(&doc, "Guide.docx")
+        .into_iter()
+        .map(|s| s.text)
+        .collect();
+    assert_eq!(texts, ["Guide", "Test guide"]);
     assert!(offers.iter().all(|o| o.fix != FixId::UpdateFields));
     // A text for the request is never taken from the suggestion.
     assert!(matches!(

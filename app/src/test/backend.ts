@@ -15,6 +15,8 @@ import type {
   OfferView,
   Report,
   ReportView,
+  TitleSuggestion,
+  WorkingInfo,
 } from "../types";
 
 type Handler = (args: Record<string, unknown>) => unknown;
@@ -34,7 +36,9 @@ export interface Backend {
  * A handler that returns a value answers the command; one that throws makes
  * the command fail like a Rust `Err` (the page gets the thrown value).
  */
-export function setupBackend(handlers: Handlers): Backend {
+export function setupBackend(given: Handlers): Backend {
+  // `working_info` answers from the path unless a test gives its own answer.
+  const handlers: Handlers = { working_info: (args) => workingInfoOf(String(args.path)), ...given };
   const backend: Backend = { calls: [], chosen: [], drop: () => undefined };
   vi.mocked(invoke).mockImplementation(async (command: string, args?: unknown) => {
     const given = (args ?? {}) as Record<string, unknown>;
@@ -99,7 +103,13 @@ function finding(
     severity,
     message,
     how_to_fix: `How to fix ${rule_id}.`,
-    location: { heading: "Test guide", snippet: "3. Close the file.", paragraph_index: 4, part: "word/document.xml" },
+    location: {
+      place: 'paragraph 5 "3. Close the file.", after the heading "Test guide"',
+      heading: "Test guide",
+      snippet: "3. Close the file.",
+      paragraph_index: 4,
+      part: "word/document.xml",
+    },
     fix,
     suggestion: null,
     ...extra,
@@ -130,17 +140,29 @@ export const txb004 = finding(
   { kind: "auto", id: "delete-empty-paragraphs" },
 );
 
-/** `DOC-001-fail.docx`: no title, and the tool has a suggestion. */
+/** `DOC-001-fail.docx`: no title. The one-click texts are in the offer, not in the finding. */
 export const doc001 = finding(
   "DOC-001",
   "error",
   "The document has no title in its properties.",
   { kind: "ask", id: "set-title" },
   {
-    suggestion: "Training guide: first steps",
-    location: { heading: null, snippet: null, paragraph_index: null, part: "docProps/core.xml" },
+    location: {
+      place: "The document's properties (File > Info)",
+      heading: null,
+      snippet: null,
+      paragraph_index: null,
+      part: "docProps/core.xml",
+    },
   },
 );
+
+/** The three one-click texts of a title (some documents have fewer). */
+export const titleSuggestions: TitleSuggestion[] = [
+  { source: "file-name", label: "Use the file name", text: "Guide" },
+  { source: "title-paragraph", label: "Use the Title paragraph", text: "Parks Training Guide" },
+  { source: "first-heading1", label: "Use the first Heading 1", text: "Pre-Requisites:" },
+];
 
 /** `IMG-001-fail.docx`: a picture with no alt text. */
 export const img001 = finding(
@@ -171,11 +193,16 @@ export function checkOf(path: string, findings: Finding[]): CheckResult {
 
 export function offerOf(
   f: Finding,
-  options: { position?: number; availability?: OfferView["availability"] } = {},
+  options: {
+    position?: number;
+    availability?: OfferView["availability"];
+    suggestions?: TitleSuggestion[];
+  } = {},
 ): OfferView {
   const fix = f.fix.kind === "manual" ? "none" : f.fix.id;
   return {
     finding: f,
+    suggestions: options.suggestions ?? (fix === "set-title" ? titleSuggestions : []),
     position: options.position ?? 0,
     fix,
     ask: f.fix.kind === "ask",
@@ -184,10 +211,30 @@ export function offerOf(
   };
 }
 
+export const ORIGINAL = "C:\\Docs\\Guide.docx";
+export const COPY = "C:\\Docs\\Guide - Adapdf\\Guide (accessible).docx";
+export const GUIDE_FOLDER = "C:\\Docs\\Guide - Adapdf";
+
+/** The files of the guide `Guide.docx`, for the path that was chosen. */
+export function workingInfoOf(path: string, copyExists = false): WorkingInfo {
+  const isCopy = path === COPY;
+  return {
+    chosen: path,
+    original: ORIGINAL,
+    copy: COPY,
+    folder: GUIDE_FOLDER,
+    chosen_folder: isCopy ? GUIDE_FOLDER : "C:\\Docs",
+    is_copy: isCopy,
+    copy_exists: isCopy || copyExists,
+  };
+}
+
 export function applyResultOf(findings: Finding[], extra: Partial<ApplyResult> = {}): ApplyResult {
   const errors = findings.filter((f) => f.severity === "error").length;
   return {
-    backup: "Guide.backup-20260305-101530.docx",
+    copy: COPY,
+    working_file: COPY,
+    original: ORIGINAL,
     applied: [{ rule_id: "LST-001", summary: "Applied the list style to paragraph 5." }],
     at_export: [],
     refused: [],
@@ -223,20 +270,24 @@ export function reportOf(
   const precheck = options.precheck ?? [];
   const failedRules = options.failedRules ?? (pass ? 0 : 1);
   return {
-    schema_version: 1,
+    schema_version: 2,
     summary: {
       verdict: pass ? "pass" : "fail",
       errors: pass ? 0 : Math.max(failedRules, precheck.filter((f) => f.severity === "error").length),
       warnings: precheck.filter((f) => f.severity === "warning").length,
+      precheck_errors: precheck.filter((f) => f.severity === "error").length,
+      precheck_warnings: precheck.filter((f) => f.severity === "warning").length,
+      pdf_failed_rules: failedRules,
       reason: pass ? null : "The report has 1 failed rule of the PDF/UA-1 check (veraPDF).",
       tool: "adapdf",
-      tool_version: "0.1.0",
+      tool_version: "0.2.0",
       generated_local: "2026-03-05 10:15:30",
       document: "Guide.docx",
       pdf: "Guide.pdf",
     },
     precheck,
-    fixes: { applied: [], backup: null },
+    fixes: { original: null, applied: [] },
+    pac: { report_file: null, pac_version: null, result: null },
     pdf_metadata: { status: "done", changes: [], issues: [] },
     verapdf: {
       status: "ran",
@@ -258,6 +309,8 @@ export function reportOf(
                     message: "A link has no description.",
                     how_to_fix: "Give the link a ScreenTip.",
                     failed_checks: 1,
+                    place: "Link 2",
+                    context: "root/K[0](5 0 obj SEDocument Document)/K[1](9 0 obj SELink Link)",
                   },
                 ],
           verapdf_version: "1.28.2",
@@ -275,9 +328,9 @@ export function reportOf(
 export function viewOf(report: Report = reportOf()): ReportView {
   return {
     report,
-    report_json: "C:\\Docs\\Guide.accessibility.json",
-    report_html: "C:\\Docs\\Guide.accessibility.html",
-    pdf: report.summary.pdf === null ? null : "C:\\Docs\\Guide.pdf",
+    report_json: `${GUIDE_FOLDER}\\Guide.accessibility.json`,
+    report_html: `${GUIDE_FOLDER}\\Guide.accessibility.html`,
+    pdf: report.summary.pdf === null ? null : `${GUIDE_FOLDER}\\Guide.pdf`,
   };
 }
 

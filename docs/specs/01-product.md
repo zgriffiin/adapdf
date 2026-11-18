@@ -128,7 +128,7 @@ code is built to the assumptions in these specs, and Phase 0 may change them.
 | **1 — Template** | Accessible Word template and author quick guide. Can run alongside phase 2. |
 | **2 — Pre-check (command line)** | All error-level rules in [03](03-precheck-rules.md), with tests based on sample .docx files. |
 | **3 — Export and check** | Word export, PDF metadata fixes, veraPDF run, report. |
-| **4 — Fixes** | Automatic fixes with backup and confirmation. |
+| **4 — Fixes** | Automatic fixes with confirmation, written into an accessible copy (the original is never changed). |
 | **5 — App and packaging** | Tauri and Carbon UI, Tauri per-user installer, install guide for the 3 users. |
 
 ## Open questions

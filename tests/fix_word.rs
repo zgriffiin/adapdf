@@ -1,11 +1,13 @@
 //! Stage 2 tests that need Word (level `windows_word` in the test plan): S2-02
-//! (the lock file name Word writes), S2-04 (never write while Word has the file
-//! open), S2-15 (Word opens every fixed file) and the part of S2-23 that Word
-//! can answer.
+//! (the lock file name Word writes), S2-04 (never write while Word has the
+//! accessible copy open), S2-15 (Word opens every fixed copy), S2-37 (the fix log
+//! survives a save in Word) and the part of S2-23 that Word can answer.
 //!
 //! Run them with `cargo test --features windows_word --test fix_word`. Every
 //! test starts its own hidden Word, works in its own folder under the temp
-//! folder, and never touches a Word that the user has open. Word never saves.
+//! folder, and never touches a Word that the user has open. Word never saves a
+//! file of the tests, except S2-37, which saves a copy under a new name in its own
+//! folder.
 #![cfg(all(windows, feature = "windows_word"))]
 
 mod fix_support;
@@ -20,11 +22,13 @@ use std::time::Duration;
 
 use adapdf::findings::{FixKind, RuleId};
 use adapdf::fix::{self, FileSystem, FixError, FixRequest, RealFs, lock_file_names};
+use adapdf::fixtures::DocxBuilder;
 use adapdf::fixtures::{Image, Para, catalogue, clean};
 use adapdf::model::Document;
 use adapdf::word::{WordDocument, WordSession};
 use fix_support::{
-    confirm_one, findings, fix_file, fix_file_with, fixture, of, replace_part, requests_for,
+    confirm_one, findings, fix_file, fix_file_existing, fix_file_with, fixture, of, replace_part,
+    requests_for,
 };
 
 use word_support::{TempDir, exclusive, wait_for_word_pids, within, word_pids};
@@ -101,8 +105,13 @@ fn fix_detects_the_lock_file_word_writes() {
             .map(|path| {
                 let document = session.open_for_editing(path).expect("Word opens the file");
                 let locks = lock_files(&folder);
-                let refused_with_a_lock_error =
-                    matches!(fix_file(path, &requests), Err(FixError::LockFile { .. }));
+                // The check that a fix makes on the accessible copy before it writes
+                // (the lock file, then the exclusive open), on the file that Word has.
+                let refused_with_a_lock_error = matches!(
+                    fix::open_for_fixing(&RealFs, path),
+                    Err(FixError::LockFile { .. })
+                );
+                let _ = &requests;
                 let bytes_unchanged = fs::read(path).unwrap() == original;
                 document.close().expect("Word closes the file");
                 LockObservation {
@@ -181,6 +190,9 @@ impl FileSystem for BlindToLockFiles {
     fn remove_file(&self, path: &Path) -> io::Result<()> {
         RealFs.remove_file(path)
     }
+    fn create_dir_all(&self, path: &Path) -> io::Result<()> {
+        RealFs.create_dir_all(path)
+    }
 }
 
 /// Runs the fix with the library and, when the library refuses it, with the
@@ -224,39 +236,67 @@ fn attempt_with(
 }
 
 #[test]
-fn fix_never_writes_while_word_has_the_file_open() {
+fn fix_never_writes_while_word_has_the_copy_open() {
     let _lock = exclusive();
     let before = word_pids();
     let bytes = fixture(RuleId::Doc002, true);
     let requests = confirm_one(&bytes, RuleId::Doc002);
     let dir = TempDir::new("s2-04");
+    // The original, another document, and the accessible copy that an earlier run
+    // made. Word opens the copy, as a person does after "Open in Word".
     let guide = dir.write("Guide.docx", &bytes);
     let other = dir.write("Other.docx", &bytes);
-    let (guide_in_thread, other_in_thread) = (guide.clone(), other.clone());
+    let folder = dir.path().join("Guide - Adapdf");
+    fs::create_dir_all(&folder).unwrap();
+    let copy = folder.join("Guide (accessible).docx");
+    fs::write(&copy, &bytes).unwrap();
+    let (copy_in_thread, guide_in_thread, other_in_thread) =
+        (copy.clone(), guide.clone(), other.clone());
 
     let original = bytes.clone();
-    let (open_for_editing, open_read_only, blind_to_lock, other_open) =
+    let (open_for_editing, open_read_only, blind_to_lock, original_open, other_open) =
         within(Duration::from_secs(180), move |session: &WordSession| {
-            let guide = guide_in_thread;
-            let editing = session.open_for_editing(&guide).expect("Word opens Guide");
-            let first = attempt(&guide, &requests, &original);
+            let copy = copy_in_thread;
+            let editing = session
+                .open_for_editing(&copy)
+                .expect("Word opens the copy");
+            let first = attempt(&copy, &requests, &original);
             editing.close().expect("close");
-            let read_only = session.open_read_only(&guide).expect("Word opens Guide");
-            let second = attempt(&guide, &requests, &original);
+            let read_only = session.open_read_only(&copy).expect("Word opens the copy");
+            let second = attempt(&copy, &requests, &original);
             read_only.close().expect("close");
             // Open for editing again, but the check for the owner file cannot
             // see it: the exclusive open must stop the fix on its own.
-            let editing = session.open_for_editing(&guide).expect("Word opens Guide");
-            let blind = attempt_with(&BlindToLockFiles, &guide, &requests, &original);
+            let editing = session
+                .open_for_editing(&copy)
+                .expect("Word opens the copy");
+            let blind = attempt_with(&BlindToLockFiles, &copy, &requests, &original);
             editing.close().expect("close");
+            // Word has the ORIGINAL open for editing: it is only read, so a fix
+            // into the copy (start over: the copy is replaced) is not stopped by it,
+            // and the original is as it was.
+            let editing = session
+                .open_for_editing(&guide_in_thread)
+                .expect("Word opens the original");
+            let on_original = fix_file_existing(
+                &RealFs,
+                &guide_in_thread,
+                &requests,
+                fix::ExistingCopy::Replace,
+            );
+            editing.close().expect("close");
+            fs::write(&copy, &original).unwrap();
             let elsewhere = session
                 .open_for_editing(&other_in_thread)
                 .expect("Word opens Other");
-            let third = attempt(&guide, &requests, &original);
+            let third = attempt(&copy, &requests, &original);
             elsewhere.close().expect("close");
-            (first, second, blind, third)
+            (first, second, blind, on_original, third)
         });
 
+    // The owner file that Word writes for the copy: the name is cut at the start
+    // for a long name (S2-02).
+    let lock = lock_file_names("Guide (accessible).docx").remove(0);
     // Open for reading and writing: the owner file is there, and the fix stops.
     assert!(
         matches!(open_for_editing.library, Err(FixError::LockFile { .. })),
@@ -270,8 +310,8 @@ fn fix_never_writes_while_word_has_the_file_open() {
         "{:?}",
         open_read_only.library.as_ref().err()
     );
-    // The exclusive open alone stops the fix when Word has the file open for
-    // editing and the owner file is not seen (no backup, no temporary file).
+    // The exclusive open alone stops the fix when Word has the copy open for
+    // editing and the owner file is not seen (no temporary file).
     assert!(
         matches!(blind_to_lock.library, Err(FixError::CannotWrite { .. })),
         "{:?}",
@@ -279,7 +319,7 @@ fn fix_never_writes_while_word_has_the_file_open() {
     );
     assert_eq!(
         blind_to_lock.names,
-        ["Guide.docx", "Other.docx", "~$Guide.docx"]
+        ["Guide (accessible).docx", lock.as_str()]
     );
     for (what, attempt) in [
         ("open for editing", &open_for_editing),
@@ -289,28 +329,48 @@ fn fix_never_writes_while_word_has_the_file_open() {
         assert!(attempt.stdout_empty, "{what}");
         assert!(attempt.bytes_unchanged, "{what}: the bytes changed");
         assert!(
-            attempt.stderr.contains("Guide.docx"),
+            attempt.stderr.contains("Guide (accessible).docx"),
+            "{what}: {}",
+            attempt.stderr
+        );
+        assert!(
+            attempt
+                .stderr
+                .contains("Close the document in Word first, then try again."),
             "{what}: {}",
             attempt.stderr
         );
     }
-    // No backup and no temporary file in either case.
+    // No temporary file in either case.
     assert_eq!(
         open_for_editing.names,
-        ["Guide.docx", "Other.docx", "~$Guide.docx"]
+        ["Guide (accessible).docx", lock.as_str()]
     );
-    assert_eq!(open_read_only.names, ["Guide.docx", "Other.docx"]);
+    assert_eq!(open_read_only.names, ["Guide (accessible).docx"]);
     assert!(
         blind_to_lock.bytes_unchanged,
         "the bytes changed (owner file hidden)"
     );
 
-    // Word has a different file open: the fix runs, with a backup.
+    // Word has the original open: the copy is replaced and the original is intact.
+    let outcome = original_open.expect("the fix runs while Word has the original");
+    assert_eq!(outcome.applied.len(), 1);
+    assert_eq!(
+        fs::read(&guide).unwrap(),
+        bytes,
+        "the original is as it was"
+    );
+
+    // Word has a different file open: the fix runs, into the copy.
     let outcome = other_open.library.expect("the fix runs");
     assert_eq!(outcome.applied.len(), 1);
-    let backup = outcome.backup.expect("a backup was written");
-    assert_eq!(fs::read(backup).unwrap(), bytes);
-    assert_ne!(fs::read(&guide).unwrap(), bytes, "Guide.docx was fixed");
+    assert_eq!(outcome.copy.as_deref(), Some(copy.as_path()));
+    assert_ne!(fs::read(&copy).unwrap(), bytes, "the copy was fixed");
+    assert_eq!(
+        fs::read(&guide).unwrap(),
+        bytes,
+        "Guide.docx was not touched"
+    );
     assert_eq!(
         fs::read(&other).unwrap(),
         bytes,
@@ -708,11 +768,19 @@ fn fix_result_opens_in_word() {
     let mut work = Vec::new();
     for (number, case) in cases().into_iter().enumerate() {
         assert!(!case.requests.is_empty(), "{}: no fix to apply", case.name);
-        // Two copies: the one the fix changes, and the one that stays as it was.
+        // The original, which stays as it was, and the accessible copy that the fix
+        // makes (`fixed-N - Adapdf/fixed-N (accessible).docx`).
         let original = dir.write(&format!("original-{number}.docx"), &case.original);
-        let fixed = dir.write(&format!("fixed-{number}.docx"), &case.original);
-        let outcome = fix_file(&fixed, &case.requests)
+        let source = dir.write(&format!("fixed-{number}.docx"), &case.original);
+        let outcome = fix_file(&source, &case.requests)
             .unwrap_or_else(|error| panic!("{}: the fix run failed: {error}", case.name));
+        assert_eq!(
+            fs::read(&source).unwrap(),
+            case.original,
+            "{}: the original was changed",
+            case.name
+        );
+        let fixed = outcome.copy.clone().expect("a copy was written");
         assert!(
             outcome.refused.is_empty() && !outcome.applied.is_empty(),
             "{}: applied {}, refused {:?}",
@@ -734,6 +802,83 @@ fn fix_result_opens_in_word() {
     });
     assert!(problems.is_empty(), "{}", problems.join("\n"));
     assert_eq!(wait_for_word_pids(&before_pids), before_pids);
+}
+
+// ---------- S2-37 ----------
+
+/// The fix log is a custom document property. Word must read it as one, and keep it
+/// when a person edits the copy and saves it. The test opens the fixed copy in its
+/// own hidden Word, reads the property, saves the document under a new name in its
+/// own folder (`SaveAs2`), closes it without saving, and reads the property from the
+/// file that Word wrote. Word never has a file of a person.
+#[test]
+fn the_fix_log_survives_a_save_in_word() {
+    let _lock = exclusive();
+    let before = word_pids();
+    let dir = TempDir::new("s2-37");
+    let bytes = DocxBuilder::new()
+        .no_language()
+        .title("")
+        .para("Hello")
+        .build();
+    let found = findings(&bytes);
+    // A title with awkward characters and a long one, and a fix with no text.
+    let long = format!("{} {}", fix_support::AWKWARD_TEXT, "long ".repeat(200));
+    let original = dir.write("Guide.docx", &bytes);
+    let requests = vec![
+        FixRequest::confirm(&of(&found, RuleId::Doc002)[0]),
+        FixRequest::text(&of(&found, RuleId::Doc001)[0], &long),
+    ];
+    let outcome = fix_file(&original, &requests).expect("the fix runs");
+    let copy = outcome.copy.expect("a copy");
+    let log_in_file = |path: &Path| {
+        let package = adapdf::docx::Package::open(path).unwrap();
+        fix::fixlog::read(&package).unwrap()
+    };
+    let written = log_in_file(&copy);
+    assert_eq!(written.len(), 2);
+    assert_eq!(written[1].text.as_deref(), Some(long.as_str()));
+    let expected_value = serde_json::to_string(&written).unwrap();
+    let saved = dir.path().join("saved-by-word.docx");
+    let (saved_for_thread, copy_for_thread) = (saved.clone(), copy.clone());
+
+    let seen = within(Duration::from_secs(120), move |session: &WordSession| {
+        let document = session
+            .open_read_only(&copy_for_thread)
+            .expect("Word opens the copy with the fix log");
+        let in_word = document.custom_property(fix::fixlog::PROPERTY_NAME);
+        document
+            .save_as(&saved_for_thread)
+            .expect("Word saves a copy");
+        document.close().expect("close");
+        // Open the file that Word wrote, to see that it is a document that Word reads.
+        let again = session
+            .open_read_only(&saved_for_thread)
+            .expect("Word opens the file that it saved");
+        let after = again.custom_property(fix::fixlog::PROPERTY_NAME);
+        again.close().expect("close");
+        (in_word, after)
+    });
+    let (in_word, after) = seen;
+    assert_eq!(
+        in_word.expect("Word reads the property"),
+        expected_value,
+        "Word reads the whole log as it was written, also when it is long"
+    );
+    assert_eq!(
+        after.expect("Word reads the property of the saved file"),
+        expected_value
+    );
+    // The file that Word wrote has the same log, and the tool reads it.
+    assert_eq!(
+        log_in_file(&saved),
+        written,
+        "the log survives a save in Word"
+    );
+    // A new fix on the file that Word wrote adds to the log, and nothing is lost.
+    let more = of(&findings(&fs::read(&saved).unwrap()), RuleId::Doc003);
+    assert!(more.is_empty());
+    assert_eq!(wait_for_word_pids(&before), before);
 }
 
 // ---------- S2-23 ----------

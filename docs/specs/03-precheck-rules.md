@@ -23,7 +23,7 @@ The WCAG column gives the main success criterion. "UA" means a PDF/UA
 
 | ID | Check | Severity | Fix | WCAG / UA |
 |---|---|---|---|---|
-| DOC-001 | Title property (File > Info > Title) is empty. | error | ask, with the first Title or Heading 1 text suggested | 2.4.2, UA |
+| DOC-001 | Title property (File > Info > Title) is empty. | error | ask, with up to three one-click texts from the document, chosen by the user: the file name, the Title paragraph, the first Heading 1 (spec 02, stage 2) | 2.4.2, UA |
 | DOC-002 | Default language is not set. | error | auto (en-US; can be changed in settings) | 3.1.1, UA |
 | DOC-003 | A paragraph or run uses a language different from the default, but its language is not marked. | warning | manual | 3.1.2 |
 | DOC-004 | The document is not based on the Adapdf template. | warning | manual | — |

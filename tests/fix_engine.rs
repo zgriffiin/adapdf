@@ -426,7 +426,10 @@ fn ask_fix_without_text_writes_nothing() {
     let original = fixture(RuleId::Doc001, true);
     let found = findings(&original);
     let title = of(&found, RuleId::Doc001).remove(0);
-    assert_eq!(title.suggestion.as_deref(), Some("Test guide"));
+    assert_eq!(
+        title.suggestion, None,
+        "the offers carry the title suggestions"
+    );
     let picture =
         build(&DocxBuilder::new().paragraph(Para::empty().raw_run(&Image::picture().xml())));
     let alt = of(&findings(&picture), RuleId::Img001).remove(0);
@@ -465,11 +468,11 @@ fn ask_fix_without_text_writes_nothing() {
         assert!(applied.splices.is_empty());
     }
 
-    // On disk: no write and no backup.
+    // On disk: no write and no copy.
     let dir = TempDir::new("ask");
     let path = dir.write("Guide.docx", &original);
     let outcome = fix_file(&path, &[FixRequest::text(&title, " ")]).expect("the run works");
-    assert!(outcome.backup.is_none());
+    assert!(outcome.copy.is_none());
     assert_eq!(outcome.refused.len(), 1);
     assert_eq!(fs::read(&path).unwrap(), original);
     assert_eq!(dir.names(), ["Guide.docx"]);
@@ -570,7 +573,7 @@ fn fix_update_fields_is_done_at_export() {
     let dir = TempDir::new("update-fields");
     let path = dir.write("Guide.docx", &original);
     let outcome = fix_file(&path, &[FixRequest::confirm(&found[0])]).expect("the run works");
-    assert!(outcome.backup.is_none(), "no backup is made");
+    assert!(outcome.copy.is_none(), "no copy is made");
     assert_eq!(fs::read(&path).unwrap(), original);
     assert_eq!(dir.names(), ["Guide.docx"]);
 

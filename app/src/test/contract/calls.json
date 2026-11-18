@@ -1,23 +1,29 @@
 {
   "check": { "path": "C:\\Docs\\Guide.docx" },
-  "fix_offers": { "path": "C:\\Docs\\Guide.docx" },
+  "working_info": { "path": "C:\\Docs\\Guide - Adapdf\\Guide (accessible).docx" },
+  "create_copy": { "path": "C:\\Docs\\Guide.docx", "startOver": false },
+  "open_in_word": { "path": "C:\\Docs\\Guide - Adapdf\\Guide (accessible).docx" },
+  "open_folder": { "path": "C:\\Docs\\Guide - Adapdf\\Guide (accessible).docx" },
+  "fix_offers": { "path": "C:\\Docs\\Guide - Adapdf\\Guide (accessible).docx" },
   "apply_fixes": {
     "path": "C:\\Docs\\Guide.docx",
+    "startOver": false,
     "choices": [
       { "rule_id": "LST-001", "position": 0, "input": { "kind": "confirm" } },
       { "rule_id": "DOC-001", "position": 0, "input": { "kind": "text", "text": "My own title" } },
       { "rule_id": "IMG-001", "position": 0, "input": { "kind": "decorative" } }
     ]
   },
-  "export": { "path": "C:\\Docs\\Guide.docx" },
-  "open_report": { "path": "C:\\Docs\\Guide.accessibility.html" },
-  "read_report": { "path": "C:\\Docs\\Guide.accessibility.json" },
+  "export": { "path": "C:\\Docs\\Guide - Adapdf\\Guide (accessible).docx" },
+  "open_report": { "path": "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.html" },
+  "read_report": { "path": "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.json" },
   "save_signoff": {
-    "reportJson": "C:\\Docs\\Guide.accessibility.json",
+    "reportJson": "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.json",
     "signoff": {
       "name": "A. Reviewer",
       "date": "2026-03-06",
-      "items": [true, true, true, true, true, false, false]
+      "items": [true, true, true, true, true, false, false],
+      "pac": { "result": "none", "version": "", "report_file": null }
     }
   }
 }

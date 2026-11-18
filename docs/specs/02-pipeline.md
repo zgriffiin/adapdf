@@ -7,17 +7,28 @@ separate module with its own tests. Stages 1, 2, 4 and 6 do not need Word.
 
 ## Inputs and outputs
 
-For an input `Guide.docx`, the tool writes these files next to it:
+For an input `Guide.docx`, the tool makes one folder next to it, `Guide - Adapdf`,
+and writes everything into it. The original stays alone in its folder, and the tool
+writes nothing else next to it.
 
-| File | Content |
+| File in `Guide - Adapdf` | Content |
 |---|---|
+| `Guide (accessible).docx` | The accessible copy: the original with the fixes in it. The tool and Word work on this file from the first fix. It holds the fix log (stage 2). |
 | `Guide.pdf` | The tagged PDF. Written only when stage 1 finds no errors. |
 | `Guide.accessibility.html` | The report, for people to read. |
 | `Guide.accessibility.json` | The same results as data, for later tooling. |
-| `Guide.backup-<yyyymmdd-hhmmss>.docx` | A copy of the source, written before any fix. |
 
-The output folder can be changed in settings. The tool never overwrites the
-source without first writing a backup.
+- **The original is never changed.** There are no backup files: the original is the
+  backup. The tool never writes a file that has the name of the original.
+- The PDF and the reports are named after the original (`Guide.pdf`), not after
+  the copy, and they are in the folder of the copy.
+- A file whose name ends with ` (accessible).docx` is a working copy. In its
+  folder `<name> - Adapdf` it is the copy of `<name>.docx` next to that folder. A
+  copy that is anywhere else is worked on in place, and the PDF and the reports
+  are written next to it (`<name>.pdf`, ...).
+- `adapdf export Guide.docx` on an original exports the original as it is (no
+  fixes) and writes the PDF and the reports into `Guide - Adapdf`. On the copy, it
+  exports the copy.
 
 - An existing `Guide.pdf` is replaced. If another program has it locked, the
   tool stops with exit code 2 and says which file is locked.
@@ -40,20 +51,60 @@ source without first writing a backup.
   paragraph + paragraph index. Page numbers are not known without Word, so
   they are not used. In the data, the index counts from 0. The text report
   shows it from 1.
+- **Where a problem is** is shown in Word's own words (`place` of the location),
+  in the apps, the text output and the report. The raw part name of the .docx
+  stays in the data (`part`) for tooling only. A body paragraph: the number, the
+  start of its text and the heading above it. A header or footer: "In the page
+  header of section 2 (all pages)" (or "first page", "even pages"; "of section N"
+  is left out when the document has one section, and a part that several sections
+  show lists them; a section that names no header of its own shows the one of the
+  section before it). The template setting (DOC-004): "Word's template setting
+  (Developer > Document Template)". The title (DOC-001): "The document's
+  properties (File > Info)". A style: "The style "<name>" (Home > Styles)". A
+  table: "The table under the heading "..." (table N)". Text that a message quotes
+  (TXT-003, text boxes) keeps the capitals and the spacing of the document.
 - **Errors block export.** Warnings do not.
 
 ## Stage 2 — Fix
 
 - Shows the auto-fixable findings. The user picks which to apply.
-- Before writing anything:
-  - checks that Word does not have the file open (looks for a `~$` lock
-    file, and tries to open the file for writing);
-  - writes the backup copy.
-- Applies the fixes as byte-range splices on the original XML text, then
-  saves the .docx. Bytes outside the splices stay the same.
+- **The original is never changed.** The fixes go into the accessible copy
+  `Guide - Adapdf\Guide (accessible).docx`:
+  - the first time, the copy is made from the original plus the fixes: a
+    temporary file in the folder, then a move into place (atomic). The folder is
+    made when it is not there;
+  - later, when the working file is the copy, the fixes rewrite the copy the
+    same way (temporary file, then move). Before that, the tool checks that Word
+    does not have the copy open (it looks for a `~$` lock file, and tries to open
+    the copy for writing);
+  - the original is only read. It may be open in Word.
+- If the user opens an original and its copy already exists, the tool does not
+  decide. The app asks: **Continue with the accessible copy** (the default), or
+  **Start over from the original**, which replaces the copy, including any
+  changes that were made to it in Word, and needs an explicit confirmation. The
+  command line stops with a message unless `--continue` (work in the copy) or
+  `--start-over` (replace the copy) is given. Start over does not delete the PDF or
+  the reports; a new export replaces them.
+- Applies the fixes as byte-range splices on the original XML text. Bytes
+  outside the splices stay the same.
+- **Fix log.** Every fix that is applied is recorded inside the copy, in the same
+  write: a custom document property `Adapdf fix log` (`docProps/custom.xml`, with
+  its content type and package relationship, added when missing). Its value is a
+  compact JSON list, oldest first. Each entry has the local date and time, the
+  rule ID, the fix ID, the place of the problem in words, what the tool did, and
+  for a fix that asks, the text that the user typed or chose. Later fixes add to
+  the list. Word keeps a custom property when a person edits and saves the copy,
+  so the log stays.
 - Runs stage 1 again and shows the new results.
 - Fixes that need human input (for example, alt text or a title) ask for
-  the text in the UI. The tool never invents content.
+  the text in the UI. The tool never invents content. For the title only, the UI
+  may offer up to three one-click texts that are taken from the document itself:
+  the file name (without ` (accessible)`, with underscores and extra spaces
+  cleaned, and a leading `yyyy.mm.dd -` date kept as it is), the first paragraph
+  in the Title style, and the first Heading 1. Identical or empty texts are left
+  out. Nothing is filled in until the user chooses one, and the user can change
+  the text. Alt text has no suggestion (a caption next to the picture would make
+  IMG-005 report it).
 
 ## Stage 3 — Word export
 
@@ -125,15 +176,29 @@ are needed.
 ## Stage 6 — Report
 
 The HTML report must itself be accessible (headings, real tables, good
-contrast). It has these sections:
+contrast). It is a static page: it has no form control, because a page with no
+script cannot save what is typed or ticked. The PAC result, the checklist and the
+sign-off are recorded in the app, and the page shows them as text ("PAC: not
+checked yet", "Not checked yet" or "Checked" for each item, "Not signed yet" or
+"Signed by <name> on <date>"). It has these sections, in this order:
 
-1. Summary: pass or fail, number of errors and warnings, tool version, date.
-2. Pre-check findings.
-3. Fixes applied, including the backup file name.
-4. PDF metadata changes.
-5. veraPDF result.
-6. PAC: a place to attach or link the PAC report file, with the result.
-7. Human checklist, with a name and date for sign-off:
+1. Summary: pass or fail, the pre-check of the Word document (errors and warnings),
+   the PDF check (the number of rules of veraPDF PDF/UA-1 that failed), the file
+   names, tool version, date. The two checks are shown apart, never added into one
+   number.
+2. Pre-check findings. Each has its place in Word's words (see "Where a problem
+   is" in stage 1).
+3. Fixes applied: every fix in the fix log of the document, not only the fixes of
+   one run, with the date, the rule, the place, what was done and the text that
+   was typed or chosen. The section says: "The original <name>.docx was not
+   changed. Adapdf made its fixes in <name> (accessible).docx." For a log with no
+   entry it says: "No fixes were made by Adapdf. The Word document is <name>."
+4. veraPDF result. The first place of each failure is given in words (for
+   example "Table 1, body row 1, cell 2") worked out from the structure tree of the
+   PDF; veraPDF's own path is kept in a collapsed "Technical detail".
+5. PAC: the result, the PAC version and the PAC report file (a file in the folder
+   of the guide), recorded in the app.
+6. Human checklist and sign-off:
    - Each piece of alt text describes what the image shows, for the guide's purpose.
    - Images marked decorative really are decorative.
    - The reading order makes sense when read aloud. Check with the PAC
@@ -142,9 +207,13 @@ contrast). It has these sections:
    - Link text makes sense out of context.
    - Headings describe their section.
    - Tables are data tables, not layout.
+7. Technical details: how Word made the PDF (the Word build, the fields that
+   were updated, the export time and the parameters of `ExportAsFixedFormat`), and
+   the changes made to the PDF metadata (stage 4), as a subsection "PDF metadata
+   changes".
 
-The report is the evidence that the document passed. It is saved next to the
-PDF.
+The report is the evidence that the document passed. It is saved in the folder
+of the guide, next to the PDF.
 
 ## Interfaces
 
@@ -156,15 +225,40 @@ adapdf fix    Guide.docx            # stages 1–2, confirms each fix
 adapdf export Guide.docx            # stages 1, 3, 4, 5, 6
 ```
 
+`adapdf fix` never changes `Guide.docx`. The fixes go into `Guide - Adapdf\Guide
+(accessible).docx`. When that copy exists, `adapdf fix Guide.docx` stops with
+exit code 2 and says why, unless a flag is given: `--continue` works in the
+copy (its fixes stay and the new fixes go in), and `--start-over` replaces the
+copy with a new one made from the original. The two flags exclude each other.
+`adapdf fix "Guide - Adapdf\Guide (accessible).docx"` works in that copy
+directly; `--start-over` is refused for a copy (give the original).
+
 Exit codes: 0 = pass, 1 = errors found, 2 = tool failure.
 
 App (phase 5): choose a file (or drag it onto the window), see the findings
 grouped by severity, apply fixes, export, open the report, and sign off the
-human checklist. A static HTML page cannot save a name or a tick, so the app saves the
-checklist, the name and the date into the report (the JSON and the HTML). It never
-changes the PDF, and the report that `export` writes is always unsigned. Optional, if
-Phase 0 shows COM can do it reliably: a "Show in Word" button that opens the
-document and selects the problem.
+human checklist.
+
+- Every screen that has a document shows the **working file**: its full name and
+  its folder (for example "Working on: Guide (accessible).docx in C:\...\Guide -
+  Adapdf"), and an **Open folder** button that opens that folder.
+- After fixes, the app says: "Saved your fixes to Guide (accessible).docx. Your
+  original Guide.docx was not changed." The app then works on the copy.
+- When the user opens an original whose copy exists, the app asks **Continue with
+  the accessible copy** or **Start over from the original** (with the warning that
+  the copy is replaced, including changes made in Word, and an explicit confirm).
+- **Open in Word** opens the accessible copy in the user's own Word with the
+  program that Windows has for .docx files. If only the original is open in the app,
+  the app first asks to make the copy, so that the user edits the copy. The app does
+  not control Word afterwards: it says "Make your changes in Word, save, then
+  choose Check again." While Word has the copy open, a fix says "Close the
+  document in Word first, then try again."
+- The title field offers the one-click texts of stage 2. "Apply" is off until a
+  text is typed or chosen, and the hint says what is missing.
+- A static HTML page cannot save a name or a tick, so the app saves the PAC result
+  (result, PAC version, PAC report file), the checklist, the name and the date into
+  the report (the JSON and the HTML). It never changes the PDF, and the report that
+  `export` writes is always unsigned.
 
 ## Testing
 

@@ -2,47 +2,25 @@
   "exit_code": 0,
   "view": {
     "report": {
-      "schema_version": 1,
+      "schema_version": 2,
       "summary": {
         "verdict": "pass",
         "errors": 0,
         "warnings": 0,
+        "precheck_errors": 0,
+        "precheck_warnings": 0,
+        "pdf_failed_rules": 0,
         "reason": null,
         "tool": "adapdf",
-        "tool_version": "0.1.0",
+        "tool_version": "0.2.0",
         "generated_local": "2026-03-05 10:15:30",
         "document": "Guide.docx",
         "pdf": "Guide.pdf"
       },
-      "export": {
-        "word_build": "16.0.20527.20000",
-        "parameters": [
-          {
-            "name": "ExportFormat",
-            "value": "wdExportFormatPDF"
-          }
-        ],
-        "fields_updated": 2,
-        "tables_of_contents_updated": 1,
-        "first_failed_field": null,
-        "seconds": 1.5
-      },
       "precheck": [],
       "fixes": {
-        "applied": [],
-        "backup": null
-      },
-      "pdf_metadata": {
-        "status": "done",
-        "changes": [
-          {
-            "field": "info-title",
-            "what": "title in the document information (Title)",
-            "old": null,
-            "new": "Guide"
-          }
-        ],
-        "issues": []
+        "original": null,
+        "applied": []
       },
       "verapdf": {
         "status": "ran",
@@ -101,16 +79,41 @@
         ],
         "name": null,
         "date": null
+      },
+      "export": {
+        "word_build": "16.0.20527.20000",
+        "parameters": [
+          {
+            "name": "ExportFormat",
+            "value": "wdExportFormatPDF"
+          }
+        ],
+        "fields_updated": 2,
+        "tables_of_contents_updated": 1,
+        "first_failed_field": null,
+        "seconds": 1.5
+      },
+      "pdf_metadata": {
+        "status": "done",
+        "changes": [
+          {
+            "field": "info-title",
+            "what": "title in the document information (Title)",
+            "old": null,
+            "new": "Guide"
+          }
+        ],
+        "issues": []
       }
     },
-    "report_json": "C:\\Docs\\Guide.accessibility.json",
-    "report_html": "C:\\Docs\\Guide.accessibility.html",
-    "pdf": "C:\\Docs\\Guide.pdf"
+    "report_json": "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.json",
+    "report_html": "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.html",
+    "pdf": "C:\\Docs\\Guide - Adapdf\\Guide.pdf"
   },
   "console": "Guide.docx: result\n",
   "files": [
-    "C:\\Docs\\Guide.pdf",
-    "C:\\Docs\\Guide.accessibility.html",
-    "C:\\Docs\\Guide.accessibility.json"
+    "C:\\Docs\\Guide - Adapdf\\Guide.pdf",
+    "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.html",
+    "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.json"
   ]
 }

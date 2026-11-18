@@ -1,6 +1,7 @@
 # Real documents and generated output
 samples/
 *.backup-*.docx
+*\ -\ Adapdf/
 *.accessibility.html
 *.accessibility.json
 ~$*

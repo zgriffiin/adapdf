@@ -374,3 +374,344 @@ fn a_utf8_byte_order_mark_is_accepted() {
     let doc = load(&[("word/document.xml", &xml)]);
     assert_eq!(doc.paragraphs[0].text, "Hi");
 }
+
+// ---- headers and footers by section ---------------------------------------
+
+const REL_BASE: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+/// A document with these sections. Each section is the `sectPr` content of its
+/// last paragraph (the last one is the body's own). The header and footer parts
+/// are `word/header1.xml`, `word/header2.xml`, `word/footer1.xml`, and each has the
+/// relationship id `rId1`, `rId2`, `rId3` in that order.
+fn doc_with_sections(sections: &[&str]) -> Document {
+    let mut body = String::new();
+    let (last, earlier) = sections.split_last().unwrap();
+    for (i, section) in earlier.iter().enumerate() {
+        body.push_str(&format!(
+            "<w:p><w:pPr><w:sectPr>{section}</w:sectPr></w:pPr><w:r><w:t>Section {}</w:t></w:r></w:p>",
+            i + 1
+        ));
+    }
+    body.push_str(&format!(
+        "<w:p><w:r><w:t>Last</w:t></w:r></w:p><w:sectPr>{last}</w:sectPr>"
+    ));
+    let document = format!("<w:document {NS}><w:body>{body}</w:body></w:document>");
+    let rels = format!(
+        r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="{REL_BASE}/header" Target="header1.xml"/><Relationship Id="rId2" Type="{REL_BASE}/header" Target="header2.xml"/><Relationship Id="rId3" Type="{REL_BASE}/footer" Target="footer1.xml"/></Relationships>"#
+    );
+    let part = |tag: &str, text: &str| {
+        format!("<w:{tag} {NS}><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:{tag}>")
+    };
+    load(&[
+        ("word/document.xml", &document),
+        ("word/header1.xml", &part("hdr", "One")),
+        ("word/header2.xml", &part("hdr", "Two")),
+        ("word/footer1.xml", &part("ftr", "Foot")),
+        ("word/_rels/document.xml.rels", &rels),
+    ])
+}
+
+fn place(footer: bool, kind: HeaderFooterKind, sections: &[usize]) -> HeaderFooterPlace {
+    HeaderFooterPlace {
+        footer,
+        kind,
+        sections: sections.to_vec(),
+    }
+}
+
+const HEADER1_DEFAULT: &str = r#"<w:headerReference w:type="default" r:id="rId1"/>"#;
+const HEADER2_DEFAULT: &str = r#"<w:headerReference w:type="default" r:id="rId2"/>"#;
+
+#[test]
+fn a_section_names_its_headers_and_footers_with_their_kind() {
+    let doc = doc_with_sections(&[
+        r#"<w:headerReference w:type="default" r:id="rId1"/><w:headerReference w:type="first" r:id="rId2"/><w:footerReference r:id="rId3"/>"#,
+    ]);
+    assert_eq!(doc.sections.len(), 1);
+    let refs: Vec<(&str, bool, HeaderFooterKind)> = doc.sections[0]
+        .header_footers
+        .iter()
+        .map(|r| (r.part.as_str(), r.footer, r.kind))
+        .collect();
+    assert_eq!(
+        refs,
+        [
+            ("word/header1.xml", false, HeaderFooterKind::Default),
+            ("word/header2.xml", false, HeaderFooterKind::First),
+            // No `w:type` is the default.
+            ("word/footer1.xml", true, HeaderFooterKind::Default),
+        ]
+    );
+    assert_eq!(
+        doc.header_footer_places("word/header2.xml"),
+        [place(false, HeaderFooterKind::First, &[0])]
+    );
+    // An even-pages header.
+    let even = doc_with_sections(&[r#"<w:headerReference w:type="even" r:id="rId1"/>"#]);
+    assert_eq!(
+        even.header_footer_places("word/header1.xml"),
+        [place(false, HeaderFooterKind::Even, &[0])]
+    );
+}
+
+#[test]
+fn each_section_has_its_own_header() {
+    let doc = doc_with_sections(&[HEADER1_DEFAULT, HEADER2_DEFAULT]);
+    assert_eq!(
+        doc.header_footer_places("word/header1.xml"),
+        [place(false, HeaderFooterKind::Default, &[0])]
+    );
+    assert_eq!(
+        doc.header_footer_places("word/header2.xml"),
+        [place(false, HeaderFooterKind::Default, &[1])]
+    );
+    // A part that no section names has no place.
+    assert!(doc.header_footer_places("word/footer1.xml").is_empty());
+}
+
+#[test]
+fn a_section_with_no_header_of_its_own_shows_the_one_before_it() {
+    // Section 1 names header 1. Section 2 names nothing ("Link to Previous"), and
+    // section 3 names header 2, so header 1 is shown in sections 1 and 2.
+    let doc = doc_with_sections(&[HEADER1_DEFAULT, "", HEADER2_DEFAULT]);
+    assert_eq!(
+        doc.header_footer_places("word/header1.xml"),
+        [place(false, HeaderFooterKind::Default, &[0, 1])]
+    );
+    assert_eq!(
+        doc.header_footer_places("word/header2.xml"),
+        [place(false, HeaderFooterKind::Default, &[2])]
+    );
+}
+
+#[test]
+fn a_part_that_two_sections_name_is_in_both() {
+    let doc = doc_with_sections(&[HEADER1_DEFAULT, HEADER2_DEFAULT, HEADER1_DEFAULT]);
+    assert_eq!(
+        doc.header_footer_places("word/header1.xml"),
+        [place(false, HeaderFooterKind::Default, &[0, 2])]
+    );
+}
+
+#[test]
+fn the_kinds_are_followed_apart() {
+    // Section 1: a default header and a first-page header. Section 2 names only a
+    // new default header, so the first-page header of section 1 goes on.
+    let doc = doc_with_sections(&[
+        r#"<w:headerReference w:type="default" r:id="rId1"/><w:headerReference w:type="first" r:id="rId2"/>"#,
+        HEADER2_DEFAULT,
+    ]);
+    assert_eq!(
+        doc.header_footer_places("word/header2.xml"),
+        [
+            place(false, HeaderFooterKind::Default, &[1]),
+            place(false, HeaderFooterKind::First, &[0, 1]),
+        ]
+    );
+}
+
+#[test]
+fn a_reference_to_a_part_that_does_not_exist_is_left_out() {
+    let doc = doc_with_sections(&[r#"<w:headerReference w:type="default" r:id="rId99"/>"#]);
+    assert!(doc.sections[0].header_footers.is_empty());
+}
+
+#[test]
+fn the_place_of_a_header_or_footer_is_in_words() {
+    use crate::findings::header_footer_place as words;
+    // One section: no "of section 1".
+    let one = doc_with_sections(&[
+        r#"<w:headerReference w:type="default" r:id="rId1"/><w:headerReference w:type="first" r:id="rId2"/><w:footerReference w:type="even" r:id="rId3"/>"#,
+    ]);
+    assert_eq!(
+        words(&one, "word/header1.xml"),
+        "In the page header (all pages)"
+    );
+    assert_eq!(
+        words(&one, "word/header2.xml"),
+        "In the page header (first page)"
+    );
+    assert_eq!(
+        words(&one, "word/footer1.xml"),
+        "In the page footer (even pages)"
+    );
+
+    // Several sections: the section is named.
+    let several = doc_with_sections(&[HEADER1_DEFAULT, HEADER2_DEFAULT]);
+    assert_eq!(
+        words(&several, "word/header2.xml"),
+        "In the page header of section 2 (all pages)"
+    );
+    // A part that several sections show: they are listed.
+    let shared = doc_with_sections(&[HEADER1_DEFAULT, "", HEADER2_DEFAULT, HEADER1_DEFAULT]);
+    assert_eq!(
+        words(&shared, "word/header1.xml"),
+        "In the page header of sections 1, 2 and 4 (all pages)"
+    );
+    let two = doc_with_sections(&[HEADER1_DEFAULT, HEADER2_DEFAULT, HEADER1_DEFAULT]);
+    assert_eq!(
+        words(&two, "word/header1.xml"),
+        "In the page header of sections 1 and 3 (all pages)"
+    );
+    // One part in two places: both are said.
+    let both = doc_with_sections(&[
+        r#"<w:headerReference w:type="default" r:id="rId1"/><w:headerReference w:type="first" r:id="rId1"/>"#,
+    ]);
+    assert_eq!(
+        words(&both, "word/header1.xml"),
+        "In the page header (all pages) and the page header (first page)"
+    );
+    // A part that no section uses.
+    assert_eq!(
+        words(&several, "word/footer1.xml"),
+        "In a page footer that no section of the document uses"
+    );
+}
+
+#[test]
+fn the_places_of_the_other_locations_are_in_words() {
+    use crate::findings::Location;
+    assert_eq!(
+        Location::document("docProps/core.xml").place,
+        "The document's properties (File > Info)"
+    );
+    assert_eq!(
+        Location::document("word/settings.xml").place,
+        "Word's template setting (Developer > Document Template)"
+    );
+    assert_eq!(
+        Location::document("word/document.xml").place,
+        "The whole document"
+    );
+    // A paragraph keeps its form: the number, the text, and the heading above.
+    let doc = Document::from_bytes(
+        &clean()
+            .heading(2, "Setup")
+            .para("Press the red button.")
+            .para("")
+            .build(),
+    )
+    .unwrap();
+    let place = |i: usize| Location::paragraph(&doc, &doc.paragraphs[i]).place;
+    assert_eq!(place(0), "paragraph 1 \"Test guide\"");
+    assert_eq!(
+        place(3),
+        "paragraph 4 \"Press the red button.\", after the heading \"Setup\""
+    );
+    // A paragraph with no text still says which one it is.
+    assert_eq!(
+        place(4),
+        "paragraph 5 (no text), after the heading \"Setup\""
+    );
+    // A table says which one and what is under which heading.
+    let table = Location::table(&doc, 2, "Name", Some(3));
+    assert_eq!(
+        table.place,
+        "The table under the heading \"Setup\" (table 2, first cell \"Name\")"
+    );
+    assert_eq!(
+        Location::table(&doc, 1, "", Some(0)).place,
+        "The table (table 1)"
+    );
+    // A style says its name and where to change it.
+    let styled = Location::style(&doc, &doc.paragraphs[3]);
+    assert!(
+        styled.place.starts_with("The style \"")
+            && styled.place.contains(
+                "\" (Home > Styles), first used in paragraph 4 \"Press the red button.\""
+            ),
+        "{}",
+        styled.place
+    );
+    assert_eq!(styled.part, "word/styles.xml");
+    // Other text in the place of the snippet (a text box).
+    let boxed = Location::paragraph(&doc, &doc.paragraphs[3]).with_snippet("Note this.");
+    assert_eq!(
+        boxed.place,
+        "paragraph 4 \"Note this.\", after the heading \"Setup\""
+    );
+    assert_eq!(boxed.snippet.as_deref(), Some("Note this."));
+}
+
+#[test]
+fn txt_003_says_which_section_and_which_page_the_header_is_in() {
+    use crate::rules::text::txt_003;
+    // Section 2 has the header "Two" for all pages.
+    let doc = doc_with_sections(&[HEADER1_DEFAULT_EMPTY, HEADER2_DEFAULT]);
+    let found = txt_003(&doc);
+    // The header of section 1 and the footer are not used by any section, and are
+    // found too: header1 says so.
+    let unused = found
+        .iter()
+        .find(|f| f.location.part == "word/header1.xml")
+        .unwrap();
+    assert_eq!(
+        unused.location.place,
+        "In a page header that no section of the document uses"
+    );
+    let f = found
+        .iter()
+        .find(|f| f.location.part == "word/header2.xml")
+        .expect("a finding for the header of section 2");
+    assert_eq!(
+        f.location.place,
+        "In the page header of section 2 (all pages)"
+    );
+    assert_eq!(f.location.part, "word/header2.xml");
+    assert_eq!(f.location.snippet.as_deref(), Some("Two"));
+    assert!(
+        f.how_to_fix.starts_with(
+            "Double-click the top of a page in section 2 to open the header. Delete \"Two\", or move it into the body of the document."
+        ),
+        "{}",
+        f.how_to_fix
+    );
+    assert!(
+        f.how_to_fix
+            .ends_with("Keep only the title, page numbers and dates in the header.")
+    );
+
+    // A first-page header in the one section of the document.
+    let doc = doc_with_sections(&[r#"<w:headerReference w:type="first" r:id="rId2"/>"#]);
+    let found = txt_003(&doc);
+    let f = found
+        .iter()
+        .find(|f| f.location.part == "word/header2.xml")
+        .unwrap();
+    assert_eq!(f.location.place, "In the page header (first page)");
+    assert!(
+        f.how_to_fix
+            .starts_with("Double-click the top of the first page to open the header."),
+        "{}",
+        f.how_to_fix
+    );
+
+    // A footer.
+    let doc = doc_with_sections(&[
+        r#"<w:footerReference w:type="even" r:id="rId3"/>"#,
+        r#"<w:footerReference w:type="even" r:id="rId3"/>"#,
+    ]);
+    let found = txt_003(&doc);
+    let f = found
+        .iter()
+        .find(|f| f.location.part == "word/footer1.xml")
+        .unwrap();
+    assert_eq!(
+        f.location.place,
+        "In the page footer of sections 1 and 2 (even pages)"
+    );
+    assert!(
+        f.how_to_fix.starts_with(
+            "Double-click the bottom of an even-numbered page in section 1 to open the footer."
+        ),
+        "{}",
+        f.how_to_fix
+    );
+    assert!(
+        f.message.starts_with("The footer has text"),
+        "{}",
+        f.message
+    );
+}
+
+const HEADER1_DEFAULT_EMPTY: &str = "";

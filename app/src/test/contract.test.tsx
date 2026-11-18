@@ -22,6 +22,7 @@ import {
   sampleNames,
   shapeByPrefix,
   viewSample,
+  workingInfoSample,
 } from "./contract";
 import { setupBackend, wcagViolations, type Backend, type Handlers } from "./backend";
 import { parse, problemsOf } from "./shape";
@@ -127,6 +128,10 @@ describe("the findings screen, from what `check` and `fix_offers` gave", () => {
     expect([check.errors, check.warnings]).toEqual([1, 1]);
     await openDocument(check, offersSample("lst002-fail"));
     expect(heading()).toHaveTextContent("Guide.docx: Found 1 error and 1 warning.");
+    // The place is in Word's words, as Rust wrote it.
+    for (const finding of check.findings) {
+      expect(screen.getAllByText(finding.location.place, { exact: false }).length).toBeGreaterThan(0);
+    }
     expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
       "Errors (1)",
       "Warnings (1)",
@@ -193,23 +198,34 @@ describe("the fix flow, from what `fix_offers` and `apply_fixes` gave", () => {
     const applied = applySample("lst002-fail");
     const region = await screen.findByRole("status");
     await waitFor(() => expect(region).toHaveTextContent("The fixes were applied."));
-    expect(region).toHaveTextContent(`Backup: ${applied.backup}.`);
+    expect(region).toHaveTextContent(
+      `Saved your fixes to ${applied.copy!.split("\\").pop()}. Your original ${applied.original.split("\\").pop()} was not changed.`,
+    );
     expect(region).toHaveTextContent("1 fix applied.");
     expect(backend.calls.find((c) => c.command === "apply_fixes")?.args).toEqual({
       path: DOCX,
       choices: [{ rule_id: "LST-001", position: 0, input: { kind: "confirm" } }],
+      startOver: false,
     });
-    // The findings are those that the command gave after the fix.
-    expect(heading()).toHaveTextContent("Guide.docx: No problems found.");
+    // The findings are those that the command gave after the fix, and the page now
+    // works on the file that the command named.
+    expect(heading()).toHaveTextContent("Guide (accessible).docx: No problems found.");
   });
 
-  it("asks for the title, with no value, and sends what the person types", async () => {
+  it("asks for the title, with no value, offers the texts that Rust found, and sends what the person types", async () => {
     const [offer] = offersSample("doc001-fail");
-    expect(offer!.finding.suggestion).not.toBeNull();
+    expect(offer!.finding.suggestion).toBeNull();
+    expect(offer!.suggestions.length).toBeGreaterThan(0);
     const { user, backend } = await fixScreen("doc001-fail");
     const field = screen.getByRole("textbox", { name: "Document title" });
     expect(field).toHaveValue("");
-    expect(field).toHaveAccessibleDescription(`Suggestion, not filled in: ${offer!.finding.suggestion}. Type the title yourself.`);
+    // One button for each text that Rust gave, with the words that Rust gave.
+    for (const suggestion of offer!.suggestions) {
+      expect(screen.getByRole("button", { name: `${suggestion.label}: ${suggestion.text}` })).toBeInTheDocument();
+    }
+    await user.click(screen.getByRole("button", { name: `${offer!.suggestions[0]!.label}: ${offer!.suggestions[0]!.text}` }));
+    expect(field).toHaveValue(offer!.suggestions[0]!.text);
+    await user.clear(field);
     await user.type(field, "A title typed by a person");
     await user.click(screen.getByRole("button", { name: "Apply 1 fix" }));
     await waitFor(() => expect(backend.calls.some((c) => c.command === "apply_fixes")).toBe(true));
@@ -270,7 +286,7 @@ describe("the fix flow, from what `fix_offers` and `apply_fixes` gave", () => {
     for (const item of refused.refused) {
       expect(screen.getByRole("status")).toHaveTextContent(item.reason);
     }
-    expect(screen.getByRole("status")).toHaveTextContent("No backup was made, because nothing was written.");
+    expect(screen.getByRole("status")).toHaveTextContent("No file was changed, because nothing was written.");
   });
 });
 
@@ -312,7 +328,7 @@ describe("the export, from what `export` gave", () => {
     expect(heading()).toHaveTextContent("Result for Guide.docx: Fail");
     expect(screen.getByText(view.report.summary.reason!)).toBeInTheDocument();
     expect(screen.getByText("None was written")).toBeInTheDocument();
-    expect(screen.getByText("Not run (no PDF was made)")).toBeInTheDocument();
+    expect(screen.getAllByText("Not run (no PDF was made)").length).toBeGreaterThan(0);
     expect(screen.getByRole("heading", { level: 3, name: "Findings in the Word document" })).toBeInTheDocument();
     expect(screen.getByText(view.report.precheck[0]!.message, { exact: false })).toBeInTheDocument();
     expect(await wcagViolations(document.body)).toEqual([]);
@@ -380,10 +396,36 @@ describe("the sign-off, from the reports that `read_report` and `save_signoff` g
 
 // ------------------------------------------------- what the page sends
 
+describe("the files of a guide, from what `working_info` and `create_copy` gave", () => {
+  it("asks which file to use when the copy exists, with the names that Rust gave", async () => {
+    const info = workingInfoSample("original-with-copy");
+    expect(info.copy_exists && !info.is_copy).toBe(true);
+    const backend = setupBackend({ working_info: () => info });
+    backend.chosen.push(DOCX);
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Choose a Word document" }));
+    await screen.findByRole("heading", { level: 2, name: "Guide.docx has an accessible copy" });
+    expect(screen.getByText(/Adapdf made Guide \(accessible\)\.docx from this document earlier/)).toBeInTheDocument();
+    expect(await wcagViolations(document.body)).toEqual([]);
+  });
+
+  it("shows the working file of an original and of its copy as Rust named them", async () => {
+    const original = workingInfoSample("original");
+    expect(original.copy_exists).toBe(false);
+    const copy = workingInfoSample("copy");
+    expect(copy.is_copy && copy.copy_exists).toBe(true);
+    expect(copy.chosen).toBe(original.copy);
+    await openDocument(checkSample("txt004-fail"), [], { working_info: () => original });
+    expect(screen.getByText(/Working on:/).closest("p")).toHaveTextContent("Guide.docx in C:\\Docs (your original)");
+  });
+});
+
 describe("the arguments that the page sends", () => {
   it("are the arguments in calls.json, which the Rust test checks against the commands", async () => {
     const calls = callsSample();
-    // One run through the page: choose, fix three ways, export, open the report, sign.
+    // One run through the page: choose, fix three ways, open in Word, open the folder,
+    // export, open the report, sign.
     const check = checkSample("lst002-fail");
     const offers = [
       ...offersSample("lst002-fail"),
@@ -392,6 +434,8 @@ describe("the arguments that the page sends", () => {
     ];
     const { user, backend } = await openDocument(check, offers, {
       apply_fixes: () => applySample("lst002-fail"),
+      open_in_word: () => null,
+      open_folder: () => null,
       export: () => exportSample("pass"),
       open_report: () => null,
       save_signoff: () => viewSample("signed"),
@@ -402,6 +446,10 @@ describe("the arguments that the page sends", () => {
     await user.click(screen.getByRole("checkbox", { name: /^Mark as decorative/ }));
     await user.click(screen.getByRole("button", { name: "Apply 3 fixes" }));
     await screen.findByText(/The fixes were applied\./);
+    await user.click(screen.getByRole("button", { name: "Open in Word" }));
+    await screen.findByText(/Make your changes in Word, save, then choose Check again\./);
+    await user.click(screen.getByRole("button", { name: "Open folder" }));
+    await waitFor(() => expect(backend.calls.some((c) => c.command === "open_folder")).toBe(true));
     await user.click(screen.getByRole("button", { name: "Export PDF" }));
     await screen.findByRole("heading", { level: 2, name: /^Result for/ });
     await user.click(screen.getByRole("button", { name: "Open the report in your browser" }));
@@ -415,12 +463,33 @@ describe("the arguments that the page sends", () => {
     await waitFor(() => expect(backend.calls.some((c) => c.command === "save_signoff")).toBe(true));
 
     const sent = new Map(backend.calls.map((c) => [c.command, c.args]));
-    expect([...sent.keys()].sort()).toEqual(
-      ["apply_fixes", "check", "export", "fix_offers", "open_report", "save_signoff"],
-    );
+    expect([...sent.keys()].sort()).toEqual([
+      "apply_fixes",
+      "check",
+      "export",
+      "fix_offers",
+      "open_folder",
+      "open_in_word",
+      "open_report",
+      "save_signoff",
+      "working_info",
+    ]);
     for (const [command, args] of sent) {
       expect(args, command).toEqual(calls[command]);
     }
+  });
+
+  it("include the arguments that make the copy", async () => {
+    const calls = callsSample();
+    const check = checkSample("txt004-fail");
+    const { user, backend } = await openDocument(check, [], {
+      create_copy: () => workingInfoSample("copy"),
+      open_in_word: () => null,
+    });
+    await user.click(screen.getByRole("button", { name: "Open in Word" }));
+    await user.click(screen.getByRole("button", { name: "Make the copy and open it in Word" }));
+    await waitFor(() => expect(backend.calls.some((c) => c.command === "open_in_word")).toBe(true));
+    expect(backend.calls.find((c) => c.command === "create_copy")?.args).toEqual(calls.create_copy);
   });
 
   it("include the path that an earlier report is read from", async () => {
@@ -434,9 +503,19 @@ describe("the arguments that the page sends", () => {
     expect(backend.calls).toEqual([{ command: "read_report", args: calls.read_report }]);
   });
 
-  it("are in calls.json for the seven commands, and no other", () => {
-    expect(Object.keys(callsSample()).sort()).toEqual(
-      ["apply_fixes", "check", "export", "fix_offers", "open_report", "read_report", "save_signoff"],
-    );
+  it("are in calls.json for the eleven commands, and no other", () => {
+    expect(Object.keys(callsSample()).sort()).toEqual([
+      "apply_fixes",
+      "check",
+      "create_copy",
+      "export",
+      "fix_offers",
+      "open_folder",
+      "open_in_word",
+      "open_report",
+      "read_report",
+      "save_signoff",
+      "working_info",
+    ]);
   });
 });

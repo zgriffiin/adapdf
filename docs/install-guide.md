@@ -22,13 +22,13 @@ Word and Windows manage their own updates and can still use the network.
 - Windows 11.
 - Microsoft 365 Word, installed on your computer.
 - About 250 MB of free disk space (Adapdf and the data that its window keeps).
-- The file `Adapdf_0.1.0_x64-setup.exe`. Your team lead gives you this file.
+- The file `Adapdf_0.2.0_x64-setup.exe`. Your team lead gives you this file.
 
 You do not need to install Java or any other program. Adapdf has what it needs.
 
 ## Install
 
-1. Double-click `Adapdf_0.1.0_x64-setup.exe`.
+1. Double-click `Adapdf_0.2.0_x64-setup.exe`.
 2. Windows may show a blue box: "Windows protected your PC". The installer is
    not signed yet. If you got the file from your team lead, click **More info**,
    then **Run anyway**.
@@ -45,33 +45,56 @@ Adapdf is now in your Start menu, under **Adapdf**. The files are in the folder
 
 1. Open **Adapdf** from the Start menu.
 2. Click **Choose a Word document**, or drop a `.docx` file on the window.
-3. Adapdf shows its findings. An error must be fixed before you can export.
-   A warning does not stop the export.
+3. Adapdf shows its findings. Under the heading it says which file it works on
+   and where that file is. An error must be fixed before you can export.
+   A warning does not stop the export. Each finding says where the problem is, in
+   the words that Word uses (for example "In the page header of section 2 (all
+   pages)").
 4. Click **Fix problems** to let Adapdf fix what it can. It asks before each
-   fix. It makes a backup copy of your guide first. It never writes alt text or
-   a title for you. It asks you to type these.
-5. Click **Export PDF**. Wait. Word runs in the background. You do not see it.
+   fix. **Adapdf never changes your original guide.** It saves the fixes in a
+   copy, `Guide (accessible).docx`, and tells you: "Saved your fixes to Guide
+   (accessible).docx. Your original Guide.docx was not changed." From then on
+   Adapdf works on the copy. Adapdf never writes alt text or a title for you. For the
+   title it shows buttons with texts from your guide (the file name, the Title
+   paragraph, the first Heading 1). Nothing is filled in until you click one, and you can
+   change the text. Type or click a text, or **Apply** stays off.
+5. Some problems Adapdf cannot fix. Click **Open in Word** to open the
+   copy in your own Word, make the change there, and save. Then click **Check
+   again** in Adapdf. (If only your original is open in Adapdf, it asks to make
+   the copy first, so that you change the copy and not your original.)
+6. Click **Export PDF**. Wait. Word runs in the background. You do not see it.
    This takes about 10 seconds for a small guide, and more for a long one.
-6. Adapdf shows **Pass** or **Fail**. Click **Open the report in your browser**
+7. Adapdf shows **Pass** or **Fail**. Click **Open the report in your browser**
    to read the report.
+
+If you open a guide that already has a copy, Adapdf asks: **Continue with the
+accessible copy** (keeps the fixes and the changes that you made in Word) or **Start
+over from the original**. Start over replaces the copy, including every change that
+you made to it in Word, so Adapdf asks you to confirm it.
 
 ## Where the files go
 
-Adapdf saves all files next to your Word guide. For `Guide.docx` you get:
+Adapdf saves everything in one folder next to your Word guide. For `Guide.docx`
+the folder is `Guide - Adapdf`. In it you get:
 
+- `Guide (accessible).docx`: the copy with the fixes in it. Edit this file in Word.
 - `Guide.pdf`: the PDF.
 - `Guide.accessibility.html`: the report. Open it in your browser.
 - `Guide.accessibility.json`: the same report for programs.
-- `Guide.backup-<date and time>.docx`: a backup of your guide. It is made only
-  when you let Adapdf fix the guide.
 
-Adapdf never changes the `.docx` file unless you click **Fix problems**.
+Your original `Guide.docx` is never changed, and Adapdf writes nothing else next to
+it. There are no backup files: your original is the backup. Click **Open folder** in
+Adapdf to open the folder.
+
+Adapdf writes every fix into the copy, as a note that you can read in Word (File,
+Info, Properties, Advanced Properties, Custom: **Adapdf fix log**). The report lists
+the fixes. The note stays when you edit and save the copy in Word.
 
 ## If Word has the file open
 
-- **Fix problems** does not work while Word has the guide open. Adapdf tells
-  you. Close the guide in Word, then try again. Adapdf does this to protect your
-  work.
+- **Fix problems** does not work while Word has the accessible copy open. Adapdf
+  says: "Close the document in Word first, then try again." Adapdf does this to
+  protect your work. Your original may stay open: Adapdf only reads it.
 - **Export PDF** works while the guide is open, but it reads the file as it is
   saved on disk. Save the guide in Word first.
 - If the PDF is open in a PDF viewer, Adapdf cannot replace it. Close the PDF,
@@ -87,20 +110,18 @@ it and write down the result.
 1. Open the PDF in PAC, and run the check. Save the PAC report file next to the
    PDF.
 2. Open the Adapdf report (`Guide.accessibility.html`) in your browser.
-3. Find the section **PAC**. Write the name of the PAC report file, the PAC
-   version, and the result: **Pass** or **Fail**. The report page cannot save
-   what you type in the PAC section yet. Keep the PAC report file next to the
-   PDF, and print the page if you need a copy of these notes.
-4. Look at the PDF for each item of the checklist.
-5. Record the sign-off in the Adapdf app, not in the browser page. In the app,
-   on the result screen (or after **Open an earlier report**), find **Checklist
-   and sign-off**. Tick each item that you checked. Type your name and pick the
-   date. Click **Save sign-off**.
+3. Look at the PDF for each item of the checklist.
+4. Record the PAC result and the sign-off in the Adapdf app. In the app, on the
+   result screen (or after **Open an earlier report**), find **Checklist and
+   sign-off**. Choose the **PAC result** (Pass or Fail), type the **PAC
+   version**, and click **Choose the PAC report file** to pick the PAC report. The
+   file must be in the folder `Guide - Adapdf`. Tick each item that you checked.
+   Type your name and pick the date. Click **Save sign-off**.
 
-**Ticks that you make in the report page in your browser are not saved.** Only the
-ticks, the name and the date that you save in the app are written into the
-report. If you tick items in the browser page only, the report still shows them as
-not checked.
+The report page in your browser does not have fields: it shows what you saved in the
+app (for example "PAC: Pass, report ..., PAC 2024.1, recorded by ... on ..." and
+"Signed by ... on ..."). Changes made in that page are not saved. Open the report in
+the app to record them.
 
 If PAC finds errors, fix the cause in the Word guide, not in the PDF. Then
 export again. Exporting again makes a new, unsigned report.
@@ -115,8 +136,8 @@ export again. Exporting again makes a new, unsigned report.
    harmless, and a later install uses it again.
 
 This removes the program, the Start menu entry and the folder
-`%LOCALAPPDATA%\Adapdf`. It does not remove your guides, your PDFs, your reports
-or your backups.
+`%LOCALAPPDATA%\Adapdf`. It does not remove your guides, your accessible copies, your
+PDFs or your reports.
 
 ## If something goes wrong
 

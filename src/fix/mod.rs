@@ -6,9 +6,11 @@
 //!
 //! The pure part is [`apply`]: bytes of a .docx and a list of chosen fixes in,
 //! bytes of the fixed .docx out. [`fix_file`] adds the safety rules around it:
-//! Word must not have the file open, the backup is written first, and the new
-//! file is written to a temporary file and moved over the original. [`offers`]
-//! lists what the tool can fix. [`interactive`] is the `adapdf fix` command.
+//! the original is never written. The fixes go into the accessible copy
+//! `Guide - Adapdf\Guide (accessible).docx` (a new file, or the copy that an earlier
+//! run made), after Word is found not to have that copy open. The new file is
+//! written to a temporary file and moved into place. [`offers`] lists what the
+//! tool can fix. [`interactive`] is the `adapdf fix` command.
 //!
 //! Fixes by fix ID:
 //!
@@ -36,6 +38,7 @@ use crate::model::Document;
 use crate::rules;
 
 mod drawings;
+pub mod fixlog;
 pub mod interactive;
 mod links;
 #[cfg(windows)]
@@ -45,10 +48,17 @@ mod metadata;
 mod package;
 mod paragraphs;
 mod safety;
+mod suggestions;
 mod tables;
 pub mod xml;
 
-pub use safety::{FileSystem, RealFs, Timestamp, find_lock_file, lock_file_names, open_for_fixing};
+pub use fixlog::FixLogEntry;
+pub use safety::{
+    COPY_SUFFIX, ExistingCopy, FOLDER_SUFFIX, FileSystem, RealFs, Timestamp, accessible_copy_path,
+    adapdf_folder, find_lock_file, is_accessible_copy, lock_file_names, open_for_fixing,
+    original_path, output_folder, output_stem,
+};
+pub use suggestions::{TitleSource, TitleSuggestion, file_name_title, title_suggestions};
 pub use xml::Splice;
 
 use paragraphs::ParagraphEdit;
@@ -59,14 +69,14 @@ use xml::Splices;
 #[derive(Debug, thiserror::Error)]
 pub enum FixError {
     #[error(
-        "{} is open in Word (the lock file {} is next to it). Close the document in Word, then run the fix again.",
+        "{} is open in Word (the lock file {} is next to it). Close the document in Word first, then try again.",
         file.display(),
         lock.display()
     )]
     LockFile { file: PathBuf, lock: PathBuf },
 
     #[error(
-        "{} cannot be opened for writing ({source}). Another program may have it open, or it may be read-only. Close it or change it, then run the fix again.",
+        "{} cannot be opened for writing ({source}). Another program, such as Word, may have it open, or it may be read-only. Close the document in Word first, then try again.",
         file.display()
     )]
     CannotWrite {
@@ -74,17 +84,21 @@ pub enum FixError {
         source: std::io::Error,
     },
 
-    #[error(
-        "the backup {} cannot be written ({source}). Nothing was changed.",
-        backup.display()
-    )]
-    Backup {
-        backup: PathBuf,
+    #[error("{} cannot be read ({source}).", file.display())]
+    CannotRead {
+        file: PathBuf,
         source: std::io::Error,
     },
 
     #[error(
-        "the fixed file cannot be written ({source}). {} is unchanged.",
+        "the accessible copy {} already exists next to {}, so it was not replaced.",
+        copy.display(),
+        original.display()
+    )]
+    CopyExists { original: PathBuf, copy: PathBuf },
+
+    #[error(
+        "the fixed file {} cannot be written ({source}). Nothing was changed.",
         file.display()
     )]
     Write {
@@ -180,6 +194,9 @@ pub struct AppliedFix {
     pub fix: FixId,
     /// What the tool did, in a sentence.
     pub summary: String,
+    /// The text the person typed or chose (the title, the alt text, or
+    /// `decorative`), for a fix that asks.
+    pub text: Option<String>,
 }
 
 /// A fix the tool did not apply, and why.
@@ -193,8 +210,8 @@ pub struct Refusal {
 
 #[derive(Debug, Clone)]
 pub struct Applied {
-    /// The fixed .docx. `None` when no fix changed anything. No backup is
-    /// needed, and nothing is written, in that case.
+    /// The fixed .docx. `None` when no fix changed anything. Nothing is
+    /// written in that case.
     pub bytes: Option<Vec<u8>>,
     pub applied: Vec<AppliedFix>,
     /// Findings whose fix is done when the PDF is exported (`UpdateFields`).
@@ -489,6 +506,11 @@ fn run(
                     FixKind::Manual => continue,
                 },
                 summary,
+                text: match &request.input {
+                    FixInput::Text(text) => Some(text.clone()),
+                    FixInput::Decorative => Some("decorative".to_string()),
+                    FixInput::Confirm => None,
+                },
             }),
             Ok(Outcome::AtExport) => at_export.push(request.finding.clone()),
             Err(reason) => refused.push(Refusal {
@@ -668,7 +690,7 @@ pub fn offers(
 /// What a run on a file needs from outside.
 pub struct Environment<'a> {
     pub fs: &'a dyn FileSystem,
-    /// The time in the name of the backup.
+    /// The local time that the fix log records.
     pub now: Timestamp,
     /// For stage 1 after the fixes.
     pub fonts: &'a dyn FontLookup,
@@ -679,44 +701,90 @@ pub struct FixOutcome {
     pub applied: Vec<AppliedFix>,
     pub at_export: Vec<Finding>,
     pub refused: Vec<Refusal>,
-    /// The backup file. `None` when nothing was written.
-    pub backup: Option<PathBuf>,
-    /// Stage 1 on the file as it is now.
+    /// The accessible copy that was written. `None` when nothing was written.
+    pub copy: Option<PathBuf>,
+    /// Stage 1 on the file as it is now: the copy when one was written, the
+    /// file that was given otherwise.
     pub findings: Vec<Finding>,
 }
 
-/// Checks that the file can be fixed: Word does not have it open and it can be
-/// opened for writing. Nothing is written.
+/// Checks that a run can write: the accessible copy of `path` is not open in
+/// Word and can be opened for writing, when it exists. Nothing is written.
+/// The original is never opened for writing.
 pub fn preflight(fs: &dyn FileSystem, path: &Path) -> Result<(), FixError> {
-    open_for_fixing(fs, path).map(drop)
+    let copy = accessible_copy_path(path);
+    if fs.exists(&copy) {
+        open_for_fixing(fs, &copy).map(drop)
+    } else {
+        Ok(())
+    }
 }
 
-/// Fixes a .docx file on disk. The steps, in this order: look for the `~$` lock
-/// file, open the file for exclusive writing, apply the fixes in memory, write
-/// the backup, write the new file to a temporary file, move it over the
-/// original. When no fix changes anything, nothing is written and there is no
-/// backup. When a step fails, the original is as it was.
+/// Fixes a .docx file on disk. The original is never written.
+///
+/// `path` is the file the fixes start from: an original, or an accessible copy
+/// (`Guide (accessible).docx`). The steps, in this order: when the copy exists,
+/// look for its `~$` lock file and open it for exclusive writing; read the
+/// start file; apply the fixes in memory; write the result to a temporary file
+/// in the folder; move it over the copy. `existing` says what to do when
+/// `path` is an original and its copy already exists. When no fix changes
+/// anything, nothing is written and no copy is made. When a step fails, the
+/// copy is as it was and the original is untouched.
 pub fn fix_file(
     path: &Path,
     requests: &[FixRequest],
     options: &FixOptions,
     env: &Environment,
+    existing: ExistingCopy,
 ) -> Result<FixOutcome, FixError> {
-    let opened = open_for_fixing(env.fs, path)?;
-    let applied = apply(&opened.bytes, requests, options)?;
-    let (backup, findings) = match applied.bytes {
+    let prepared = safety::prepare(env.fs, path, existing)?;
+    let applied = apply(&prepared.bytes, requests, options)?;
+    let (copy, findings) = match applied.bytes {
         Some(new) => {
+            // Every fix is recorded in the document, in the same write.
+            let time = env.now.display();
+            let entries: Vec<FixLogEntry> = applied
+                .applied
+                .iter()
+                .map(|a| FixLogEntry {
+                    time: time.clone(),
+                    rule: a.finding.rule_id,
+                    fix: a.fix,
+                    place: a.finding.location.place.clone(),
+                    summary: a.summary.clone(),
+                    text: a.text.clone(),
+                })
+                .collect();
+            let new = fixlog::append(&new, &entries)?;
+            Document::from_bytes(&new).map_err(|e| FixError::Invalid(e.to_string()))?;
             let findings = crate::check_bytes(&new, env.fonts)?;
-            let backup = safety::write_with_backup(env.fs, path, opened, &new, env.now)?;
-            (Some(backup), findings)
+            (Some(prepared.write(env.fs, &new)?), findings)
         }
-        None => (None, crate::check_bytes(&opened.bytes, env.fonts)?),
+        None => (None, crate::check_bytes(&prepared.bytes, env.fonts)?),
     };
     Ok(FixOutcome {
         applied: applied.applied,
         at_export: applied.at_export,
         refused: applied.refused,
-        backup,
+        copy,
         findings,
     })
+}
+
+/// Makes the accessible copy of an original with no fix: the same bytes, written
+/// the way [`fix_file`] writes. Returns the copy. For a file that is already a
+/// copy, nothing is written and the file itself is returned.
+pub fn make_copy(
+    path: &Path,
+    env: &Environment,
+    existing: ExistingCopy,
+) -> Result<PathBuf, FixError> {
+    if is_accessible_copy(path) {
+        return Ok(path.to_path_buf());
+    }
+    let prepared = safety::prepare(env.fs, path, existing)?;
+    let bytes = prepared.bytes.clone();
+    // The same checks as for a fix: the bytes must be a .docx that the tool reads.
+    crate::model::Document::from_bytes(&bytes)?;
+    prepared.write(env.fs, &bytes)
 }

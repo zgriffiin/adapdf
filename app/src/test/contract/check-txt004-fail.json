@@ -10,6 +10,7 @@
       "message": "The table of contents is out of date: entry 2 is \"Setup\" but the heading is \"Installation\". A reader who follows it can land in the wrong place.",
       "how_to_fix": "In Word, click in the table of contents and choose Update Table, then Update entire table (or press F9). Adapdf can also update the fields when it exports the PDF.",
       "location": {
+        "place": "paragraph 1 \"Test guide 1\"",
         "heading": null,
         "snippet": "Test guide 1",
         "paragraph_index": 0,

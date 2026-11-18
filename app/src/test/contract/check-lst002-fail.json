@@ -10,6 +10,7 @@
       "message": "This paragraph starts with a typed number (\"3.\") instead of a real numbered list. Screen readers do not announce it as a list.",
       "how_to_fix": "Select the list paragraphs, apply the List Number style or use the Home tab list button, then delete the typed number.",
       "location": {
+        "place": "paragraph 5 \"3. Close the file.\", after the heading \"Test guide\"",
         "heading": "Test guide",
         "snippet": "3. Close the file.",
         "paragraph_index": 4,
@@ -27,6 +28,7 @@
       "message": "This list mixes typed numbers with automatic numbering. The automatic numbers will not count the typed items, so the numbers can be wrong.",
       "how_to_fix": "Delete the typed numbers and apply automatic numbering to the whole list (Home tab > Numbering).",
       "location": {
+        "place": "paragraph 5 \"3. Close the file.\", after the heading \"Test guide\"",
         "heading": "Test guide",
         "snippet": "3. Close the file.",
         "paragraph_index": 4,

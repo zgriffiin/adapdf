@@ -17,6 +17,13 @@
 //! 7. Only when both are written: the temporary PDF is moved over `Guide.pdf`,
 //!    and then the two temporary reports over their names.
 //!
+//! Everything the command writes goes into one folder, `Guide - Adapdf`, next to
+//! the original `Guide.docx` (the folder is made when it is not there). When the
+//! file is the accessible copy `Guide - Adapdf\Guide (accessible).docx`, the
+//! files go into its folder; a copy that is somewhere else gets them next to it.
+//! The PDF and the reports are named after the original (`Guide.pdf`), not after
+//! the copy. No other file is written next to the original.
+//!
 //! The new `Guide.pdf` replaces the old one only after it has been checked. A
 //! tool failure after the export (exit 2) removes the temporary file and leaves
 //! the folder as it was: the old PDF and the old reports are not changed, and
@@ -41,17 +48,18 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use crate::docx::Package;
 use crate::export::{
     ExportError, ExportOptions, ExportResult, TempPdf, ensure_not_locked, export_pdf,
 };
 use crate::findings::Severity;
-use crate::fix::Timestamp;
+use crate::fix::{Timestamp, fixlog, is_accessible_copy, output_folder, output_stem};
 use crate::fonts::FontLookup;
 use crate::model::Document;
 use crate::pdfmeta::{self, SourceMetadata};
 use crate::report::{self, ExportInfo, Input, Parameter, Report, Verdict, html};
 use crate::rules;
-use crate::verapdf::{self, Tool, Validation, VeraPdfError};
+use crate::verapdf::{self, StructIndex, Tool, Validation, VeraPdfError};
 
 /// The three stages that need something outside the tool.
 pub trait Stages {
@@ -129,13 +137,57 @@ impl Run {
     }
 }
 
-/// The path of the PDF, the HTML report and the JSON report for a .docx.
+/// The path of the PDF, the HTML report and the JSON report for a .docx: in the
+/// folder `Guide - Adapdf` of an original, or in the folder of an accessible
+/// copy, named after the original (`Guide.pdf`).
 pub fn output_paths(docx: &Path) -> (PathBuf, PathBuf, PathBuf) {
+    let folder = output_folder(docx);
+    let stem = output_stem(docx);
     (
-        docx.with_extension("pdf"),
-        docx.with_extension("accessibility.html"),
-        docx.with_extension("accessibility.json"),
+        folder.join(format!("{stem}.pdf")),
+        folder.join(format!("{stem}.accessibility.html")),
+        folder.join(format!("{stem}.accessibility.json")),
     )
+}
+
+/// The folder for the outputs. When the run makes it, the run removes it again
+/// if the run fails and the folder is still empty, so that a failure leaves the
+/// folder as it was.
+struct OutputFolder {
+    path: PathBuf,
+    made: bool,
+}
+
+impl OutputFolder {
+    fn prepare(path: PathBuf) -> io::Result<OutputFolder> {
+        let made = !path.exists();
+        fs::create_dir_all(&path)?;
+        Ok(OutputFolder { path, made })
+    }
+
+    /// The run wrote its files: the folder stays.
+    fn keep(mut self) {
+        self.made = false;
+    }
+}
+
+impl Drop for OutputFolder {
+    fn drop(&mut self) {
+        if self.made {
+            // Fails when a file is in it, which is what is wanted.
+            let _ = fs::remove_dir(&self.path);
+        }
+    }
+}
+
+/// The fix log of the document and the name of its original, for section 3.
+fn fixes_of(docx: &Path) -> Result<(Vec<fixlog::FixLogEntry>, Option<String>), String> {
+    let package = Package::open(docx).map_err(|e| e.to_string())?;
+    let log = fixlog::read(&package).map_err(|e| {
+        format!("The fix log of the document cannot be read ({e}). Nothing was exported.")
+    })?;
+    let original = is_accessible_copy(docx).then(|| format!("{}.docx", output_stem(docx)));
+    Ok((log, original))
 }
 
 /// Runs the export of `docx`. `now` is the local time that the report shows.
@@ -149,15 +201,31 @@ pub fn export_docx(
         Ok(document) => document,
         Err(error) => return Run::failure(docx, &error.to_string()),
     };
+    let (fix_log, original) = match fixes_of(docx) {
+        Ok(found) => found,
+        Err(message) => return Run::failure(docx, &message),
+    };
     let findings = rules::check(&document, fonts);
     if findings.iter().any(|f| f.severity == Severity::Error) {
-        return blocked(docx, findings, now);
+        return blocked(docx, findings, now, fix_log, original);
     }
 
     if let Err(error) = stages.check_tools() {
         return Run::failure(docx, &error.to_string());
     }
     let (pdf, _, _) = output_paths(docx);
+    let folder = match OutputFolder::prepare(output_folder(docx)) {
+        Ok(folder) => folder,
+        Err(error) => {
+            return Run::failure(
+                docx,
+                &format!(
+                    "The folder {} cannot be made ({error}).",
+                    output_folder(docx).display()
+                ),
+            );
+        }
+    };
     // A locked `Guide.pdf` is found before Word starts. The new PDF is made
     // under a temporary name and replaces `Guide.pdf` only at the end.
     if let Err(error) = ensure_not_locked(&pdf) {
@@ -170,7 +238,10 @@ pub fn export_docx(
     let exported = match stages.export(docx, &temp.path) {
         Ok(exported) => exported,
         // Stage 1 inside the export found an error that the check above did not.
-        Err(ExportError::Blocked { findings }) => return blocked(docx, findings, now),
+        Err(ExportError::Blocked { findings }) => {
+            drop(temp);
+            return blocked(docx, findings, now, fix_log, original);
+        }
         Err(error) => return Run::failure(docx, &error.to_string()),
     };
 
@@ -184,48 +255,74 @@ pub fn export_docx(
             );
         }
     };
-    let validation = match stages.validate(&temp.path) {
+    let mut validation = match stages.validate(&temp.path) {
         Ok(validation) => validation,
         Err(error) => {
             return Run::failure(docx, &format!("The PDF could not be checked: {error}."));
         }
     };
+    // The places of the failures in words: the numbers come from the structure
+    // tree of the PDF.
+    validation.add_places(StructIndex::from_pdf(&temp.path).as_ref());
     // There is a verdict, pass or fail: the PDF is the one the report is about.
     let report = report::build(Input {
         document: file_name(docx),
         generated_local: now.display(),
         findings: exported.findings.clone(),
-        applied_fixes: Vec::new(),
-        backup: newest_backup(docx),
+        applied_fixes: fix_log,
+        original,
         pdf: Some(file_name(&pdf)),
         export: Some(export_info(&exported)),
         metadata: Some(metadata),
         verapdf: Some(validation),
     });
-    finish(docx, report, Some((&temp, &pdf)))
+    finish(docx, report, Some((&temp, &pdf)), folder)
 }
 
 /// Stage 1 found errors: no PDF, a Fail report.
-fn blocked(docx: &Path, findings: Vec<crate::findings::Finding>, now: Timestamp) -> Run {
+fn blocked(
+    docx: &Path,
+    findings: Vec<crate::findings::Finding>,
+    now: Timestamp,
+    fix_log: Vec<fixlog::FixLogEntry>,
+    original: Option<String>,
+) -> Run {
+    let folder = match OutputFolder::prepare(output_folder(docx)) {
+        Ok(folder) => folder,
+        Err(error) => {
+            return Run::failure(
+                docx,
+                &format!(
+                    "The folder {} cannot be made ({error}).",
+                    output_folder(docx).display()
+                ),
+            );
+        }
+    };
     let report = report::build(Input {
         document: file_name(docx),
         generated_local: now.display(),
         findings,
-        applied_fixes: Vec::new(),
-        backup: newest_backup(docx),
+        applied_fixes: fix_log,
+        original,
         pdf: None,
         export: None,
         metadata: None,
         verapdf: None,
     });
-    finish(docx, report, None)
+    finish(docx, report, None, folder)
 }
 
 /// Puts the results in place and works out the exit code. The two reports are
 /// written to temporary files first. Only when both are written is the PDF (if
 /// there is one) moved over `Guide.pdf`, and then the reports over their names. A
 /// failure before the moves leaves the folder as it was.
-fn finish(docx: &Path, report: Report, pdf: Option<(&TempPdf, &Path)>) -> Run {
+fn finish(
+    docx: &Path,
+    report: Report,
+    pdf: Option<(&TempPdf, &Path)>,
+    folder: OutputFolder,
+) -> Run {
     let (_, html_path, json_path) = output_paths(docx);
     let temp_html = match TempFile::write(&html_path, &html::render(&report)) {
         Ok(temp) => temp,
@@ -255,6 +352,7 @@ fn finish(docx: &Path, report: Report, pdf: Option<(&TempPdf, &Path)>) -> Run {
             return Run::failure(docx, &message);
         }
     }
+    folder.keep();
     let mut files: Vec<PathBuf> = pdf
         .map(|(_, path)| path.to_path_buf())
         .into_iter()
@@ -331,21 +429,6 @@ fn file_name(path: &Path) -> String {
         || path.display().to_string(),
         |n| n.to_string_lossy().into_owned(),
     )
-}
-
-/// The newest `<name>.backup-*.docx` in the folder of the .docx, if there is one.
-fn newest_backup(docx: &Path) -> Option<String> {
-    let folder = match docx.parent() {
-        Some(folder) if !folder.as_os_str().is_empty() => folder,
-        _ => Path::new("."),
-    };
-    let stem = docx.file_stem()?.to_string_lossy().into_owned();
-    let names: Vec<String> = fs::read_dir(folder)
-        .ok()?
-        .flatten()
-        .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .collect();
-    report::latest_backup(&stem, names.iter().map(String::as_str))
 }
 
 fn export_info(result: &ExportResult) -> ExportInfo {

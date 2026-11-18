@@ -28,7 +28,7 @@ use serde::Serialize;
 
 use super::export::NoStages;
 use super::*;
-use crate::commands::{ApplyResult, CheckResult, ExportResult, OfferView, ReportView};
+use crate::commands::{ApplyResult, CheckResult, ExportResult, OfferView, ReportView, WorkingInfo};
 
 const REGENERATE: &str = "ADAPDF_REGENERATE_CONTRACT";
 const UA1_PASS: &str = include_str!("../../../../tests/data/verapdf/ua1-pass.json");
@@ -68,6 +68,9 @@ impl Samples {
             // With the separator, so that `...-1` is not found in `...-10`.
             let folder = format!("{}\\", folder.path().display());
             json = json.replace(&escaped(&folder), &escaped(r"C:\Docs\"));
+            // The folder itself, at the end of a string (`chosen_folder`).
+            let bare = format!("{}\"", escaped(folder.trim_end_matches('\\')));
+            json = json.replace(&bare, &format!("{}\"", escaped(r"C:\Docs")));
         }
         assert!(
             !json.contains("app-tests"),
@@ -161,7 +164,7 @@ fn samples() -> Samples {
         {
             let path = samples.docx(&document.bytes);
             let choices = [choice(at_export, Answer::Confirm)];
-            let result = commands::apply_fixes(&path, &choices, &env, &options).unwrap();
+            let result = commands::apply_fixes(&path, &choices, false, &env, &options).unwrap();
             assert!(!result.at_export.is_empty());
             samples.add(&format!("apply-at-export-{}", document.name), &result);
         }
@@ -172,7 +175,8 @@ fn samples() -> Samples {
             .filter(|o| o.availability == Availability::Ready)
             .map(|o| choice(o, answer(o)))
             .collect();
-        let applied: ApplyResult = commands::apply_fixes(&path, &choices, &env, &options).unwrap();
+        let applied: ApplyResult =
+            commands::apply_fixes(&path, &choices, false, &env, &options).unwrap();
         samples.add(&format!("apply-{}", document.name), &applied);
     }
 
@@ -188,9 +192,23 @@ fn samples() -> Samples {
         input: Answer::Decorative,
     };
     let choices = [choice(&offers[0], blank), gone];
-    let refused = commands::apply_fixes(&path, &choices, &env, &options).unwrap();
+    let refused = commands::apply_fixes(&path, &choices, false, &env, &options).unwrap();
     assert_eq!(refused.refused.len(), 2);
     samples.add("apply-refused", &refused);
+
+    // The files of a guide: an original with no copy, the copy that is made (with
+    // no fix, so that the person can open it in Word), and the original once the
+    // copy exists (the page then asks which to use).
+    let path = samples.docx(&fixture(RuleId::Doc001, true));
+    let before: WorkingInfo = commands::working_info(&path, &env);
+    assert!(!before.copy_exists && !before.is_copy);
+    samples.add("working-info-original", &before);
+    let made: WorkingInfo = commands::create_copy(&path, false, &env).unwrap();
+    assert!(made.is_copy && made.copy_exists);
+    samples.add("working-info-copy", &made);
+    let with_copy: WorkingInfo = commands::working_info(&path, &env);
+    assert!(with_copy.copy_exists && !with_copy.is_copy);
+    samples.add("working-info-original-with-copy", &with_copy);
 
     // The reports on disk: unsigned, as `export` writes it, and signed.
     let saved = saved_report();
@@ -226,7 +244,7 @@ fn exports(samples: &mut Samples) {
     samples.add("command-error-check", &error);
 
     // A Pass and a Fail with a PDF.
-    let json = Path::new(r"C:\Docs\Guide.accessibility.json");
+    let json = Path::new(r"C:\Docs\Guide - Adapdf\Guide.accessibility.json");
     let validation = |text: &str| Validation {
         ua1: parse(text, Profile::Ua1).unwrap(),
         wcag: WcagOutcome::NotAvailable,
@@ -270,7 +288,7 @@ fn exports(samples: &mut Samples) {
             generated_local: "2026-03-05 10:15:30".to_string(),
             findings: Vec::new(),
             applied_fixes: Vec::new(),
-            backup: None,
+            original: None,
             pdf: Some("Guide.pdf".to_string()),
             export: Some(word.clone()),
             metadata: Some(metadata(issues)),
@@ -281,9 +299,9 @@ fn exports(samples: &mut Samples) {
             view: ReportView::new(report, json).unwrap(),
             console: "Guide.docx: result\n".to_string(),
             files: vec![
-                r"C:\Docs\Guide.pdf".to_string(),
-                r"C:\Docs\Guide.accessibility.html".to_string(),
-                r"C:\Docs\Guide.accessibility.json".to_string(),
+                r"C:\Docs\Guide - Adapdf\Guide.pdf".to_string(),
+                r"C:\Docs\Guide - Adapdf\Guide.accessibility.html".to_string(),
+                r"C:\Docs\Guide - Adapdf\Guide.accessibility.json".to_string(),
             ],
         };
         samples.add(name, &result);
@@ -361,9 +379,6 @@ fn the_samples_have_every_kind_of_value() {
     assert!(has(&|o| o["availability"]["status"] == "unavailable"
         && o["availability"]["reason"].is_string()));
     assert!(has(&|o| o["fix"] == "set-alt-text"));
-    assert!(has(
-        &|o| o["fix"] == "set-title" && o["finding"]["suggestion"].is_string()
-    ));
     assert!(has(&|o| o["fix"] == "mark-annotations-decorative"));
     assert_eq!(
         value("check-doc001-pass")["findings"],
@@ -372,8 +387,37 @@ fn the_samples_have_every_kind_of_value() {
     assert_eq!(value("check-lst002-fail")["exit_code"], 1);
     assert_eq!(value("check-txt004-fail")["exit_code"], 0);
     let applied = value("apply-lst002-fail");
-    assert!(applied["backup"].is_string() && !applied["applied"].as_array().unwrap().is_empty());
-    assert!(value("apply-refused")["backup"].is_null());
+    assert!(applied["copy"].is_string() && !applied["applied"].as_array().unwrap().is_empty());
+    assert!(
+        applied["working_file"]
+            .as_str()
+            .unwrap()
+            .ends_with("(accessible).docx")
+    );
+    assert!(
+        applied["original"]
+            .as_str()
+            .unwrap()
+            .ends_with("Guide.docx")
+    );
+    assert!(value("apply-refused")["copy"].is_null());
+    assert!(
+        value("apply-refused")["working_file"]
+            .as_str()
+            .unwrap()
+            .ends_with("Guide.docx")
+    );
+    assert_eq!(value("working-info-original")["copy_exists"], false);
+    assert_eq!(value("working-info-copy")["is_copy"], true);
+    assert_eq!(
+        value("working-info-original-with-copy")["copy_exists"],
+        true
+    );
+    assert_eq!(value("working-info-original-with-copy")["is_copy"], false);
+    // The title offer has its one-click texts.
+    assert!(has(
+        &|o| o["fix"] == "set-title" && o["suggestions"].as_array().unwrap().len() == 2
+    ));
     assert!(
         !value("apply-refused")["refused"]
             .as_array()
@@ -477,7 +521,7 @@ fn camel(name: &str) -> String {
 fn the_arguments_of_the_page_are_the_parameters_of_the_commands() {
     let (commands, handled) = commands_of_the_shell();
     assert_eq!(handled, commands.keys().cloned().collect::<Vec<_>>());
-    assert_eq!(commands.len(), 7);
+    assert_eq!(commands.len(), 11);
 
     let text = fs::read_to_string(contract_dir().join("calls.json")).unwrap();
     let calls: BTreeMap<String, BTreeMap<String, serde_json::Value>> =

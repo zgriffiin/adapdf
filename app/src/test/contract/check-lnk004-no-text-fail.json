@@ -10,6 +10,7 @@
       "message": "This link has no ScreenTip. Screen readers need a description of each link in the PDF, and Word adds it to the PDF only from the ScreenTip.",
       "how_to_fix": "Right-click the link, choose Edit Hyperlink, choose ScreenTip, and type a short description of where the link goes. The tool can copy the link text into the ScreenTip for you.",
       "location": {
+        "place": "paragraph 3 (no text), after the heading \"Test guide\"",
         "heading": "Test guide",
         "snippet": "",
         "paragraph_index": 2,

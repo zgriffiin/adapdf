@@ -25,13 +25,17 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::findings::{Finding, FixId, RuleId, Severity};
+use crate::findings::{Finding, Severity};
+use crate::fix::FixLogEntry;
 use crate::pdfmeta;
 use crate::verapdf::{Validation, WcagOutcome};
 
 /// The version of the JSON layout. It changes when a field is removed or its
-/// meaning changes.
-pub const SCHEMA_VERSION: u32 = 1;
+/// meaning changes. Version 2 (Adapdf 0.2): the counts of the summary are split
+/// (pre-check and veraPDF), `fixes` lists every fix recorded in the document
+/// and names its original (no backup), a veraPDF failure has a `place` in
+/// words, and the sections are in the order of the page.
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// The checklist of spec 02, stage 6, word for word.
 pub const CHECKLIST: [&str; 7] = [
@@ -65,8 +69,17 @@ impl Verdict {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Summary {
     pub verdict: Verdict,
+    /// Every error of the report: the pre-check, the PDF metadata and tags, and
+    /// veraPDF. The page shows the three parts below, not this number.
     pub errors: usize,
     pub warnings: usize,
+    /// Errors found by the pre-check of the Word document.
+    pub precheck_errors: usize,
+    /// Warnings found by the pre-check of the Word document.
+    pub precheck_warnings: usize,
+    /// Rules of the PDF/UA-1 check (veraPDF) that failed. 0 when the check did
+    /// not run.
+    pub pdf_failed_rules: usize,
     /// Why the verdict is Fail, in plain words. `None` for a pass.
     pub reason: Option<String>,
     pub tool: String,
@@ -100,22 +113,18 @@ pub struct ExportInfo {
     pub seconds: f64,
 }
 
-/// One fix that was applied before the export (section 3).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FixEntry {
-    pub fix: FixId,
-    pub rule: RuleId,
-    /// What was done, in plain words.
-    pub summary: String,
-}
+/// One fix that Adapdf applied to the document: the entry of the fix log that
+/// the accessible copy holds (section 3).
+pub type FixEntry = FixLogEntry;
 
-/// Section 3. The `export` command applies no fixes, so `applied` is empty
-/// there. `backup` is then the newest backup of the document that is next to it
-/// (made by an earlier `adapdf fix`), if there is one.
+/// Section 3: every fix in the fix log of the document, oldest first, not only
+/// the fixes of one run. `original` is the name of the Word document that the
+/// accessible copy was made from. It is `None` when the document is not an
+/// accessible copy. Adapdf never changes the original.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FixesSection {
+    pub original: Option<String>,
     pub applied: Vec<FixEntry>,
-    pub backup: Option<String>,
 }
 
 /// Section 4: stage 4, or why it did not run.
@@ -139,11 +148,11 @@ pub enum VeraPdfSection {
     },
 }
 
-/// Section 6: what a person records from PAC. It is empty when the report is
-/// made.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// What a person records from PAC (section 5). It is empty when the report is
+/// made, and the app fills it in with the sign-off.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PacSection {
-    /// The PAC report file, or a link to it.
+    /// The PAC report file, as a path relative to the folder of the report.
     pub report_file: Option<String>,
     pub pac_version: Option<String>,
     /// `pass` (0 errors) or `fail`.
@@ -156,7 +165,7 @@ pub struct ChecklistItem {
     pub done: bool,
 }
 
-/// Section 7: the checklist and the sign-off, empty when the report is made.
+/// Section 6: the checklist and the sign-off, empty when the report is made.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HumanChecklist {
     pub items: Vec<ChecklistItem>,
@@ -164,19 +173,21 @@ pub struct HumanChecklist {
     pub date: Option<String>,
 }
 
-/// The whole report. The field order is the section order.
+/// The whole report. The field order is the section order: the summary, the
+/// pre-check, the fixes, veraPDF, PAC, the checklist, and then the technical
+/// details (how Word made the PDF, and the PDF metadata changes).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Report {
     pub schema_version: u32,
     pub summary: Summary,
-    pub export: Option<ExportInfo>,
     /// All findings of stage 1, errors and warnings.
     pub precheck: Vec<Finding>,
     pub fixes: FixesSection,
-    pub pdf_metadata: MetadataSection,
     pub verapdf: VeraPdfSection,
     pub pac: PacSection,
     pub checklist: HumanChecklist,
+    pub export: Option<ExportInfo>,
+    pub pdf_metadata: MetadataSection,
 }
 
 /// Everything that [`build`] needs.
@@ -186,8 +197,11 @@ pub struct Input {
     /// The local time of the run, `yyyy-mm-dd hh:mm:ss`.
     pub generated_local: String,
     pub findings: Vec<Finding>,
+    /// The fix log of the document.
     pub applied_fixes: Vec<FixEntry>,
-    pub backup: Option<String>,
+    /// The name of the original Word document, when the document is an
+    /// accessible copy.
+    pub original: Option<String>,
     /// The PDF file name, when stage 3 wrote one.
     pub pdf: Option<String>,
     pub export: Option<ExportInfo>,
@@ -214,6 +228,13 @@ pub fn build(input: Input) -> Report {
         .metadata
         .as_ref()
         .map_or(0, |m| m.issues.len() - metadata_errors);
+    let verapdf_failed_rules = input.verapdf.as_ref().map_or(0, |v| {
+        if v.passed() {
+            0
+        } else {
+            v.ua1.findings.len().max(1)
+        }
+    });
     let (verapdf_errors, verapdf_warnings) = input.verapdf.as_ref().map_or((0, 0), |v| {
         let warnings = match &v.wcag {
             WcagOutcome::Ran(result) => result.findings.len(),
@@ -285,6 +306,9 @@ pub fn build(input: Input) -> Report {
             verdict,
             errors,
             warnings,
+            precheck_errors,
+            precheck_warnings,
+            pdf_failed_rules: verapdf_failed_rules,
             reason,
             tool: "adapdf".to_string(),
             tool_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -295,8 +319,8 @@ pub fn build(input: Input) -> Report {
         export: input.export,
         precheck: input.findings,
         fixes: FixesSection {
+            original: input.original,
             applied: input.applied_fixes,
-            backup: input.backup,
         },
         pdf_metadata: metadata,
         verapdf,
@@ -376,35 +400,4 @@ impl Report {
         }
         out
     }
-}
-
-/// The newest backup that `adapdf fix` wrote for `docx_stem` (the name of the
-/// .docx without its extension), from the names in the folder. A backup is
-/// `<stem>.backup-<yyyymmdd-hhmmss>.docx`, or `...-<n>.docx` when the name was
-/// already used; the later time wins, and for the same time the larger `n`.
-pub fn latest_backup<'a>(
-    docx_stem: &str,
-    names: impl IntoIterator<Item = &'a str>,
-) -> Option<String> {
-    let prefix = format!("{docx_stem}.backup-");
-    names
-        .into_iter()
-        .filter_map(|name| {
-            let rest = name.strip_prefix(&prefix)?.strip_suffix(".docx")?;
-            let stamp = rest.get(..15)?;
-            let valid = stamp.bytes().enumerate().all(|(i, b)| {
-                if i == 8 {
-                    b == b'-'
-                } else {
-                    b.is_ascii_digit()
-                }
-            });
-            let attempt = match rest.get(15..)? {
-                "" => 0,
-                tail => tail.strip_prefix('-')?.parse::<u32>().ok()?,
-            };
-            valid.then(|| ((stamp.to_string(), attempt), name))
-        })
-        .max_by(|a, b| a.0.cmp(&b.0))
-        .map(|(_, name)| name.to_string())
 }

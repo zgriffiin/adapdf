@@ -3,17 +3,9 @@ import { Tag } from "@carbon/react";
 import type { Finding } from "../types";
 import { groupBySeverity } from "../viewModel";
 
-/** Where a finding is, in words (the same words as `adapdf check`). */
+/** Where a finding is, in Word's words (the same words as `adapdf check` and the report). */
 export function placeOf(finding: Finding): string {
-  const { paragraph_index, snippet, heading, part } = finding.location;
-  let place =
-    paragraph_index !== null && snippet !== null
-      ? `paragraph ${paragraph_index + 1} "${snippet}"`
-      : `the document (${part})`;
-  if (heading) {
-    place += `, after the heading "${heading}"`;
-  }
-  return place;
+  return finding.location.place;
 }
 
 function FindingItem({ finding }: { finding: Finding }) {

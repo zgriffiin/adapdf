@@ -8,8 +8,10 @@
 //! | App | Command line | Library |
 //! |---|---|---|
 //! | [`check`] | `adapdf check` | `adapdf::check_file` |
+//! | [`working_info`] | the choice of `--continue` and `--start-over` | `adapdf::fix::accessible_copy_path` |
 //! | [`fix_offers`] | the questions of `adapdf fix` | `adapdf::fix::preflight` and `adapdf::fix::offers` |
 //! | [`apply_fixes`] | the answers of `adapdf fix` | `adapdf::fix::fix_file` |
+//! | [`create_copy`] | (none: the command line makes the copy with the first fix) | `adapdf::fix::make_copy` |
 //! | [`export`] | `adapdf export` | `adapdf::pipeline::export_docx` |
 //!
 //! A failure of the tool (the command line exits with 2) is an `Err` with a plain
@@ -18,7 +20,7 @@
 use std::path::{Path, PathBuf};
 
 use adapdf::findings::{Finding, FixId, RuleId};
-use adapdf::fix::{self, Environment, FixInput, FixOptions, FixRequest};
+use adapdf::fix::{self, Environment, ExistingCopy, FixInput, FixOptions, FixRequest};
 use adapdf::fonts::FontLookup;
 use adapdf::render;
 use adapdf::report::{Report, SCHEMA_VERSION};
@@ -108,6 +110,11 @@ pub enum Availability {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct OfferView {
     pub finding: Finding,
+    /// One-click texts from the document itself, for the title (DOC-001): the
+    /// file name, the Title paragraph and the first Heading 1. Nothing is filled
+    /// in until the person chooses one. Empty for every other fix (alt text has
+    /// none: a caption next to the picture would make IMG-005 report it).
+    pub suggestions: Vec<fix::TitleSuggestion>,
     /// The place of the finding among the findings of its rule. With the rule ID
     /// it names the finding in `apply_fixes`.
     pub position: usize,
@@ -123,9 +130,13 @@ pub fn fix_offers(
     env: &Environment,
     options: &FixOptions,
 ) -> CommandResult<Vec<OfferView>> {
-    // Like `adapdf fix`: stop at once when Word has the file open.
+    // Like `adapdf fix`: stop at once when Word has the accessible copy open.
     fix::preflight(env.fs, path).map_err(|e| CommandError::new(e.to_string()))?;
-    let offers = read_offers(path, env, options)?;
+    let bytes = read_bytes(path, env)?;
+    let offers = fix::offers(&bytes, options, env.fonts).map_err(|e| failure(path, e))?;
+    let suggestions = adapdf::model::Document::from_bytes(&bytes)
+        .map(|doc| fix::title_suggestions(&doc, &name_of(path)))
+        .unwrap_or_default();
     Ok(offers
         .into_iter()
         .map(|offer| OfferView {
@@ -135,6 +146,11 @@ pub fn fix_offers(
                 fix::Availability::AtExport => Availability::AtExport,
                 fix::Availability::Unavailable(reason) => Availability::Unavailable { reason },
             },
+            suggestions: if offer.fix == FixId::SetTitle {
+                suggestions.clone()
+            } else {
+                Vec::new()
+            },
             finding: offer.finding,
             position: offer.position,
             fix: offer.fix,
@@ -143,16 +159,134 @@ pub fn fix_offers(
         .collect())
 }
 
+fn read_bytes(path: &Path, env: &Environment) -> CommandResult<Vec<u8>> {
+    env.fs
+        .read(path)
+        .map_err(|e| failure(path, format!("the file cannot be read: {e}")))
+}
+
 fn read_offers(
     path: &Path,
     env: &Environment,
     options: &FixOptions,
 ) -> CommandResult<Vec<fix::Offer>> {
-    let bytes = env
-        .fs
-        .read(path)
-        .map_err(|e| failure(path, format!("the file cannot be read: {e}")))?;
+    let bytes = read_bytes(path, env)?;
     fix::offers(&bytes, options, env.fonts).map_err(|e| failure(path, e))
+}
+
+// ------------------------------------------------------- the working files
+
+/// The files of one guide: the original, the accessible copy, and the folder.
+/// Every screen of the app shows them, and the page asks which one to use when
+/// the copy already exists (`copy_exists` and not `is_copy`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WorkingInfo {
+    /// The file that the person chose.
+    pub chosen: String,
+    /// The Word document that Adapdf never changes. For a copy that was moved out
+    /// of its folder, the file of that name next to it (it may not exist).
+    pub original: String,
+    /// The accessible copy: the file the fixes go into and Word edits.
+    pub copy: String,
+    /// The folder of the guide, `<name> - Adapdf`, where the copy, the PDF and the
+    /// reports are. It is not there until the first copy or export.
+    pub folder: String,
+    /// The folder of the chosen file, which is what "Open folder" opens.
+    pub chosen_folder: String,
+    /// The chosen file is the accessible copy.
+    pub is_copy: bool,
+    pub copy_exists: bool,
+}
+
+fn parent_of(path: &Path) -> String {
+    path.parent()
+        .map_or_else(String::new, |p| p.display().to_string())
+}
+
+/// What the page needs to know about a file that was chosen.
+pub fn working_info(path: &Path, env: &Environment) -> WorkingInfo {
+    let is_copy = fix::is_accessible_copy(path);
+    let copy = fix::accessible_copy_path(path);
+    WorkingInfo {
+        chosen: path.display().to_string(),
+        original: fix::original_path(path).display().to_string(),
+        folder: parent_of(&copy),
+        chosen_folder: parent_of(path),
+        copy_exists: env.fs.exists(&copy),
+        copy: copy.display().to_string(),
+        is_copy,
+    }
+}
+
+/// Makes the accessible copy of an original with no fix, so that the person can
+/// open it in Word. `start_over` replaces a copy that exists. Returns the files
+/// of the guide, with the copy as the file to work on.
+pub fn create_copy(path: &Path, start_over: bool, env: &Environment) -> CommandResult<WorkingInfo> {
+    let existing = if start_over {
+        ExistingCopy::Replace
+    } else {
+        ExistingCopy::Refuse
+    };
+    let copy = fix::make_copy(path, env, existing).map_err(|e| failure(path, e))?;
+    Ok(working_info(&copy, env))
+}
+
+/// Checks that a path may be opened in Word: the accessible copy of a guide, as
+/// a .docx file with an absolute path that is not a network path
+/// (`\\server\share`), that exists. The page cannot ask the app to open any other
+/// file, and the original is never opened by the app: the person edits the copy.
+pub fn check_open_in_word(path: &Path) -> CommandResult<PathBuf> {
+    let name = name_of(path);
+    if !fix::is_accessible_copy(path) {
+        return Err(CommandError::new(format!(
+            "{name} is not an accessible copy. The app opens only the copy that it made (a file whose name ends with {}.docx), so that your original is not changed.",
+            fix::COPY_SUFFIX
+        )));
+    }
+    if !is_docx_name(&name) {
+        return Err(CommandError::new(format!(
+            "{name} is not a Word document (.docx)."
+        )));
+    }
+    check_local_file(path, &name, "Make the copy again.")
+}
+
+/// Checks that the folder of a .docx file or of an accessibility report may be
+/// opened: the file exists, with an absolute path that is not a network path. The
+/// folder is the one that holds it.
+pub fn check_open_folder(path: &Path) -> CommandResult<PathBuf> {
+    let name = name_of(path);
+    if !is_docx_name(&name) && !is_report_name(&name) {
+        return Err(CommandError::new(format!(
+            "{name} is not a Word document or a report. Only the folder of a .docx file or of an accessibility report is opened."
+        )));
+    }
+    let file = check_local_file(path, &name, "Choose the document again.")?;
+    file.parent()
+        .map(Path::to_path_buf)
+        .ok_or_else(|| CommandError::new(format!("{name} has no folder.")))
+}
+
+fn is_docx_name(name: &str) -> bool {
+    name.to_lowercase().ends_with(".docx") && name.len() > ".docx".len()
+}
+
+fn is_report_name(name: &str) -> bool {
+    [JSON_SUFFIX, HTML_SUFFIX]
+        .iter()
+        .any(|suffix| name.ends_with(suffix) && name.len() > suffix.len())
+}
+
+fn check_local_file(path: &Path, name: &str, advice: &str) -> CommandResult<PathBuf> {
+    if !path.is_absolute() || path.to_string_lossy().starts_with(r"\\") {
+        return Err(CommandError::new(format!(
+            "{name} is not on a local drive, so the app does not open it."
+        )));
+    }
+    if !path.is_file() {
+        return Err(CommandError::new(format!("{name} is not there. {advice}")));
+    }
+    Ok(path.to_path_buf())
 }
 
 // -------------------------------------------------------- apply fixes
@@ -197,8 +331,14 @@ pub struct NotAppliedView {
 /// it has done the same: 0 when no errors remain, 1 when errors remain.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ApplyResult {
-    /// The name of the backup file. `None` when nothing was written.
-    pub backup: Option<String>,
+    /// The accessible copy that was written (its full path). `None` when nothing
+    /// was written.
+    pub copy: Option<String>,
+    /// The file to work on from now: the copy when one was written, and the file
+    /// that was given otherwise.
+    pub working_file: String,
+    /// The original, which is never changed (its full path).
+    pub original: String,
     pub applied: Vec<AppliedView>,
     /// Findings that Word fixes when the PDF is exported.
     pub at_export: Vec<NotAppliedView>,
@@ -210,9 +350,12 @@ pub struct ApplyResult {
     pub exit_code: u8,
 }
 
+/// `start_over` replaces an accessible copy that exists (the person chose "Start
+/// over from the original"). Without it, a copy that exists is not replaced.
 pub fn apply_fixes(
     path: &Path,
     choices: &[Choice],
+    start_over: bool,
     env: &Environment,
     options: &FixOptions,
 ) -> CommandResult<ApplyResult> {
@@ -236,7 +379,12 @@ pub fn apply_fixes(
             }),
         }
     }
-    let outcome = fix::fix_file(path, &requests, options, env)
+    let existing = if start_over {
+        ExistingCopy::Replace
+    } else {
+        ExistingCopy::Refuse
+    };
+    let outcome = fix::fix_file(path, &requests, options, env, existing)
         .map_err(|e| CommandError::new(e.to_string()))?;
     refused.extend(outcome.refused.iter().map(|r| NotAppliedView {
         rule_id: r.finding.rule_id,
@@ -245,7 +393,14 @@ pub fn apply_fixes(
     }));
     let (errors, warnings) = render::counts(&outcome.findings);
     Ok(ApplyResult {
-        backup: outcome.backup.as_deref().map(name_of),
+        copy: outcome.copy.as_ref().map(|c| c.display().to_string()),
+        working_file: outcome
+            .copy
+            .as_deref()
+            .unwrap_or(path)
+            .display()
+            .to_string(),
+        original: fix::original_path(path).display().to_string(),
         applied: outcome
             .applied
             .iter()

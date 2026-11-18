@@ -80,15 +80,7 @@ pub fn to_text(file: &str, findings: &[Finding]) -> String {
 /// suggestion (marked "not applied").
 pub fn write_finding(out: &mut String, f: &Finding) {
     let _ = writeln!(out, "\n[{}] {}", f.rule_id, f.message);
-    let loc = &f.location;
-    let mut place = match (&loc.paragraph_index, &loc.snippet) {
-        (Some(index), Some(snippet)) => format!("paragraph {} \"{snippet}\"", index + 1),
-        _ => format!("the document ({})", loc.part),
-    };
-    if let Some(heading) = &loc.heading {
-        let _ = write!(place, ", after the heading \"{heading}\"");
-    }
-    let _ = writeln!(out, "    Where: {place}");
+    let _ = writeln!(out, "    Where: {}", f.location.place);
     let _ = writeln!(out, "    How to fix: {}", f.how_to_fix);
     if let Some(suggestion) = &f.suggestion {
         let _ = writeln!(out, "    Suggestion (not applied): {suggestion}");
@@ -131,7 +123,11 @@ mod tests {
         let warnings = text.find("WARNINGS (1").expect("warnings group");
         assert!(errors < warnings, "{text}");
         assert!(text.contains("Found 1 error and 1 warning."), "{text}");
-        assert!(text.contains("the document (word/settings.xml)"), "{text}");
+        assert!(
+            text.contains("Where: Word's template setting (Developer > Document Template)"),
+            "{text}"
+        );
+        assert!(!text.contains("word/settings.xml"), "{text}");
     }
 
     #[test]

@@ -223,10 +223,20 @@ fn txt_003_fails_for_other_text_in_a_header() {
         &f,
         "word/header1.xml",
         None,
-        Some("parks and recreation department"),
+        Some("Parks and Recreation Department"),
         None,
     );
     assert!(f.message.contains("header"), "{}", f.message);
+    // The place is in Word's words, and the part name stays in the data.
+    assert_eq!(f.location.place, "In the page header (all pages)");
+    assert!(
+        f.how_to_fix
+            .starts_with("Double-click the top of a page to open the header.")
+    );
+    assert!(
+        f.how_to_fix
+            .contains("Delete \"Parks and Recreation Department\"")
+    );
 }
 
 #[test]
@@ -240,6 +250,11 @@ fn txt_003_uses_the_part_name_for_a_footer() {
     assert_eq!(f.len(), 1);
     assert_eq!(f[0].location.part, "word/footer1.xml");
     assert!(f[0].message.contains("footer"), "{}", f[0].message);
+    assert_eq!(f[0].location.place, "In the page footer (all pages)");
+    assert!(
+        f[0].how_to_fix
+            .starts_with("Double-click the bottom of a page to open the footer.")
+    );
 }
 
 #[test]
@@ -283,9 +298,38 @@ fn txt_003_the_result_of_another_field_is_text() {
     let header = format!("<w:p>{}</w:p>", complex_field_xml("AUTHOR", "Dana Smith"));
     let f = header_findings(&header);
     assert_eq!(f.len(), 1);
-    assert_eq!(f[0].location.snippet.as_deref(), Some("dana smith"));
+    assert_eq!(f[0].location.snippet.as_deref(), Some("Dana Smith"));
     let simple = format!("<w:p>{}</w:p>", simple_field_xml("FILENAME", "guide.docx"));
     assert_eq!(header_findings(&simple).len(), 1);
+}
+
+#[test]
+fn txt_003_quotes_the_text_as_it_was_written() {
+    // The capitals and the spaces of the document, not a lower-case list of words.
+    let f = header_findings(&text_paragraph_xml("Parks  &  Rec   Dept. - Draft 3"));
+    assert_eq!(f.len(), 1);
+    assert_eq!(
+        f[0].location.snippet.as_deref(),
+        Some("Parks  &  Rec   Dept. - Draft")
+    );
+    assert!(
+        f[0].message.contains("(\"Parks  &  Rec   Dept. - Draft\")"),
+        "{}",
+        f[0].message
+    );
+    assert!(
+        f[0].how_to_fix
+            .contains("Delete \"Parks  &  Rec   Dept. - Draft\""),
+        "{}",
+        f[0].how_to_fix
+    );
+    // Allowed words in the middle split the text in two: the parts are shown, each
+    // as it was written.
+    let f = header_findings(&text_paragraph_xml("DRAFT Page 3 Confidential"));
+    assert_eq!(f[0].location.snippet.as_deref(), Some("DRAFT Confidential"));
+    // Letters with accents keep their case too.
+    let f = header_findings(&text_paragraph_xml("Département Ünité"));
+    assert_eq!(f[0].location.snippet.as_deref(), Some("Département Ünité"));
 }
 
 #[test]
@@ -307,7 +351,7 @@ fn txt_003_other_words_next_to_a_page_number_are_reported() {
     );
     let f = footer_findings(&footer);
     assert_eq!(f.len(), 1);
-    assert_eq!(f[0].location.snippet.as_deref(), Some("confidential"));
+    assert_eq!(f[0].location.snippet.as_deref(), Some("Confidential"));
 }
 
 #[test]
@@ -325,7 +369,7 @@ fn txt_003_the_title_may_be_typed_in_any_case() {
     }
     let longer = header_findings(&text_paragraph_xml("Adapdf test guide - Draft"));
     assert_eq!(longer.len(), 1);
-    assert_eq!(longer[0].location.snippet.as_deref(), Some("draft"));
+    assert_eq!(longer[0].location.snippet.as_deref(), Some("Draft"));
 }
 
 #[test]
@@ -348,7 +392,7 @@ fn txt_003_the_first_title_or_heading_1_also_counts_as_the_title() {
 fn txt_003_a_typed_date_is_text() {
     let f = footer_findings(&text_paragraph_xml("Revised March 5, 2026"));
     assert_eq!(f.len(), 1);
-    assert_eq!(f[0].location.snippet.as_deref(), Some("revised march"));
+    assert_eq!(f[0].location.snippet.as_deref(), Some("Revised March"));
 }
 
 #[test]
@@ -369,7 +413,7 @@ fn txt_003_reports_each_part_once() {
     let f = rule_findings(&builder, RuleId::Txt003);
     let parts: Vec<&str> = f.iter().map(|f| f.location.part.as_str()).collect();
     assert_eq!(parts, ["word/header1.xml", "word/footer1.xml"]);
-    assert_eq!(f[0].location.snippet.as_deref(), Some("parks department"));
+    assert_eq!(f[0].location.snippet.as_deref(), Some("Parks Department"));
 }
 
 // ---- TXT-004 --------------------------------------------------------------

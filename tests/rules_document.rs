@@ -16,11 +16,9 @@ fn doc_001_fails_on_an_empty_title() {
     assert_eq!(f.severity, Severity::Error);
     assert_location(&f, "docProps/core.xml", None, None, None);
     assert_eq!(f.fix, FixKind::Ask(FixId::SetTitle));
-    assert_eq!(
-        f.suggestion.as_deref(),
-        Some("Test guide"),
-        "the first Heading 1"
-    );
+    // The titles to choose from come from the document when the fix is offered.
+    assert_eq!(f.suggestion, None);
+    assert_eq!(f.location.place, "The document's properties (File > Info)");
 }
 
 #[test]
@@ -36,23 +34,20 @@ fn doc_001_treats_spaces_and_a_missing_title_as_empty() {
 }
 
 #[test]
-fn doc_001_suggests_the_first_title_or_heading_1_in_document_order() {
+fn doc_001_carries_no_suggestion_the_fix_offers_them() {
+    // The first Title or Heading 1 used to be the suggestion of the finding, which
+    // put a heading such as "Pre-Requisites:" in the place of a title. The fix now
+    // offers the file name, the Title paragraph and the first Heading 1 as buttons
+    // (`fix::title_suggestions`); the finding has none.
     let title_first = DocxBuilder::new()
         .paragraph(Para::new("  Guide to Printing ").style("Title"))
         .heading(1, "Section");
     let f = rule_findings(&title_first, RuleId::Doc001);
-    assert_eq!(f[0].suggestion.as_deref(), Some("Guide to Printing"));
-
-    let heading_first = DocxBuilder::new()
-        .heading(2, "Not this")
-        .heading(1, "Section")
-        .paragraph(Para::new("A title").style("Title"));
-    let f = rule_findings(&heading_first, RuleId::Doc001);
-    assert_eq!(f[0].suggestion.as_deref(), Some("Section"));
+    assert_eq!(f[0].suggestion, None);
 }
 
 #[test]
-fn doc_001_has_no_suggestion_without_a_title_or_heading_1() {
+fn doc_001_has_no_suggestion_for_a_document_with_no_title_or_heading_1() {
     let f = rule_findings(
         &DocxBuilder::new().heading(2, "Only H2").para("text"),
         RuleId::Doc001,

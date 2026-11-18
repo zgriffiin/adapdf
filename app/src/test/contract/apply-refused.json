@@ -1,5 +1,7 @@
 {
-  "backup": null,
+  "copy": null,
+  "working_file": "C:\\Docs\\Guide.docx",
+  "original": "C:\\Docs\\Guide.docx",
   "applied": [],
   "at_export": [],
   "refused": [
@@ -19,8 +21,9 @@
       "rule_id": "DOC-001",
       "severity": "error",
       "message": "The document has no title in its properties. PDF viewers show this title in the window bar, and screen readers read it out.",
-      "how_to_fix": "In Word, choose File > Info and type a title in the Title box.",
+      "how_to_fix": "In Word, choose File > Info, and type a title in the Title box on the right (choose Show All Properties if the box is not there).",
       "location": {
+        "place": "The document's properties (File > Info)",
         "heading": null,
         "snippet": null,
         "paragraph_index": null,
@@ -30,7 +33,7 @@
         "kind": "ask",
         "id": "set-title"
       },
-      "suggestion": "Test guide"
+      "suggestion": null
     }
   ],
   "errors": 1,

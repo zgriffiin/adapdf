@@ -11,11 +11,11 @@ use crate::model::theme::Rgb;
 use crate::pdfmeta::{Change, Field, Issue, IssueKind, Report as MetadataReport};
 use crate::verapdf::{Profile, Validation, WcagOutcome, parse};
 
-const BACKUP: &str = "Guide.backup-20260305-101530.docx";
 const DATE: &str = "2026-03-05 10:15:30";
 
 fn finding(rule: RuleId, snippet: &str) -> Finding {
     let location = Location {
+        place: format!("paragraph 5 \"{snippet}\", after the heading \"Setting up\""),
         heading: Some("Setting up".to_string()),
         snippet: Some(snippet.to_string()),
         paragraph_index: Some(4),
@@ -100,7 +100,7 @@ fn input() -> Input {
         generated_local: DATE.to_string(),
         findings: Vec::new(),
         applied_fixes: Vec::new(),
-        backup: None,
+        original: None,
         pdf: Some("Guide.pdf".to_string()),
         export: Some(export_info()),
         metadata: Some(MetadataReport {
@@ -112,29 +112,38 @@ fn input() -> Input {
 }
 
 /// A failing report with everything in it: 2 pre-check errors and 3 warnings,
-/// two fixes and a backup, metadata changes, a failed veraPDF rule and a WCAG
-/// warning.
+/// two fixes in the log of an accessible copy, metadata changes, a failed
+/// veraPDF rule and a WCAG warning.
 fn full_report() -> Report {
     let mut input = input();
+    input.document = "Guide (accessible).docx".to_string();
+    input.original = Some("Guide.docx".to_string());
     input.findings = findings();
     input.applied_fixes = vec![
         FixEntry {
+            time: "2026-03-04 09:00:00".to_string(),
             fix: FixId::SetDefaultLanguage,
             rule: RuleId::Doc002,
+            place: "The whole document (its default language)".to_string(),
             summary: "Set the default language to en-US.".to_string(),
+            text: None,
         },
         FixEntry {
-            fix: FixId::AlignLeft,
-            rule: RuleId::Txt002,
-            summary: "Aligned paragraph 12 to the left.".to_string(),
+            time: "2026-03-05 10:15:30".to_string(),
+            fix: FixId::SetTitle,
+            rule: RuleId::Doc001,
+            place: "The document's properties (File > Info)".to_string(),
+            summary: "Set the title.".to_string(),
+            text: Some("Parks Training Guide".to_string()),
         },
     ];
-    input.backup = Some(BACKUP.to_string());
     input.metadata = Some(metadata_changes());
-    input.verapdf = Some(validation(
+    let mut validation = validation(
         UA1_FAIL,
         WcagOutcome::Ran(parse(WCAG, Profile::Wcag).unwrap()),
-    ));
+    );
+    validation.ua1.findings[0].place = Some("Figure 3".to_string());
+    input.verapdf = Some(validation);
     build(input)
 }
 
@@ -191,23 +200,23 @@ fn report_has_the_seven_sections_in_order() {
                 "Summary",
                 "Pre-check findings",
                 "Fixes applied",
-                "PDF metadata changes",
                 "veraPDF result",
                 "PAC",
-                "Human checklist"
+                "Human checklist and sign-off",
+                "Technical details"
             ]
         );
     }
     // A section with no content says so.
     let html = html::render(&pass_report());
     let doc = xml(&html);
-    for number in [2, 3, 4] {
-        assert!(
-            section_text(&doc, number).contains("None."),
-            "section {number}: {}",
-            section_text(&doc, number)
-        );
-    }
+    assert!(section_text(&doc, 2).contains("None."));
+    assert!(section_text(&doc, 3).contains("No fixes were made by Adapdf."));
+    assert!(section_text(&doc, 4).contains("No PDF/UA-1 rule failed."));
+    // The technical details come last, and the PDF metadata changes are in them.
+    let technical = section_text(&doc, 7);
+    assert!(technical.contains("How Word made the PDF"), "{technical}");
+    assert!(technical.contains("PDF metadata changes"), "{technical}");
 }
 
 #[test]
@@ -221,6 +230,10 @@ fn report_summary_fields() {
         "2 pre-check errors and 1 failed rule"
     );
     assert_eq!(summary.warnings, 3 + report_wcag_warnings(&report));
+    // The three parts that the page shows apart.
+    assert_eq!(summary.precheck_errors, 2);
+    assert_eq!(summary.precheck_warnings, 3);
+    assert_eq!(summary.pdf_failed_rules, 1);
     assert_eq!(summary.tool_version, env!("CARGO_PKG_VERSION"));
     assert_eq!(summary.generated_local, DATE);
 
@@ -232,12 +245,24 @@ fn report_summary_fields() {
     assert!(section.contains(DATE), "{section}");
     // The counts are in a table, next to their names.
     assert_eq!(fact(&doc, "Result"), "Fail");
-    assert_eq!(fact(&doc, "Errors"), summary.errors.to_string());
-    assert_eq!(fact(&doc, "Warnings"), summary.warnings.to_string());
+    // The page does not add the Word document and the PDF into one number.
+    assert_eq!(
+        fact(&doc, "Word document (pre-check)"),
+        "2 errors, 3 warnings"
+    );
+    assert_eq!(fact(&doc, "PDF check (veraPDF PDF/UA-1)"), "1 rule failed");
+    assert!(
+        !section.contains("Errors") || !section.contains(&format!("Errors{}", summary.errors)),
+        "{section}"
+    );
 
     let pass = pass_report();
     assert_eq!(pass.summary.verdict, Verdict::Pass);
     assert_eq!((pass.summary.errors, pass.summary.warnings), (0, 0));
+    assert_eq!(
+        fact(&xml(&html::render(&pass)), "PDF check (veraPDF PDF/UA-1)"),
+        "0 rules failed"
+    );
     assert!(section_text(&xml(&html::render(&pass)), 1).contains("Result: Pass"));
 }
 
@@ -267,62 +292,94 @@ fn report_wcag_warnings(report: &Report) -> usize {
 }
 
 #[test]
-fn report_lists_fixes_and_the_backup_name() {
+fn report_lists_every_fix_of_the_log_and_names_its_original() {
     let report = full_report();
     let html = html::render(&report);
     let doc = xml(&html);
     let section = section_text(&doc, 3);
+    // The statement comes first.
     assert!(
-        section.contains("Set the default language to en-US."),
+        section.contains(
+            "The original Guide.docx was not changed. Adapdf made its fixes in Guide (accessible).docx."
+        ),
         "{section}"
     );
-    assert!(
-        section.contains("Aligned paragraph 12 to the left."),
-        "{section}"
-    );
-    assert!(section.contains(BACKUP), "{section}");
+    // Every fix of the log, also the one of an earlier day, with its text.
+    for part in [
+        "2026-03-04 09:00:00",
+        "Set the default language to en-US.",
+        "2026-03-05 10:15:30",
+        "Set the title.",
+        "Parks Training Guide",
+        "The document's properties (File > Info)",
+        "DOC-001",
+        "DOC-002",
+    ] {
+        assert!(section.contains(part), "{part}: {section}");
+    }
+    assert!(!section.to_lowercase().contains("backup"), "{section}");
+    assert!(!html.to_lowercase().contains("backup"));
     let json: Value = serde_json::from_str(&report.to_json()).unwrap();
-    assert_eq!(json["fixes"]["backup"], BACKUP);
+    assert_eq!(json["fixes"]["original"], "Guide.docx");
+    assert!(json["fixes"].get("backup").is_none());
     assert_eq!(json["fixes"]["applied"].as_array().unwrap().len(), 2);
     assert_eq!(json["fixes"]["applied"][0]["fix"], "set-default-language");
     assert_eq!(json["fixes"]["applied"][0]["rule"], "DOC-002");
+    assert_eq!(json["fixes"]["applied"][0]["time"], "2026-03-04 09:00:00");
+    assert_eq!(json["fixes"]["applied"][1]["text"], "Parks Training Guide");
 
-    // No fix and no backup: the section says so.
+    // An empty log: the section says so, and names the document.
     let none = section_text(&xml(&html::render(&pass_report())), 3);
     assert!(
-        none.contains("No fixes were applied in this run."),
+        none.contains("No fixes were made by Adapdf. The Word document is Guide.docx."),
         "{none}"
     );
-    assert!(none.contains("none was found"), "{none}");
+    assert!(!none.contains("The original"), "{none}");
+    // A copy with an empty log still names its original.
+    let mut input = input();
+    input.document = "Guide (accessible).docx".to_string();
+    input.original = Some("Guide.docx".to_string());
+    let copy = section_text(&xml(&html::render(&build(input))), 3);
+    assert!(
+        copy.contains("The original Guide.docx was not changed."),
+        "{copy}"
+    );
+    assert!(
+        copy.contains(
+            "No fixes were made by Adapdf. The Word document is Guide (accessible).docx."
+        ),
+        "{copy}"
+    );
 }
 
 #[test]
-fn report_has_a_pac_field() {
+fn report_shows_the_pac_result_as_text() {
     let html = html::render(&pass_report());
     let doc = xml(&html);
-    assert_labelled(&doc, "pac-file", "PAC report file");
-    assert_labelled(&doc, "pac-version", "PAC version");
-    let result = by_id(&doc, "pac-result");
-    assert!(result.has_tag_name("select"));
-    assert_labelled(&doc, "pac-result", "PAC result");
-    let options: Vec<String> = result
-        .children()
-        .filter(Node::is_element)
-        .map(text)
-        .collect();
-    assert_eq!(options.len(), 3);
-    assert!(options.iter().any(|o| o.starts_with("Pass")));
-    assert!(options.iter().any(|o| o.starts_with("Fail")));
-    assert!(section_text(&doc, 6).contains("PAC"));
-}
-
-/// The control with this id has a `label` that points to it.
-fn assert_labelled(doc: &Xml, id: &str, label_text: &str) {
-    let label = doc
-        .descendants()
-        .find(|n| n.has_tag_name("label") && n.attribute("for") == Some(id))
-        .unwrap_or_else(|| panic!("no label for {id}"));
-    assert!(text(label).contains(label_text), "{id}: {}", text(label));
+    let section = section_text(&doc, 5);
+    assert!(section.contains("PAC: not checked yet"), "{section}");
+    // No control: a static page cannot save what is typed.
+    for tag in ["input", "select", "textarea", "label", "form", "button"] {
+        assert!(elements(&doc, tag).is_empty(), "<{tag}> is not allowed");
+    }
+    let mut report = pass_report();
+    report.pac = PacSection {
+        report_file: Some("Guide.pac-report.pdf".to_string()),
+        pac_version: Some("2024.1".to_string()),
+        result: Some("pass".to_string()),
+    };
+    report.checklist.name = Some("A. Reviewer".to_string());
+    report.checklist.date = Some("2026-03-06".to_string());
+    let section = section_text(&xml(&html::render(&report)), 5);
+    assert!(
+        section.contains(
+            "PAC: Pass, report Guide.pac-report.pdf, PAC 2024.1, recorded by A. Reviewer on 2026-03-06"
+        ),
+        "{section}"
+    );
+    report.pac.result = Some("fail".to_string());
+    let section = section_text(&xml(&html::render(&report)), 5);
+    assert!(section.contains("PAC: Fail, report"), "{section}");
 }
 
 #[test]
@@ -337,23 +394,29 @@ fn report_checklist_items_and_signoff() {
     for item in CHECKLIST {
         assert!(spec.contains(&format!("- {item}")), "{item}");
     }
-    let section = by_id(&doc, "section-7").parent().unwrap();
-    let boxes: Vec<Node> = section
+    let section = by_id(&doc, "section-6").parent().unwrap();
+    let rows: Vec<Vec<String>> = section
         .descendants()
-        .filter(|n| n.has_tag_name("input") && n.attribute("type") == Some("checkbox"))
+        .filter(|n| n.has_tag_name("tr"))
+        .map(|tr| {
+            tr.children()
+                .filter(Node::is_element)
+                .map(text)
+                .collect::<Vec<_>>()
+        })
+        .filter(|cells| cells.len() == 2 && cells[0] != "Check")
         .collect();
-    assert_eq!(boxes.len(), 7);
-    for (checkbox, item) in boxes.iter().zip(CHECKLIST) {
-        let id = checkbox.attribute("id").unwrap();
-        assert_labelled(&doc, id, item);
-        assert!(
-            checkbox.attribute("checked").is_none(),
-            "not ticked by the tool"
-        );
+    assert_eq!(rows.len(), 7);
+    for (row, item) in rows.iter().zip(CHECKLIST) {
+        assert_eq!(row[0], item);
+        assert_eq!(row[1], "Not checked yet", "not ticked by the tool");
     }
-    assert_labelled(&doc, "signoff-name", "Name");
-    assert_labelled(&doc, "signoff-date", "Date");
-    assert_eq!(by_id(&doc, "signoff-date").attribute("type"), Some("date"));
+    let text = text(section);
+    assert!(text.contains("Sign-off: Not signed yet."), "{text}");
+    assert!(
+        text.contains("Record the PAC result and sign off in the Adapdf app (open this report there). Changes made in this page are not saved."),
+        "{text}"
+    );
     // The JSON has them too, all open.
     let json: Value = serde_json::from_str(&pass_report().to_json()).unwrap();
     let items = json["checklist"]["items"].as_array().unwrap();
@@ -447,15 +510,21 @@ fn assert_report_html_is_accessible(report: &Report) {
         );
     }
 
-    // Every form control has a label.
-    for control in doc.descendants().filter(|n| {
-        n.has_tag_name("input") || n.has_tag_name("select") || n.has_tag_name("textarea")
-    }) {
-        let id = control.attribute("id").expect("a control has an id");
-        assert!(
-            doc.descendants()
-                .any(|n| n.has_tag_name("label") && n.attribute("for") == Some(id)),
-            "no label for {id}"
+    // The page has no form control: a static page cannot save what is typed.
+    for tag in ["input", "select", "textarea", "button", "form"] {
+        assert!(elements(&doc, tag).is_empty(), "<{tag}> is not allowed");
+    }
+    // The technical detail of a veraPDF failure is a closed `details`, with no script.
+    assert!(!elements(&doc, "details").is_empty());
+    for details in elements(&doc, "details") {
+        assert_eq!(
+            text(
+                details
+                    .children()
+                    .find(|n| n.has_tag_name("summary"))
+                    .unwrap()
+            ),
+            "Technical detail"
         );
     }
 
@@ -560,8 +629,15 @@ fn report_json_matches_html() {
     assert_eq!(json["summary"]["verdict"], "fail");
     let errors = json["summary"]["errors"].as_u64().unwrap();
     let warnings = json["summary"]["warnings"].as_u64().unwrap();
-    assert_eq!(fact(&doc, "Errors"), errors.to_string());
-    assert_eq!(fact(&doc, "Warnings"), warnings.to_string());
+    assert_eq!(errors, 3);
+    assert!(warnings >= 3);
+    assert_eq!(json["summary"]["precheck_errors"], 2);
+    assert_eq!(json["summary"]["precheck_warnings"], 3);
+    assert_eq!(json["summary"]["pdf_failed_rules"], 1);
+    assert_eq!(
+        fact(&doc, "Word document (pre-check)"),
+        "2 errors, 3 warnings"
+    );
     assert_eq!(json["summary"]["generated_local"], DATE);
     assert!(page.contains(DATE));
     assert_eq!(json["summary"]["tool_version"], env!("CARGO_PKG_VERSION"));
@@ -574,19 +650,21 @@ fn report_json_matches_html() {
         assert!(page.contains(id), "{id}");
         assert!(page.contains(f["message"].as_str().unwrap()));
         assert!(page.contains(f["how_to_fix"].as_str().unwrap()));
+        // The page shows the place in words. The part name is data for tooling.
+        assert!(page.contains(f["location"]["place"].as_str().unwrap()));
         if let Some(snippet) = f["location"]["snippet"].as_str() {
             assert!(page.contains(snippet), "{snippet}");
-            assert!(page.contains(f["location"]["heading"].as_str().unwrap()));
-        } else {
-            assert!(page.contains(f["location"]["part"].as_str().unwrap()));
         }
+        assert!(f["location"]["part"].is_string());
     }
 
-    // Fixes and the backup.
+    // Fixes and the original.
     for fix in json["fixes"]["applied"].as_array().unwrap() {
         assert!(page.contains(fix["summary"].as_str().unwrap()));
+        assert!(page.contains(fix["time"].as_str().unwrap()));
+        assert!(page.contains(fix["place"].as_str().unwrap()));
     }
-    assert!(page.contains(json["fixes"]["backup"].as_str().unwrap()));
+    assert!(page.contains(json["fixes"]["original"].as_str().unwrap()));
 
     // Metadata changes.
     let changes = json["pdf_metadata"]["changes"].as_array().unwrap();
@@ -610,6 +688,10 @@ fn report_json_matches_html() {
             f["test_number"]
         )));
         assert!(page.contains(f["message"].as_str().unwrap()));
+        // The place in words is on the page, and the raw path is kept apart.
+        assert_eq!(f["place"], "Figure 3");
+        assert!(page.contains("First place: Figure 3."), "{page}");
+        assert!(page.contains(f["context"].as_str().unwrap()));
     }
     assert_eq!(validation["wcag"]["status"], "ran");
     for f in validation["wcag"]["result"]["findings"].as_array().unwrap() {
@@ -683,7 +765,7 @@ fn a_report_is_pass_only_when_every_stage_ran_and_nothing_failed() {
     let report = build(untagged);
     assert_eq!(report.summary.verdict, Verdict::Fail);
     assert_eq!(report.summary.errors, 1);
-    assert!(section_text(&xml(&html::render(&report)), 4).contains("The PDF has no tags."));
+    assert!(section_text(&xml(&html::render(&report)), 7).contains("The PDF has no tags."));
 
     // A veraPDF failure is a fail.
     let mut failed = input();
@@ -714,45 +796,11 @@ fn a_report_for_a_blocked_export_says_fail_and_lists_the_errors() {
     let doc = xml(&html);
     assert!(section_text(&doc, 2).contains("Message of DOC-001."));
     assert!(section_text(&doc, 4).contains("No PDF was made"));
-    assert!(section_text(&doc, 5).contains("No PDF was made"));
+    assert!(section_text(&doc, 7).contains("No PDF was made"));
     let json: Value = serde_json::from_str(&report.to_json()).unwrap();
     assert_eq!(json["pdf_metadata"]["status"], "not-run");
     assert_eq!(json["verapdf"]["status"], "not-run");
     assert_eq!(json["export"], Value::Null);
-}
-
-#[test]
-fn the_newest_backup_is_found_by_its_time_and_then_its_number() {
-    let names = [
-        "Guide.docx",
-        "Guide.backup-20260305-101530.docx",
-        "Guide.backup-20260305-101530-1.docx",
-        "Guide.backup-20260305-101530-2.docx",
-        "Guide.backup-20260304-235959.docx",
-        "Other.backup-20270101-000000.docx",
-        "Guide.backup-notatime.docx",
-        "Guide.backup-20260305-101530-x.docx",
-        "Guide.backup-20260305-101530.txt",
-    ];
-    assert_eq!(
-        latest_backup("Guide", names),
-        Some("Guide.backup-20260305-101530-2.docx".to_string())
-    );
-    assert_eq!(
-        latest_backup("Other", names),
-        Some("Other.backup-20270101-000000.docx".to_string())
-    );
-    assert_eq!(latest_backup("Missing", names), None);
-    assert_eq!(
-        latest_backup(
-            "Guide",
-            [
-                "Guide.backup-20260305-101530.docx",
-                "Guide.backup-20260306-000000.docx"
-            ]
-        ),
-        Some("Guide.backup-20260306-000000.docx".to_string())
-    );
 }
 
 #[test]
@@ -769,19 +817,19 @@ fn the_json_has_the_sections_in_order_and_a_schema_version() {
     let mut expected = vec![
         "schema_version",
         "summary",
-        "export",
         "precheck",
         "fixes",
-        "pdf_metadata",
         "verapdf",
         "pac",
         "checklist",
+        "export",
+        "pdf_metadata",
     ];
     let mut keys = keys;
     keys.sort_unstable();
     expected.sort_unstable();
     assert_eq!(keys, expected);
-    assert_eq!(json["schema_version"], 1);
+    assert_eq!(json["schema_version"], 2);
     assert_eq!(json["pac"]["result"], Value::Null);
 }
 
@@ -789,7 +837,10 @@ fn the_json_has_the_sections_in_order_and_a_schema_version() {
 fn console_summary_names_the_errors_and_the_files() {
     let report = full_report();
     let text = report.console_summary(&[std::path::Path::new("C:/g/Guide.accessibility.html")]);
-    assert!(text.starts_with("Guide.docx: Fail (3 errors"), "{text}");
+    assert!(
+        text.starts_with("Guide (accessible).docx: Fail (3 errors"),
+        "{text}"
+    );
     assert!(text.contains("[DOC-001] Message of DOC-001."));
     assert!(text.contains("[veraPDF 7.3-1]"), "{text}");
     assert!(text.contains("Wrote C:/g/Guide.accessibility.html"));
@@ -817,33 +868,27 @@ fn the_html_shows_a_sign_off_that_the_report_holds() {
     report.checklist.date = Some("2026-03-06".to_string());
     let html = html::render(&report);
     let doc = xml(&html);
-    let ticked: Vec<bool> = elements(&doc, "input")
-        .iter()
-        .filter(|n| n.attribute("type") == Some("checkbox"))
-        .map(|n| n.attribute("checked").is_some())
-        .collect();
-    assert_eq!(ticked, [true, true, true, true, true, false, false]);
-    assert_eq!(
-        by_id(&doc, "signoff-name").attribute("value"),
-        Some("A. <Reviewer> & \"Co\"")
-    );
-    assert_eq!(
-        by_id(&doc, "signoff-date").attribute("value"),
-        Some("2026-03-06")
-    );
-    let section = section_text(&doc, 7);
+    let section = section_text(&doc, 6);
     assert!(
         section.contains(
-            "Signed off by A. <Reviewer> & \"Co\", on 2026-03-06. 5 of 7 checks are ticked."
+            "Sign-off: Signed by A. <Reviewer> & \"Co\" on 2026-03-06. 5 of 7 checks are checked."
         ),
         "{section}"
     );
-    // An unsigned report has no such sentence and no value.
-    let unsigned = html::render(&pass_report());
-    assert!(!unsigned.contains("Signed off by"));
-    assert!(
-        by_id(&xml(&unsigned), "signoff-name")
-            .attribute("value")
-            .is_none()
+    let statuses: Vec<String> = elements(&doc, "td").into_iter().map(text).collect();
+    assert_eq!(statuses.iter().filter(|t| *t == "Checked").count(), 5);
+    assert_eq!(
+        statuses.iter().filter(|t| *t == "Not checked yet").count(),
+        2
     );
+    // A name without a date.
+    report.checklist.date = None;
+    let section = section_text(&xml(&html::render(&report)), 6);
+    assert!(
+        section.contains("Signed by A. <Reviewer> & \"Co\" (no date was given)"),
+        "{section}"
+    );
+    // An unsigned report has no such sentence.
+    let unsigned = html::render(&pass_report());
+    assert!(!unsigned.contains("Signed by"));
 }

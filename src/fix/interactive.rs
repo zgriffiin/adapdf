@@ -2,24 +2,44 @@
 //! each one, applies the chosen fixes, and shows the new results.
 //!
 //! The questions go to the error stream and the answers come from the input
-//! stream, so a test can drive the command with a pipe. The result (the backup,
-//! the fixes applied and the new check) goes to the output stream, and only
-//! after the file is written. When the tool fails (exit code 2), nothing is
-//! written to the output stream.
+//! stream, so a test can drive the command with a pipe. The result (the file
+//! that was saved, the fixes applied and the new check) goes to the output
+//! stream, and only after the file is written. When the tool fails (exit code
+//! 2), nothing is written to the output stream.
+//!
+//! The original is never changed. The fixes go into the accessible copy
+//! `Guide - Adapdf\Guide (accessible).docx`. When that copy already exists, the
+//! person says what to do with it ([`CopyChoice`]): keep working in it, or start
+//! over from the original and replace it. With no choice the command stops.
 //!
 //! Exit codes (spec 02): 0 = no errors remain, 1 = errors remain, 2 = the tool
 //! failed.
 
 use std::io::{BufRead, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::findings::FixId;
+use crate::model::Document;
 use crate::render;
 
 use super::{
-    Availability, Environment, FixInput, FixOptions, FixRequest, Offer, describe, fix_file, offers,
-    preflight,
+    Availability, Environment, ExistingCopy, FixInput, FixOptions, FixRequest, Offer,
+    accessible_copy_path, describe, fix_file, is_accessible_copy, offers, original_path, preflight,
+    title_suggestions,
 };
+
+/// What to do when the accessible copy of the document already exists
+/// (`--continue` and `--start-over` of `adapdf fix`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CopyChoice {
+    /// No choice was given: stop, and say how to choose.
+    Ask,
+    /// Keep working in the copy: its fixes are kept, and the new fixes go in.
+    Continue,
+    /// Replace the copy with a new one made from the original, and lose every
+    /// change that was made in the copy, also in Word.
+    StartOver,
+}
 
 /// How a yes/no answer is read.
 enum Answer {
@@ -70,7 +90,12 @@ impl Prompter<'_> {
 }
 
 /// Asks about one offer. Returns the request to apply, if the user chose it.
-fn ask_about(prompter: &mut Prompter, offer: &Offer, options: &FixOptions) -> Option<FixRequest> {
+fn ask_about(
+    prompter: &mut Prompter,
+    offer: &Offer,
+    options: &FixOptions,
+    title_hints: &[super::TitleSuggestion],
+) -> Option<FixRequest> {
     let mut shown = String::new();
     render::write_finding(&mut shown, &offer.finding);
     prompter.note(shown.trim_end());
@@ -90,6 +115,15 @@ fn ask_about(prompter: &mut Prompter, offer: &Offer, options: &FixOptions) -> Op
     prompter.note(&format!("    Fix: {}", describe(offer.fix, options)));
     match offer.fix {
         FixId::SetTitle => {
+            // Texts from the document itself. The tool does not use one unless
+            // the person types it.
+            for hint in title_hints {
+                let from = hint.label.strip_prefix("Use the ").unwrap_or(&hint.label);
+                prompter.note(&format!(
+                    "    Suggestion (not applied), the {from}: {}",
+                    hint.text
+                ));
+            }
             let title = prompter.line("    Type the title (press Enter to skip): ")?;
             (!title.is_empty()).then(|| offer.request(FixInput::Text(title)))
         }
@@ -117,9 +151,52 @@ fn ask_about(prompter: &mut Prompter, offer: &Offer, options: &FixOptions) -> Op
     }
 }
 
+/// The file that the fixes start from, and what to do with an existing copy.
+/// `Err` has the message for exit code 2.
+fn plan(
+    path: &Path,
+    choice: CopyChoice,
+    env: &Environment,
+) -> Result<(PathBuf, ExistingCopy), String> {
+    if is_accessible_copy(path) {
+        if choice == CopyChoice::StartOver {
+            return Err(format!(
+                "{} is an accessible copy. To start over, give the original ({}) with --start-over.",
+                path.display(),
+                original_path(path).display()
+            ));
+        }
+        return Ok((path.to_path_buf(), ExistingCopy::Refuse));
+    }
+    let copy = accessible_copy_path(path);
+    match (env.fs.exists(&copy), choice) {
+        (true, CopyChoice::Ask) => Err(format!(
+            "{} already exists. Run the command again with --continue to keep working in the copy, or with --start-over to replace it with a new copy of {} (that loses every change that was made in the copy, also in Word).",
+            copy.display(),
+            path.display()
+        )),
+        (true, CopyChoice::Continue) => Ok((copy, ExistingCopy::Refuse)),
+        (true, CopyChoice::StartOver) => Ok((path.to_path_buf(), ExistingCopy::Replace)),
+        (false, CopyChoice::Continue) => Err(format!(
+            "there is no accessible copy of {} yet ({} is not there). Run the command without --continue.",
+            path.display(),
+            copy.display()
+        )),
+        (false, _) => Ok((path.to_path_buf(), ExistingCopy::Refuse)),
+    }
+}
+
+fn name_of(path: &Path) -> String {
+    path.file_name().map_or_else(
+        || path.display().to_string(),
+        |n| n.to_string_lossy().into_owned(),
+    )
+}
+
 /// Runs `adapdf fix` and returns the exit code.
 pub fn run(
     path: &Path,
+    choice: CopyChoice,
     input: &mut dyn BufRead,
     out: &mut dyn Write,
     err: &mut dyn Write,
@@ -130,51 +207,63 @@ pub fn run(
         let _ = writeln!(err, "adapdf: {message}");
         2
     };
-    // Stop at once when Word has the file open: nothing has been shown yet.
-    if let Err(e) = preflight(env.fs, path) {
+    let (work, existing) = match plan(path, choice, env) {
+        Ok(plan) => plan,
+        Err(message) => return fail(err, message),
+    };
+    // Stop at once when Word has the copy open: nothing has been shown yet.
+    if let Err(e) = preflight(env.fs, &work) {
         return fail(err, e.to_string());
     }
-    let bytes = match env.fs.read(path) {
+    let bytes = match env.fs.read(&work) {
         Ok(bytes) => bytes,
         Err(e) => {
             return fail(
                 err,
-                format!("{}: the file cannot be read: {e}", path.display()),
+                format!("{}: the file cannot be read: {e}", work.display()),
             );
         }
     };
     let offers = match offers(&bytes, &options, env.fonts) {
         Ok(offers) => offers,
-        Err(e) => return fail(err, format!("{}: {e}", path.display())),
+        Err(e) => return fail(err, format!("{}: {e}", work.display())),
     };
+    let title_hints = Document::from_bytes(&bytes)
+        .map(|doc| title_suggestions(&doc, &name_of(&work)))
+        .unwrap_or_default();
 
     let mut prompter = Prompter { input, ask: err };
     prompter.note(&format!(
         "Checking {}: {} problem(s) the tool can fix.",
-        path.display(),
+        work.display(),
         offers.len()
+    ));
+    let copy = accessible_copy_path(&work);
+    prompter.note(&format!(
+        "Fixes go into {}. Your original is not changed.",
+        copy.display()
     ));
     let requests: Vec<FixRequest> = offers
         .iter()
-        .filter_map(|offer| ask_about(&mut prompter, offer, &options))
+        .filter_map(|offer| ask_about(&mut prompter, offer, &options, &title_hints))
         .collect();
 
-    let outcome = match fix_file(path, &requests, &options, env) {
+    let outcome = match fix_file(&work, &requests, &options, env, existing) {
         Ok(outcome) => outcome,
         Err(e) => return fail(err, e.to_string()),
     };
 
-    let name = path.display().to_string();
+    let name = outcome.copy.as_ref().unwrap_or(&work).display().to_string();
     let mut report = String::new();
-    match &outcome.backup {
-        Some(backup) => report.push_str(&format!(
-            "Backup: {}\n",
-            backup.file_name().map_or_else(
-                || backup.display().to_string(),
-                |n| n.to_string_lossy().into_owned()
-            )
+    match &outcome.copy {
+        Some(copy) => report.push_str(&format!(
+            "Saved your fixes to {}. Your original {} was not changed.\nFolder: {}\n",
+            name_of(copy),
+            name_of(&original_path(copy)),
+            copy.parent()
+                .map_or_else(String::new, |f| f.display().to_string())
         )),
-        None => report.push_str("No fixes were written. No backup was made.\n"),
+        None => report.push_str("No fixes were written. No file was changed.\n"),
     }
     if !outcome.applied.is_empty() {
         report.push_str(&format!("Fixes applied ({}):\n", outcome.applied.len()));

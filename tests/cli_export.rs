@@ -71,23 +71,23 @@ fn cli_export_exit_1_on_errors() {
         stdout(&output)
     );
     assert!(stdout(&output).contains("[HDG-002]"));
-    // The report is written, and no PDF.
+    // The report is written, and no PDF, in the folder of the guide. Nothing else
+    // is next to the original.
+    assert_eq!(names(&dir), ["Guide - Adapdf", "Guide.docx"]);
+    let adapdf_folder = dir.join("Guide - Adapdf");
     assert_eq!(
-        names(&dir),
-        [
-            "Guide.accessibility.html",
-            "Guide.accessibility.json",
-            "Guide.docx"
-        ]
+        names(&adapdf_folder),
+        ["Guide.accessibility.html", "Guide.accessibility.json"]
     );
-    let html = fs::read_to_string(dir.join("Guide.accessibility.html")).unwrap();
+    let html = fs::read_to_string(adapdf_folder.join("Guide.accessibility.html")).unwrap();
     assert!(html.contains("<html lang=\"en\">"));
     assert!(html.contains("Result: <strong>Fail</strong>"));
-    let json: Value =
-        serde_json::from_str(&fs::read_to_string(dir.join("Guide.accessibility.json")).unwrap())
-            .unwrap();
+    let json: Value = serde_json::from_str(
+        &fs::read_to_string(adapdf_folder.join("Guide.accessibility.json")).unwrap(),
+    )
+    .unwrap();
     assert_eq!(json["summary"]["verdict"], "fail");
-    assert_eq!(json["schema_version"], 1);
+    assert_eq!(json["schema_version"], 2);
     assert_eq!(json["precheck"][0]["rule_id"], "HDG-002");
 }
 
@@ -105,8 +105,12 @@ fn cli_export_blocks_every_error_rule_and_doc_005() {
         let output = export(&[&docx]);
         let name = fixture.file_name();
         assert_eq!(output.status.code(), Some(1), "{name}: {}", stderr(&output));
-        assert!(!dir.join("Guide.pdf").exists(), "{name}");
-        assert!(dir.join("Guide.accessibility.html").exists(), "{name}");
+        let adapdf_folder = dir.join("Guide - Adapdf");
+        assert!(!adapdf_folder.join("Guide.pdf").exists(), "{name}");
+        assert!(
+            adapdf_folder.join("Guide.accessibility.html").exists(),
+            "{name}"
+        );
         assert!(stdout(&output).contains(fixture.rule.as_str()), "{name}");
     }
 }
@@ -182,6 +186,6 @@ fn cli_export_exit_2_on_tool_failure() {
 
     // None of these wrote a PDF or a report.
     assert!(!dir.join("Guide.pdf").exists());
-    assert!(!dir.join("Guide.accessibility.html").exists());
-    assert!(!dir.join("Missing.accessibility.html").exists());
+    assert!(!dir.join("Guide - Adapdf").exists(), "no folder was made");
+    assert!(!dir.join("Missing - Adapdf").exists());
 }

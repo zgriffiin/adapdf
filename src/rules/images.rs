@@ -277,7 +277,7 @@ pub fn img_003(doc: &Document) -> Vec<Finding> {
                 format!(
                     "The alt text has {length} characters. Alt text longer than {MAX_ALT_TEXT_CHARS} characters is hard to listen to."
                 ),
-                "Shorten the alt text to the main point. Put the detail in the body text or in a caption.",
+                "Right-click the picture, choose Edit Alt Text (or View Alt Text), and shorten the text to the main point. Put the detail in the body text or in a caption.",
                 Location::paragraph(doc, p),
             )
         })
@@ -359,7 +359,7 @@ pub fn img_005(doc: &Document) -> Vec<Finding> {
                     "The alt text is the same as the caption \"{}\". A screen reader reads the same words twice.",
                     snippet(&caption.text)
                 ),
-                "Change the alt text to describe what the image shows, or mark the image decorative if the caption says everything.",
+                "Right-click the picture and choose Edit Alt Text (or View Alt Text). Change the text to describe what the image shows, or select Mark as decorative if the caption says everything.",
                 Location::paragraph(doc, p),
             )
         })
@@ -399,7 +399,7 @@ pub fn img_006(doc: &Document) -> Vec<Finding> {
             "The document has {}. Embedded objects and equations may not be read correctly in the PDF.",
             found.join(" and ")
         ),
-        "Check how they read in the PDF with the PAC screen-reader preview. If they are wrong, replace an equation with text, or an object with a table or a picture that has alt text.",
+        "Check how they read in the PDF with the PAC screen-reader preview. If they are wrong, click the equation and replace it with typed text, or replace the object with a table, or with a picture that has alt text (right-click the picture and choose Edit Alt Text).",
         Location::paragraph(doc, first),
     )]
 }

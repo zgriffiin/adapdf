@@ -7,10 +7,10 @@
 //! is not body text.
 
 use crate::findings::{Finding, Location, RuleId, snippet};
-use crate::model::Document;
 use crate::model::Paragraph;
 use crate::model::fields::{HeaderFooter, Toc, has_switch, switch_arg};
 use crate::model::props::Alignment;
+use crate::model::{Document, HeaderFooterKind, HeaderFooterPlace};
 use crate::rules::headings::is_exempt_style;
 
 /// TXT-001: body text smaller than this is reported, in half points (10 pt).
@@ -60,7 +60,7 @@ pub fn txt_001(doc: &Document) -> Vec<Finding> {
                         f64::from(smallest) / 2.0,
                         MIN_BODY_SIZE_HALF_POINTS / 2
                     ),
-                    format!("Select the text and make it at least {} pt, on the Home tab. Change the style if all the text in it is small.", MIN_BODY_SIZE_HALF_POINTS / 2),
+                    format!("Select the text and choose a size of at least {} in the Font Size box (Home tab). Change the style (Home > Styles > right-click the style > Modify) if all the text in it is small.", MIN_BODY_SIZE_HALF_POINTS / 2),
                     Location::paragraph(doc, p),
                 )
             })
@@ -117,10 +117,33 @@ fn titles(doc: &Document) -> Vec<Vec<String>> {
         .collect()
 }
 
-/// The typed words of a header or footer that are not allowed: the text that
-/// is not the result of an allowed field, with the allowed words, numbers and
-/// titles taken out.
-fn extra_words(hf: &HeaderFooter, titles: &[Vec<String>]) -> Vec<String> {
+/// The words of a text, each with its lower-case form (for comparing) and its
+/// byte range in the text (for quoting it as it was written).
+fn tokens(text: &str) -> Vec<(String, std::ops::Range<usize>)> {
+    let mut found = Vec::new();
+    let mut start = None;
+    for (i, c) in text.char_indices() {
+        match (c.is_alphanumeric(), start) {
+            (true, None) => start = Some(i),
+            (false, Some(s)) => {
+                found.push((text[s..i].to_lowercase(), s..i));
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    if let Some(s) = start {
+        found.push((text[s..].to_lowercase(), s..text.len()));
+    }
+    found
+}
+
+/// The typed text of a header or footer that is not allowed, as it was written
+/// (with its own capitals and spacing). The text that is the result of an
+/// allowed field, the allowed words, numbers and titles are taken out. Words
+/// that stay next to each other stay together with what is between them;
+/// separate groups are separate items.
+fn extra_text(hf: &HeaderFooter, titles: &[Vec<String>]) -> Vec<String> {
     let mut extra = Vec::new();
     for piece in &hf.text {
         if piece
@@ -130,20 +153,44 @@ fn extra_words(hf: &HeaderFooter, titles: &[Vec<String>]) -> Vec<String> {
         {
             continue;
         }
-        let mut left = words(&piece.text);
+        let tokens = tokens(&piece.text);
+        // The words that are left, as indexes into `tokens`.
+        let mut left: Vec<usize> = (0..tokens.len()).collect();
         for title in titles {
             let mut i = 0;
             while i + title.len() <= left.len() {
-                if left[i..i + title.len()] == title[..] {
+                if left[i..i + title.len()]
+                    .iter()
+                    .zip(title)
+                    .all(|(t, word)| tokens[*t].0 == *word)
+                {
                     left.drain(i..i + title.len());
                 } else {
                     i += 1;
                 }
             }
         }
-        extra.extend(left.into_iter().filter(|w| {
-            !HEADER_FOOTER_WORDS.contains(&w.as_str()) && !w.chars().all(|c| c.is_ascii_digit())
-        }));
+        let keep: Vec<usize> = left
+            .into_iter()
+            .filter(|t| {
+                let word = tokens[*t].0.as_str();
+                !HEADER_FOOTER_WORDS.contains(&word) && !word.chars().all(|c| c.is_ascii_digit())
+            })
+            .collect();
+        let mut group: Option<(usize, usize)> = None; // first and last token
+        for t in keep {
+            group = match group {
+                Some((first, last)) if last + 1 == t => Some((first, t)),
+                Some((first, last)) => {
+                    extra.push(piece.text[tokens[first].1.start..tokens[last].1.end].to_string());
+                    Some((t, t))
+                }
+                None => Some((t, t)),
+            };
+        }
+        if let Some((first, last)) = group {
+            extra.push(piece.text[tokens[first].1.start..tokens[last].1.end].to_string());
+        }
     }
     extra
 }
@@ -151,33 +198,54 @@ fn extra_words(hf: &HeaderFooter, titles: &[Vec<String>]) -> Vec<String> {
 /// TXT-003: a header or footer has text other than the title, page numbers
 /// and dates. The text may be typed or the result of a field, other than
 /// [`HEADER_FOOTER_FIELDS`]. Typed dates are not recognised: a date has to be
-/// a field. One finding for each part.
+/// a field. One finding for each part. The message quotes the text as it was
+/// written.
 pub fn txt_003(doc: &Document) -> Vec<Finding> {
     let titles = titles(doc);
     doc.header_footers
         .iter()
         .filter_map(|hf| {
-            let extra = extra_words(hf, &titles);
+            let extra = extra_text(hf, &titles);
             if extra.is_empty() {
                 return None;
             }
-            let kind = if hf.part.contains("footer") {
-                "footer"
-            } else {
-                "header"
-            };
+            let places = doc.header_footer_places(&hf.part);
+            let footer = places
+                .first()
+                .map_or_else(|| hf.part.contains("footer"), |p| p.footer);
+            let kind = if footer { "footer" } else { "header" };
             let shown = snippet(&extra.join(" "));
+            let how = how_to_open(doc, &places, footer);
             Some(Finding::new(
                 RuleId::Txt003,
                 format!("The {kind} has text other than the title, page numbers and dates (\"{shown}\"). Screen readers skip headers and footers in the PDF, so people who use them do not get this text."),
-                format!("Move this text into the body of the document, or remove it from the {kind}. Keep only the title, page numbers and dates there."),
-                Location {
-                    snippet: Some(shown),
-                    ..Location::document(&hf.part)
-                },
+                format!("{how} Delete \"{shown}\", or move it into the body of the document. Keep only the title, page numbers and dates in the {kind}."),
+                Location::header_footer(doc, &hf.part, &shown),
             ))
         })
         .collect()
+}
+
+/// "Double-click the top of a page in section 2 to open the header."
+fn how_to_open(doc: &Document, places: &[HeaderFooterPlace], footer: bool) -> String {
+    let (edge, kind) = if footer {
+        ("bottom", "footer")
+    } else {
+        ("top", "header")
+    };
+    let Some(place) = places.first() else {
+        return format!("Double-click the {edge} of a page to open the {kind}.");
+    };
+    let page = match place.kind {
+        HeaderFooterKind::Default => "a page",
+        HeaderFooterKind::First => "the first page",
+        HeaderFooterKind::Even => "an even-numbered page",
+    };
+    let section = match (doc.sections.len() > 1, place.sections.first()) {
+        (true, Some(s)) => format!(" in section {}", s + 1),
+        _ => String::new(),
+    };
+    format!("Double-click the {edge} of {page}{section} to open the {kind}.")
 }
 
 /// The levels of headings a TOC lists: `\o "1-3"` gives 1 to 3. Without `\o`

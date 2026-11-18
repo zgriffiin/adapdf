@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use adapdf::findings::{FixId, FixKind, RuleId};
+use adapdf::fix::interactive::CopyChoice;
 use adapdf::fix::{Environment, FixOptions, RealFs, Timestamp};
 use adapdf::fixtures::{FixtureFonts, catalogue};
 use adapdf::render;
@@ -16,7 +17,7 @@ use serde_json::Value;
 use crate::commands::{
     self, Availability, Choice, Input as Answer, check, fix_offers, read_report, report_paths,
 };
-use crate::signoff::{Signoff, save_signoff};
+use crate::signoff::{PacInput, Signoff, save_signoff};
 
 // ------------------------------------------------------------ helpers
 
@@ -143,8 +144,8 @@ fn app_commands_match_the_cli_check() {
 }
 
 /// The offers are those of `adapdf fix`, and a fix chosen in the app gives the
-/// same file, the same backup name, the same findings and the same exit result as
-/// the answers `y` (or the typed text) given to `adapdf fix`.
+/// same accessible copy, the same folder, the same findings and the same exit
+/// result as the answers `y` (or the typed text) given to `adapdf fix`.
 #[test]
 fn app_commands_match_the_cli() {
     // The fixes of fixtures, with what the person gives in the app for a fix that
@@ -203,7 +204,7 @@ A red arrow",
             })
             .collect();
         assert!(!choices.is_empty(), "{rule}");
-        let result = commands::apply_fixes(&app_path, &choices, &env, &options).unwrap();
+        let result = commands::apply_fixes(&app_path, &choices, false, &env, &options).unwrap();
 
         // The command line: one answer for each offer, in order.
         let answers: String = offers
@@ -215,26 +216,47 @@ A red arrow",
             .collect();
         let mut input = answers.as_bytes();
         let (mut out, mut err) = (Vec::new(), Vec::new());
-        let code = adapdf::fix::interactive::run(&cli_path, &mut input, &mut out, &mut err, &env);
+        let code = adapdf::fix::interactive::run(
+            &cli_path,
+            CopyChoice::Ask,
+            &mut input,
+            &mut out,
+            &mut err,
+            &env,
+        );
 
+        // The original is not changed by either. The copy is the same file, in
+        // the folder of the guide.
+        let (app_copy, cli_copy) = (
+            adapdf::fix::accessible_copy_path(&app_path),
+            adapdf::fix::accessible_copy_path(&cli_path),
+        );
+        assert_eq!(fs::read(&app_path).unwrap(), bytes, "{rule}");
+        assert_eq!(fs::read(&cli_path).unwrap(), bytes, "{rule}");
         assert_eq!(
-            fs::read(&app_path).unwrap(),
-            fs::read(&cli_path).unwrap(),
+            fs::read(&app_copy).unwrap(),
+            fs::read(&cli_copy).unwrap(),
             "{rule}"
         );
-        assert_eq!(a.names(), b.names(), "{rule}: the same backup name");
-        assert_eq!(result.backup.is_some(), a.names().len() == 2);
+        assert_eq!(a.names(), b.names(), "{rule}: the same files");
+        assert_eq!(a.names(), ["Guide - Adapdf", "Guide.docx"], "{rule}");
+        assert_eq!(
+            result.copy.as_deref(),
+            Some(app_copy.display().to_string().as_str())
+        );
+        assert_eq!(result.working_file, app_copy.display().to_string());
+        assert_eq!(result.original, app_path.display().to_string());
         assert!(result.refused.is_empty(), "{rule}: {:?}", result.refused);
         assert_eq!(result.exit_code, code, "{rule}");
         assert_eq!(
             result.findings,
-            adapdf::check_file(&cli_path, &FixtureFonts).unwrap(),
+            adapdf::check_file(&cli_copy, &FixtureFonts).unwrap(),
             "{rule}"
         );
         let text = String::from_utf8(out).unwrap();
         assert!(
             text.contains(&render::to_text(
-                &cli_path.display().to_string(),
+                &cli_copy.display().to_string(),
                 &result.findings
             )),
             "{text}"
@@ -257,8 +279,9 @@ fn app_commands_match_the_cli_when_there_is_nothing_to_fix() {
     let options = FixOptions::default();
     let env = environment();
     assert!(fix_offers(&path, &env, &options).unwrap().is_empty());
-    let result = commands::apply_fixes(&path, &[], &env, &options).unwrap();
-    assert_eq!(result.backup, None);
+    let result = commands::apply_fixes(&path, &[], false, &env, &options).unwrap();
+    assert_eq!(result.copy, None);
+    assert_eq!(result.working_file, path.display().to_string());
     assert!(result.applied.is_empty() && result.refused.is_empty());
     assert_eq!(result.exit_code, 0);
     assert_eq!(fs::read(&path).unwrap(), before);
@@ -293,7 +316,7 @@ fn apply_fixes_refuses_what_the_cli_refuses() {
         position: 3,
         input: Answer::Decorative,
     };
-    let result = commands::apply_fixes(&path, &[blank, gone], &env, &options).unwrap();
+    let result = commands::apply_fixes(&path, &[blank, gone], false, &env, &options).unwrap();
     assert!(result.applied.is_empty());
     assert_eq!(result.refused.len(), 2);
     assert!(
@@ -308,28 +331,61 @@ fn apply_fixes_refuses_what_the_cli_refuses() {
             .iter()
             .any(|r| r.reason.contains("changed since the check"))
     );
-    assert_eq!(result.backup, None);
+    assert_eq!(result.copy, None);
     assert_eq!(fs::read(&path).unwrap(), before, "nothing was written");
+    assert_eq!(dir.names(), ["Guide.docx"], "no copy and no folder");
 
-    // Word has the file open: its lock file is next to it.
-    fs::write(dir.path().join("~$Guide.docx"), b"lock").unwrap();
-    let error = fix_offers(&path, &env, &options).unwrap_err();
-    assert!(error.message.contains("open in Word"), "{error}");
-    let error = commands::apply_fixes(&path, &[], &env, &options).unwrap_err();
-    assert!(error.message.contains("open in Word"), "{error}");
+    // Word has the accessible copy open: its lock file is next to it. The message
+    // says what to do.
+    let copy = dir.write("Guide (accessible).docx", &before);
+    let lock = &adapdf::fix::lock_file_names("Guide (accessible).docx")[0];
+    fs::write(dir.path().join(lock), b"lock").unwrap();
+    for error in [
+        fix_offers(&copy, &env, &options).unwrap_err(),
+        commands::apply_fixes(&copy, &[], false, &env, &options).unwrap_err(),
+    ] {
+        assert!(error.message.contains("open in Word"), "{error}");
+        assert!(
+            error
+                .message
+                .contains("Close the document in Word first, then try again."),
+            "{error}"
+        );
+    }
 }
 
-/// A pass fixture has no offers that need text, and the app never fills text in:
-/// the suggestion is only in the finding.
+/// The title has up to three one-click texts from the document, and the app never
+/// fills text in: the offer has the texts, and no input of its own.
 #[test]
-fn offers_carry_the_suggestion_and_no_text() {
+fn the_title_offer_carries_the_texts_from_the_document_and_no_input() {
     let dir = TempDir::new("a03-offers");
-    let path = dir.write("Guide.docx", &fixture(RuleId::Doc001, true));
+    let path = dir.write("Parks_Guide.docx", &fixture(RuleId::Doc001, true));
     let offers = fix_offers(&path, &environment(), &FixOptions::default()).unwrap();
     let json = serde_json::to_value(&offers[0]).unwrap();
     assert!(json.get("input").is_none() && json.get("text").is_none());
     assert_eq!(json["ask"], true);
     assert_eq!(json["availability"]["status"], "ready");
+    assert_eq!(json["finding"]["suggestion"], serde_json::Value::Null);
+    // The file name, cleaned, and the first Heading 1 of the fixture.
+    assert_eq!(
+        json["suggestions"],
+        serde_json::json!([
+            { "source": "file-name", "label": "Use the file name", "text": "Parks Guide" },
+            { "source": "first-heading1", "label": "Use the first Heading 1", "text": "Test guide" }
+        ])
+    );
+    // The name of the accessible copy gives the same title (no `(accessible)`).
+    let copy = dir.write(
+        "Parks_Guide (accessible).docx",
+        &fixture(RuleId::Doc001, true),
+    );
+    let offers = fix_offers(&copy, &environment(), &FixOptions::default()).unwrap();
+    assert_eq!(offers[0].suggestions[0].text, "Parks Guide");
+    // Other fixes have no suggestion; alt text has none (IMG-005 would report a
+    // caption that repeats it).
+    let path = dir.write("Pictures.docx", &fixture(RuleId::Img001, true));
+    let offers = fix_offers(&path, &environment(), &FixOptions::default()).unwrap();
+    assert!(offers.iter().all(|o| o.suggestions.is_empty()));
 }
 
 // The export of the app is the export of the command: stage 1 comes first, so
@@ -380,16 +436,23 @@ mod export {
         let in_dir =
             |text: &str, dir: &TempDir| text.replace(&dir.path().display().to_string(), "<dir>");
         assert_eq!(in_dir(&app.console, &a), in_dir(&cli.stdout, &b));
-        // The same files, written next to the document.
+        // The same files, written in the folder of the guide: nothing else is next
+        // to the original.
         assert_eq!(a.names(), b.names());
+        assert_eq!(a.names(), ["Guide - Adapdf", "Guide.docx"]);
+        let folder = |dir: &TempDir| {
+            let mut names: Vec<String> = fs::read_dir(dir.path().join("Guide - Adapdf"))
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+            names.sort();
+            names
+        };
         assert_eq!(
-            a.names(),
-            [
-                "Guide.accessibility.html",
-                "Guide.accessibility.json",
-                "Guide.docx"
-            ]
+            folder(&a),
+            ["Guide.accessibility.html", "Guide.accessibility.json"]
         );
+        assert_eq!(folder(&a), folder(&b));
         let (_, html_path, json_path) = output_paths(&app_path);
         assert_eq!(app.view.report_html, html_path.display().to_string());
         assert_eq!(app.view.report_json, json_path.display().to_string());
@@ -451,11 +514,20 @@ mod export {
         let expected = [
             "Guide.accessibility.html",
             "Guide.accessibility.json",
-            "Guide.docx",
             "Guide.pdf",
         ];
-        assert_eq!(a.names(), expected);
-        assert_eq!(b.names(), expected);
+        let adapdf_folder = |dir: &TempDir| {
+            let mut names: Vec<String> = fs::read_dir(dir.path().join("Guide - Adapdf"))
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+            names.sort();
+            names
+        };
+        assert_eq!(a.names(), ["Guide - Adapdf", "Guide.docx"]);
+        assert_eq!(b.names(), ["Guide - Adapdf", "Guide.docx"]);
+        assert_eq!(adapdf_folder(&a), expected);
+        assert_eq!(adapdf_folder(&b), expected);
         let names = |files: &[String]| -> Vec<String> {
             files
                 .iter()
@@ -481,7 +553,13 @@ mod export {
         assert_eq!(app.view.report.summary.pdf.as_deref(), Some("Guide.pdf"));
         assert_eq!(
             app.view.pdf,
-            Some(a.path().join("Guide.pdf").display().to_string())
+            Some(
+                a.path()
+                    .join("Guide - Adapdf")
+                    .join("Guide.pdf")
+                    .display()
+                    .to_string()
+            )
         );
 
         // The text that the command prints (with the folder and the time left out).
@@ -499,7 +577,10 @@ mod export {
         );
 
         // The report that was written is the report that came back.
-        let json = a.path().join("Guide.accessibility.json");
+        let json = a
+            .path()
+            .join("Guide - Adapdf")
+            .join("Guide.accessibility.json");
         assert_eq!(read_report(&json).unwrap(), app.view);
     }
 }
@@ -569,7 +650,7 @@ fn saved_report() -> Saved {
         generated_local: "2026-03-05 10:15:30".to_string(),
         findings,
         applied_fixes: Vec::new(),
-        backup: None,
+        original: None,
         pdf: Some("Guide.pdf".to_string()),
         export: None,
         metadata: None,
@@ -592,6 +673,15 @@ fn five_of_seven(name: &str, date: &str) -> Signoff {
         name: name.to_string(),
         date: date.to_string(),
         items: vec![true, true, true, true, true, false, false],
+        pac: no_pac(),
+    }
+}
+
+fn no_pac() -> PacInput {
+    PacInput {
+        result: "none".to_string(),
+        version: String::new(),
+        report_file: None,
     }
 }
 
@@ -637,14 +727,16 @@ fn app_saves_the_signoff_in_the_report() {
     assert_eq!(json_without_checklist(&saved.json), json_before);
     assert_eq!(view.report.summary, summary_before);
 
-    // The HTML is the page of the signed report: checked boxes and typed values.
+    // The HTML is the page of the signed report. It has no control: it shows
+    // the sign-off as text.
     let html_text = fs::read_to_string(&saved.html).unwrap();
     assert_eq!(html_text, html::render(&view.report));
-    assert_eq!(html_text.matches("checked=\"checked\"").count(), 5);
-    assert!(html_text.contains("id=\"signoff-name\" name=\"signoff-name\" value=\"A. Reviewer\""));
-    assert!(html_text.contains("id=\"signoff-date\" name=\"signoff-date\" value=\"2026-03-06\""));
+    assert!(!html_text.contains("<input") && !html_text.contains("<select"));
+    assert_eq!(html_text.matches("<td>Checked</td>").count(), 5);
+    assert_eq!(html_text.matches("<td>Not checked yet</td>").count(), 2);
     assert!(
-        html_text.contains("Signed off by A. Reviewer, on 2026-03-06. 5 of 7 checks are ticked.")
+        html_text
+            .contains("Sign-off: Signed by A. Reviewer on 2026-03-06. 5 of 7 checks are checked.")
     );
 
     // Opening it again shows the same name, date and ticks.
@@ -659,6 +751,7 @@ fn app_saves_the_signoff_in_the_report() {
         name: "B. Second".to_string(),
         date: String::new(),
         items: vec![true; 7],
+        pac: no_pac(),
     };
     let view = save_signoff(&saved.json, &second).unwrap();
     assert_eq!(view.report.checklist.name.as_deref(), Some("B. Second"));
@@ -705,9 +798,9 @@ fn a_date_that_was_not_given_is_not_filled_in() {
     let json: Value = serde_json::from_str(&fs::read_to_string(&saved.json).unwrap()).unwrap();
     assert_eq!(json["checklist"]["date"], Value::Null);
     assert!(
-        !fs::read_to_string(&saved.html)
+        fs::read_to_string(&saved.html)
             .unwrap()
-            .contains("id=\"signoff-date\" name=\"signoff-date\" value=")
+            .contains("Signed by A. Reviewer (no date was given)")
     );
 }
 
@@ -822,13 +915,13 @@ fn a_file_that_is_not_a_report_of_this_tool_is_refused() {
     assert!(save_signoff(&wrong_name, &five_of_seven("A. Reviewer", "2026-03-06")).is_err());
     // A later layout of the report is not changed by an older tool.
     let mut json: Value = serde_json::from_str(&saved.report.to_json()).unwrap();
-    json["schema_version"] = Value::from(2);
+    json["schema_version"] = Value::from(3);
     let later = saved
         .dir
         .write("Later.accessibility.json", json.to_string().as_bytes());
     let before = fs::read(&later).unwrap();
     let error = save_signoff(&later, &five_of_seven("A. Reviewer", "2026-03-06")).unwrap_err();
-    assert!(error.message.contains("layout version 2"), "{error}");
+    assert!(error.message.contains("layout version 3"), "{error}");
     assert_eq!(fs::read(&later).unwrap(), before);
     assert!(!saved.dir.path().join("Later.accessibility.html").exists());
 }
@@ -846,6 +939,296 @@ fn a_signoff_does_not_change_the_verdict() {
         (view.report.summary.errors, view.report.summary.warnings),
         (saved.report.summary.errors, saved.report.summary.warnings)
     );
+}
+
+// ------------------------------------------------- the files of a guide
+
+/// The page asks for the files of a guide when a document is chosen: the original,
+/// the accessible copy, the folder, and whether the copy is there.
+#[test]
+fn working_info_names_the_original_the_copy_and_the_folder() {
+    let dir = TempDir::new("w-info");
+    let env = environment();
+    let original = dir.write("Guide.docx", &fixture(RuleId::Doc002, true));
+    let folder = dir.path().join("Guide - Adapdf");
+    let copy = folder.join("Guide (accessible).docx");
+
+    let info = commands::working_info(&original, &env);
+    assert_eq!(info.chosen, original.display().to_string());
+    assert_eq!(info.original, original.display().to_string());
+    assert_eq!(info.copy, copy.display().to_string());
+    assert_eq!(info.folder, folder.display().to_string());
+    assert_eq!(info.chosen_folder, dir.path().display().to_string());
+    assert!(!info.is_copy && !info.copy_exists);
+
+    // After the copy is made, the same file says that the copy is there.
+    fs::create_dir_all(&folder).unwrap();
+    fs::write(&copy, b"x").unwrap();
+    assert!(commands::working_info(&original, &env).copy_exists);
+
+    // The copy itself: the original is named from it.
+    let info = commands::working_info(&copy, &env);
+    assert!(info.is_copy && info.copy_exists);
+    assert_eq!(info.original, original.display().to_string());
+    assert_eq!(info.copy, copy.display().to_string());
+    assert_eq!(info.chosen_folder, folder.display().to_string());
+
+    // A copy that is somewhere else: its original is named next to it, the files
+    // of the guide are next to it, and nothing is made.
+    let loose = dir.write("Other (accessible).docx", b"x");
+    let info = commands::working_info(&loose, &env);
+    assert!(info.is_copy && info.copy_exists);
+    assert_eq!(
+        info.original,
+        dir.path().join("Other.docx").display().to_string()
+    );
+    assert_eq!(info.folder, dir.path().display().to_string());
+}
+
+#[test]
+fn create_copy_makes_the_copy_with_no_fix_and_does_not_replace_one_unasked() {
+    let dir = TempDir::new("w-copy");
+    let env = environment();
+    let bytes = fixture(RuleId::Doc002, true);
+    let original = dir.write("Guide.docx", &bytes);
+    let info = commands::create_copy(&original, false, &env).unwrap();
+    assert!(info.is_copy && info.copy_exists);
+    assert_eq!(
+        info.chosen,
+        dir.path()
+            .join("Guide - Adapdf")
+            .join("Guide (accessible).docx")
+            .display()
+            .to_string()
+    );
+    assert_eq!(
+        fs::read(&info.chosen).unwrap(),
+        bytes,
+        "a copy, with no fix"
+    );
+    assert_eq!(fs::read(&original).unwrap(), bytes);
+
+    // A second time, with no choice, it does not replace the copy.
+    fs::write(&info.chosen, b"edited in Word").unwrap();
+    let error = commands::create_copy(&original, false, &env).unwrap_err();
+    assert!(error.message.contains("already exists"), "{error}");
+    assert_eq!(fs::read(&info.chosen).unwrap(), b"edited in Word");
+    // Starting over replaces it.
+    commands::create_copy(&original, true, &env).unwrap();
+    assert_eq!(fs::read(&info.chosen).unwrap(), bytes);
+    // The copy is its own copy.
+    let again = commands::create_copy(Path::new(&info.chosen), false, &env).unwrap();
+    assert_eq!(again.chosen, info.chosen);
+}
+
+#[test]
+fn apply_fixes_refuses_an_existing_copy_unless_the_person_started_over() {
+    let dir = TempDir::new("w-apply");
+    let env = environment();
+    let options = FixOptions::default();
+    let bytes = fixture(RuleId::Doc002, true);
+    let original = dir.write("Guide.docx", &bytes);
+    let offers = fix_offers(&original, &env, &options).unwrap();
+    let choices = [Choice {
+        rule_id: RuleId::Doc002,
+        position: 0,
+        input: Answer::Confirm,
+    }];
+    let first = commands::apply_fixes(&original, &choices, false, &env, &options).unwrap();
+    let copy = first.copy.clone().expect("a copy");
+    assert_eq!(first.working_file, copy);
+    let after_first = fs::read(&copy).unwrap();
+    assert_eq!(offers.len(), 1);
+
+    // The copy exists: with no choice, nothing is written.
+    let error = commands::apply_fixes(&original, &choices, false, &env, &options).unwrap_err();
+    assert!(error.message.contains("already exists"), "{error}");
+    assert_eq!(fs::read(&copy).unwrap(), after_first);
+    // Continuing is working in the copy: it has no DOC-002 left, so there is
+    // nothing to choose, and the file is as it was.
+    let copy_path = PathBuf::from(&copy);
+    assert!(fix_offers(&copy_path, &env, &options).unwrap().is_empty());
+    // Starting over replaces it, with a new log of one fix.
+    fs::write(&copy, b"edited in Word").unwrap();
+    let again = commands::apply_fixes(&original, &choices, true, &env, &options).unwrap();
+    assert_eq!(again.copy.as_deref(), Some(copy.as_str()));
+    assert_eq!(
+        fs::read(&copy).unwrap(),
+        after_first,
+        "the same fix, the same file"
+    );
+    assert_eq!(fs::read(&original).unwrap(), bytes);
+}
+
+/// The app opens only the accessible copy of a guide in Word. The original is
+/// never opened by the app, so that the person edits the copy. The check is made
+/// before the opener is called (the tests never start Word).
+#[test]
+fn only_the_accessible_copy_is_opened_in_word() {
+    let dir = TempDir::new("w-open");
+    let copy = dir.write("Guide (accessible).docx", b"x");
+    assert_eq!(commands::check_open_in_word(&copy).unwrap(), copy);
+    let original = dir.write("Guide.docx", b"x");
+    let error = commands::check_open_in_word(&original).unwrap_err();
+    assert!(error.message.contains("not an accessible copy"), "{error}");
+    for bad in [
+        "Guide (accessible).doc",
+        "Guide (accessible).pdf",
+        "Guide (accessible).docx.exe",
+        "Guide.accessibility.html",
+    ] {
+        let path = dir.write(bad, b"x");
+        assert!(commands::check_open_in_word(&path).is_err(), "{bad}");
+    }
+    // Not there, not absolute, a web address, and a network share.
+    assert!(commands::check_open_in_word(&dir.path().join("Other (accessible).docx")).is_err());
+    assert!(commands::check_open_in_word(Path::new("Guide (accessible).docx")).is_err());
+    for address in [
+        "https://example.com/Guide (accessible).docx",
+        r"\\server\share\Guide (accessible).docx",
+    ] {
+        assert!(
+            commands::check_open_in_word(Path::new(address)).is_err(),
+            "{address}"
+        );
+    }
+}
+
+#[test]
+fn only_the_folder_of_a_docx_is_opened() {
+    let dir = TempDir::new("w-folder");
+    let file = dir.write("Guide.docx", b"x");
+    assert_eq!(
+        commands::check_open_folder(&file).unwrap(),
+        dir.path().to_path_buf()
+    );
+    // The folder of a report is opened too (the result screen has no .docx).
+    let report = dir.write("Guide.accessibility.json", b"{}");
+    assert_eq!(
+        commands::check_open_folder(&report).unwrap(),
+        dir.path().to_path_buf()
+    );
+    for bad in ["Guide.pdf", "Guide.exe", ".docx", ".accessibility.json"] {
+        let path = dir.write(bad, b"x");
+        assert!(commands::check_open_folder(&path).is_err(), "{bad}");
+    }
+    // A folder is not a document, and a path that is not there is not opened.
+    assert!(commands::check_open_folder(dir.path()).is_err());
+    assert!(commands::check_open_folder(&dir.path().join("Missing.docx")).is_err());
+    assert!(commands::check_open_folder(Path::new(r"\\server\share\Guide.docx")).is_err());
+    assert!(commands::check_open_folder(Path::new("Guide.docx")).is_err());
+}
+
+// --------------------------------------------------- PAC in the sign-off
+
+fn with_pac(result: &str, version: &str, file: Option<&str>) -> Signoff {
+    let mut signoff = five_of_seven("A. Reviewer", "2026-03-06");
+    signoff.pac = PacInput {
+        result: result.to_string(),
+        version: version.to_string(),
+        report_file: file.map(str::to_string),
+    };
+    signoff
+}
+
+/// The PAC result, the version and the report file are saved with the sign-off, in
+/// the JSON and in the page, and read back. The file is saved as a path relative
+/// to the folder of the report.
+#[test]
+fn the_pac_result_is_saved_with_the_signoff() {
+    let saved = saved_report();
+    let folder = saved.json.parent().unwrap().to_path_buf();
+    fs::create_dir_all(folder.join("PAC")).unwrap();
+    fs::write(folder.join("PAC").join("Guide-pac.pdf"), b"%PDF").unwrap();
+
+    // A file that the file chooser gave (an absolute path) is saved relative.
+    let absolute = folder.join("PAC").join("Guide-pac.pdf");
+    let view = save_signoff(
+        &saved.json,
+        &with_pac("pass", "  2024.1 ", Some(absolute.to_str().unwrap())),
+    )
+    .unwrap();
+    let pac = &view.report.pac;
+    assert_eq!(pac.result.as_deref(), Some("pass"));
+    assert_eq!(pac.pac_version.as_deref(), Some("2024.1"));
+    assert_eq!(pac.report_file.as_deref(), Some("PAC/Guide-pac.pdf"));
+    let json: Value = serde_json::from_str(&fs::read_to_string(&saved.json).unwrap()).unwrap();
+    assert_eq!(json["pac"]["result"], "pass");
+    assert_eq!(json["pac"]["report_file"], "PAC/Guide-pac.pdf");
+    let page = fs::read_to_string(&saved.html).unwrap();
+    assert!(
+        page.contains(
+            "PAC: Pass, report PAC/Guide-pac.pdf, PAC 2024.1, recorded by A. Reviewer on 2026-03-06"
+        ),
+        "{page}"
+    );
+    assert_eq!(read_report(&saved.json).unwrap(), view);
+
+    // A relative file that is there is accepted as it is. A fail without a file or
+    // a version is a fail.
+    let view = save_signoff(
+        &saved.json,
+        &with_pac("fail", "", Some("PAC/Guide-pac.pdf")),
+    )
+    .unwrap();
+    assert_eq!(view.report.pac.result.as_deref(), Some("fail"));
+    assert_eq!(view.report.pac.pac_version, None);
+    let view = save_signoff(&saved.json, &with_pac("fail", "", None)).unwrap();
+    assert_eq!(view.report.pac.report_file, None);
+    // "Not checked yet" clears everything.
+    let view = save_signoff(
+        &saved.json,
+        &with_pac("none", "2024.1", Some("PAC/Guide-pac.pdf")),
+    )
+    .unwrap();
+    assert_eq!(view.report.pac, adapdf::report::PacSection::default());
+    assert!(
+        fs::read_to_string(&saved.html)
+            .unwrap()
+            .contains("PAC: not checked yet")
+    );
+}
+
+#[test]
+fn a_pac_file_that_is_not_there_or_not_with_the_report_is_refused() {
+    let saved = saved_report();
+    let folder = saved.json.parent().unwrap().to_path_buf();
+    let json_before = fs::read(&saved.json).unwrap();
+    let html_before = fs::read(&saved.html).unwrap();
+    let outside = TempDir::new("pac-outside");
+    let elsewhere = outside.write("pac.pdf", b"%PDF");
+    fs::write(folder.join("real.pdf"), b"%PDF").unwrap();
+    fs::create_dir(folder.join("a-folder")).unwrap();
+    for (file, message) in [
+        ("missing.pdf".to_string(), "is not there"),
+        (elsewhere.display().to_string(), "in the folder"),
+        ("../pac.pdf".to_string(), "not a file in the folder"),
+        ("a-folder".to_string(), "is not there"),
+        (String::new(), ""),
+    ] {
+        let signoff = with_pac("pass", "1", Some(&file));
+        if file.is_empty() {
+            // An empty name is no file: the sign-off is saved with none.
+            assert_eq!(
+                save_signoff(&saved.json, &signoff)
+                    .unwrap()
+                    .report
+                    .pac
+                    .report_file,
+                None
+            );
+            fs::write(&saved.json, &json_before).unwrap();
+            fs::write(&saved.html, &html_before).unwrap();
+            continue;
+        }
+        let error = save_signoff(&saved.json, &signoff).unwrap_err();
+        assert!(error.message.contains(message), "{file}: {error}");
+        assert_eq!(fs::read(&saved.json).unwrap(), json_before, "{file}");
+        assert_eq!(fs::read(&saved.html).unwrap(), html_before, "{file}");
+    }
+    let error = save_signoff(&saved.json, &with_pac("maybe", "", None)).unwrap_err();
+    assert!(error.message.contains("none, pass or fail"), "{error}");
+    assert_eq!(fs::read(&saved.json).unwrap(), json_before);
 }
 
 mod contract;

@@ -44,7 +44,7 @@ pub fn lnk_001(doc: &Document) -> Vec<Finding> {
             Finding::new(
                 RuleId::Lnk001,
                 format!("The link text \"{text}\" does not say where the link goes. Screen reader users often list all the links in a document, and \"{text}\" means nothing out of context."),
-                "Change the link text to name the place the link goes to, for example the title of the page or document.",
+                "Right-click the link, choose Edit Hyperlink, and type words that name the place the link goes to in the Text to display box, for example the title of the page or document.",
                 at(doc, l),
             )
         })
@@ -75,7 +75,7 @@ pub fn lnk_002(doc: &Document) -> Vec<Finding> {
             Finding::new(
                 RuleId::Lnk002,
                 format!("The link text is a long web address ({} characters). A screen reader reads it out letter by letter.", text.chars().count()),
-                "Replace the address with words that describe the page, for example the page title. Select the link text and type the new words; the link stays.",
+                "Right-click the link, choose Edit Hyperlink, and replace the address in the Text to display box with words that describe the page, for example the page title. The link stays.",
                 at(doc, l),
             )
         })

@@ -1,17 +1,19 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "summary": {
     "verdict": "fail",
     "errors": 1,
     "warnings": 1,
+    "precheck_errors": 1,
+    "precheck_warnings": 1,
+    "pdf_failed_rules": 0,
     "reason": "The report has 1 error found by the pre-check of the Word document.",
     "tool": "adapdf",
-    "tool_version": "0.1.0",
+    "tool_version": "0.2.0",
     "generated_local": "2026-03-05 10:15:30",
     "document": "Guide.docx",
     "pdf": "Guide.pdf"
   },
-  "export": null,
   "precheck": [
     {
       "rule_id": "LST-001",
@@ -19,6 +21,7 @@
       "message": "This paragraph starts with a typed number (\"3.\") instead of a real numbered list. Screen readers do not announce it as a list.",
       "how_to_fix": "Select the list paragraphs, apply the List Number style or use the Home tab list button, then delete the typed number.",
       "location": {
+        "place": "paragraph 5 \"3. Close the file.\", after the heading \"Test guide\"",
         "heading": "Test guide",
         "snippet": "3. Close the file.",
         "paragraph_index": 4,
@@ -36,6 +39,7 @@
       "message": "This list mixes typed numbers with automatic numbering. The automatic numbers will not count the typed items, so the numbers can be wrong.",
       "how_to_fix": "Delete the typed numbers and apply automatic numbering to the whole list (Home tab > Numbering).",
       "location": {
+        "place": "paragraph 5 \"3. Close the file.\", after the heading \"Test guide\"",
         "heading": "Test guide",
         "snippet": "3. Close the file.",
         "paragraph_index": 4,
@@ -48,12 +52,8 @@
     }
   ],
   "fixes": {
-    "applied": [],
-    "backup": null
-  },
-  "pdf_metadata": {
-    "status": "not-run",
-    "reason": "Not run. No PDF was made, because the document has errors that must be fixed first (see the pre-check findings)."
+    "original": null,
+    "applied": []
   },
   "verapdf": {
     "status": "not-run",
@@ -97,5 +97,10 @@
     ],
     "name": null,
     "date": null
+  },
+  "export": null,
+  "pdf_metadata": {
+    "status": "not-run",
+    "reason": "Not run. No PDF was made, because the document has errors that must be fixed first (see the pre-check findings)."
   }
 }

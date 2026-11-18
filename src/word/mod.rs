@@ -493,6 +493,30 @@ impl WordDocument<'_> {
         item(&self.table(table)?.get_object("Rows")?, row)
     }
 
+    /// The text of the custom document property `name` (File > Info > Properties >
+    /// Advanced Properties > Custom), for example the fix log that Adapdf writes.
+    pub fn custom_property(&self, name: &str) -> Result<String> {
+        Ok(self
+            .document()
+            .get_object("CustomDocumentProperties")?
+            .get_object_with("Item", vec![("Index", BSTR::from(name).into())])?
+            .get_string("Value")?)
+    }
+
+    /// Saves the document under a new name (`SaveAs2`). The tool itself never
+    /// saves a document. This exists for a test that checks what Word keeps when
+    /// a person edits and saves a document (S2-37): the test opens its own copy of
+    /// a file, saves it under a new name in its own folder, and closes the document
+    /// without saving. It is never used on a file of a person.
+    pub fn save_as(&self, path: &Path) -> Result<()> {
+        let full_path =
+            std::path::absolute(path).map_err(|_| WordError::FileNotFound(path.to_path_buf()))?;
+        let name = BSTR::from_wide(&full_path.as_os_str().encode_wide().collect::<Vec<u16>>());
+        self.document()
+            .call("SaveAs2", vec![("FileName", name.into())])?;
+        Ok(())
+    }
+
     /// Closes the document without saving.
     pub fn close(mut self) -> Result<()> {
         match self.document.take() {

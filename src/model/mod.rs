@@ -140,15 +140,61 @@ impl Run {
     }
 }
 
+/// Which pages a header or footer is for (`w:type`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeaderFooterKind {
+    /// All pages (that have no first-page or even-page header).
+    Default,
+    First,
+    Even,
+}
+
+impl HeaderFooterKind {
+    /// The pages, in words: "all pages", "first page", "even pages".
+    pub fn pages(self) -> &'static str {
+        match self {
+            HeaderFooterKind::Default => "all pages",
+            HeaderFooterKind::First => "first page",
+            HeaderFooterKind::Even => "even pages",
+        }
+    }
+}
+
+/// A header or footer that a section names (`w:headerReference` or
+/// `w:footerReference`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeaderFooterRef {
+    /// The part name, for example `word/header2.xml`.
+    pub part: String,
+    pub footer: bool,
+    pub kind: HeaderFooterKind,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Section {
     pub columns: u32,
+    /// The headers and footers that this section names itself. A section that
+    /// names none of a kind uses the one of the section before it ("Link to
+    /// Previous" in Word); see [`Document::header_footer_places`].
+    pub header_footers: Vec<HeaderFooterRef>,
 }
 
 impl Default for Section {
     fn default() -> Self {
-        Section { columns: 1 }
+        Section {
+            columns: 1,
+            header_footers: Vec::new(),
+        }
     }
+}
+
+/// Where one header or footer part shows: the kind (header or footer), the
+/// pages, and the sections that show it. Sections count from 0.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeaderFooterPlace {
+    pub footer: bool,
+    pub kind: HeaderFooterKind,
+    pub sections: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -188,7 +234,11 @@ impl Document {
     }
 
     pub fn load(package: &Package) -> Result<Document> {
-        let header_footer_parts = package.header_footer_parts()?;
+        let header_footer_rels = package.header_footer_relationships()?;
+        let header_footer_parts: Vec<String> = header_footer_rels
+            .iter()
+            .map(|(_, part)| part.clone())
+            .collect();
         let theme = match package.theme_part()? {
             Some(name) => match package.text(&name)? {
                 Some(text) => Theme::parse(&name, text)?,
@@ -210,6 +260,7 @@ impl Document {
             theme: &theme,
             styles: &styles,
             numbering: &numbering,
+            header_footer_rels: &header_footer_rels,
         };
         let document_text = package
             .text(DOCUMENT_PART)?
@@ -295,6 +346,45 @@ impl Document {
 
     pub fn word_count(&self) -> usize {
         self.paragraphs.iter().map(Paragraph::word_count).sum()
+    }
+
+    /// Where a header or footer part shows. A section shows the header or
+    /// footer that it names; a section that names none of a kind shows the one
+    /// of the section before it. The list is empty for a part that no section
+    /// uses. Order: headers before footers, and all pages, first page, even
+    /// pages.
+    pub fn header_footer_places(&self, part: &str) -> Vec<HeaderFooterPlace> {
+        let mut places = Vec::new();
+        for footer in [false, true] {
+            for kind in [
+                HeaderFooterKind::Default,
+                HeaderFooterKind::First,
+                HeaderFooterKind::Even,
+            ] {
+                let mut current: Option<&str> = None;
+                let mut sections = Vec::new();
+                for (index, section) in self.sections.iter().enumerate() {
+                    if let Some(own) = section
+                        .header_footers
+                        .iter()
+                        .find(|r| r.footer == footer && r.kind == kind)
+                    {
+                        current = Some(own.part.as_str());
+                    }
+                    if current == Some(part) {
+                        sections.push(index);
+                    }
+                }
+                if !sections.is_empty() {
+                    places.push(HeaderFooterPlace {
+                        footer,
+                        kind,
+                        sections,
+                    });
+                }
+            }
+        }
+        places
     }
 }
 

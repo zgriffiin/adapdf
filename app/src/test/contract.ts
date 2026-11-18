@@ -14,11 +14,13 @@ import type {
   MetadataSection,
   OfferView,
   ProfileResult,
+  TitleSuggestion,
   Report,
   ReportView,
   Severity,
   VeraFinding,
   VeraPdfSection,
+  WorkingInfo,
 } from "../types";
 import {
   array,
@@ -36,6 +38,7 @@ import {
 const severity = literal<Severity>("error", "warning");
 
 const location = object<Location>({
+  place: string,
   heading: nullable(string),
   snippet: nullable(string),
   paragraph_index: nullable(number),
@@ -72,8 +75,15 @@ const availability = tagged<Availability, "status">("status", {
   unavailable: { reason: string },
 });
 
+const titleSuggestion = object<TitleSuggestion>({
+  source: literal<TitleSuggestion["source"]>("file-name", "title-paragraph", "first-heading1"),
+  label: string,
+  text: string,
+});
+
 export const offerShape = object<OfferView>({
   finding: findingShape,
+  suggestions: array(titleSuggestion),
   position: number,
   fix: string,
   ask: boolean,
@@ -87,8 +97,20 @@ const notApplied = object<ApplyResult["refused"][number]>({
   reason: string,
 });
 
+export const workingInfoShape = object<WorkingInfo>({
+  chosen: string,
+  original: string,
+  copy: string,
+  folder: string,
+  chosen_folder: string,
+  is_copy: boolean,
+  copy_exists: boolean,
+});
+
 export const applyResultShape = object<ApplyResult>({
-  backup: nullable(string),
+  copy: nullable(string),
+  working_file: string,
+  original: string,
   applied: array(object<ApplyResult["applied"][number]>({ rule_id: string, summary: string })),
   at_export: array(notApplied),
   refused: array(notApplied),
@@ -104,6 +126,8 @@ const veraFinding = object<VeraFinding>({
   message: string,
   how_to_fix: string,
   failed_checks: number,
+  place: nullable(string),
+  context: nullable(string),
 });
 
 const profileResult = object<ProfileResult>({
@@ -150,6 +174,9 @@ export const reportShape = object<Report>({
     verdict: literal<Report["summary"]["verdict"]>("pass", "fail"),
     errors: number,
     warnings: number,
+    precheck_errors: number,
+    precheck_warnings: number,
+    pdf_failed_rules: number,
     reason: nullable(string),
     tool: string,
     tool_version: string,
@@ -159,8 +186,22 @@ export const reportShape = object<Report>({
   }),
   precheck: array(findingShape),
   fixes: object<Report["fixes"]>({
-    applied: array(object<Report["fixes"]["applied"][number]>({ rule: string, summary: string })),
-    backup: nullable(string),
+    original: nullable(string),
+    applied: array(
+      object<Report["fixes"]["applied"][number]>({
+        time: string,
+        rule: string,
+        fix: string,
+        place: string,
+        summary: string,
+        text: nullable(string),
+      }),
+    ),
+  }),
+  pac: object<Report["pac"]>({
+    report_file: nullable(string),
+    pac_version: nullable(string),
+    result: nullable(string),
   }),
   pdf_metadata: metadataSection,
   verapdf: veraPdfSection,
@@ -194,6 +235,7 @@ const files = import.meta.glob<unknown>("./contract/*.json", { eager: true, impo
 /** The shape that goes with the start of a file name. */
 export const shapeByPrefix: [string, Check<unknown>][] = [
   ["check-", checkResultShape],
+  ["working-info-", workingInfoShape],
   ["offers-", array(offerShape)],
   ["apply-", applyResultShape],
   ["export-", exportResultShape],
@@ -227,6 +269,7 @@ const typed =
     parse(check, sample(`${prefix}-${name}`), `${prefix}-${name}.json`);
 
 export const checkSample = typed("check", checkResultShape);
+export const workingInfoSample = typed("working-info", workingInfoShape);
 export const offersSample = typed("offers", array(offerShape));
 export const applySample = typed("apply", applyResultShape);
 export const exportSample = typed("export", exportResultShape);

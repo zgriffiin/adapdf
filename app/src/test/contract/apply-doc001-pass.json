@@ -1,5 +1,7 @@
 {
-  "backup": null,
+  "copy": null,
+  "working_file": "C:\\Docs\\Guide.docx",
+  "original": "C:\\Docs\\Guide.docx",
   "applied": [],
   "at_export": [],
   "refused": [],

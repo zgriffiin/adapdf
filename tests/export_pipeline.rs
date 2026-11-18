@@ -131,7 +131,7 @@ fn run_with(name: &str, docx: &[u8], stages: &Fake) -> (TempDir, PathBuf, Run) {
 }
 
 fn run(stages: &Fake) -> (TempDir, PathBuf, Run) {
-    run_with("Guide.docx", &clean().build(), stages)
+    run_with("Guide (accessible).docx", &clean().build(), stages)
 }
 
 fn fixture(rule: RuleId, fails: bool) -> Vec<u8> {
@@ -152,7 +152,7 @@ const OLD_JSON: &[u8] = b"{\"the\": \"report of an earlier run\"}";
 /// earlier reports.
 fn run_over_earlier_outputs(stages: &Fake) -> (TempDir, PathBuf, Run) {
     let dir = TempDir::new("pipeline-earlier");
-    let docx = dir.write("Guide.docx", &clean().build());
+    let docx = dir.write("Guide (accessible).docx", &clean().build());
     dir.write("Guide.pdf", OLD_PDF);
     dir.write("Guide.accessibility.html", OLD_HTML);
     dir.write("Guide.accessibility.json", OLD_JSON);
@@ -166,10 +166,10 @@ fn assert_earlier_outputs_untouched(dir: &TempDir) {
     assert_eq!(
         dir.names(),
         [
+            "Guide (accessible).docx",
             "Guide.accessibility.html",
             "Guide.accessibility.json",
-            "Guide.docx",
-            "Guide.pdf"
+            "Guide.pdf",
         ]
     );
     let read = |name: &str| fs::read(dir.path().join(name)).unwrap();
@@ -215,10 +215,10 @@ fn pipeline_exit_0_on_a_pass_and_writes_three_files() {
     assert_eq!(
         dir.names(),
         [
+            "Guide (accessible).docx",
             "Guide.accessibility.html",
             "Guide.accessibility.json",
-            "Guide.docx",
-            "Guide.pdf"
+            "Guide.pdf",
         ]
     );
     let (pdf, html, json) = output_paths(&docx);
@@ -227,7 +227,7 @@ fn pipeline_exit_0_on_a_pass_and_writes_three_files() {
     assert!(html.contains("Result: <strong>Pass</strong>"));
     let json: Value = serde_json::from_str(&fs::read_to_string(json).unwrap()).unwrap();
     assert_eq!(json["summary"]["verdict"], "pass");
-    assert_eq!(json["summary"]["document"], "Guide.docx");
+    assert_eq!(json["summary"]["document"], "Guide (accessible).docx");
     assert_eq!(json["summary"]["pdf"], "Guide.pdf");
     assert_eq!(json["summary"]["generated_local"], now().display());
     assert_eq!(json["export"]["word_build"], "16.0.fake");
@@ -235,23 +235,29 @@ fn pipeline_exit_0_on_a_pass_and_writes_three_files() {
     assert_eq!(json["verapdf"]["verapdf_version"], "1.28.2");
     assert!(
         run.stdout
-            .starts_with("Guide.docx: Pass (0 errors, 0 warnings).")
+            .starts_with("Guide (accessible).docx: Pass (0 errors, 0 warnings).")
     );
     assert_eq!(run.report.unwrap().summary.verdict, Verdict::Pass);
 }
 
-// S6-09: the names follow the .docx name, also when it has dots and spaces.
+// S6-09: the names follow the name of the original, also when it has dots and
+// spaces. Here the .docx is an accessible copy that is not in a folder of its own
+// (`My Guide v2.1 (accessible).docx`): the files go next to it.
 #[test]
 fn report_files_are_written_next_to_the_pdf() {
-    let (dir, _, run) = run_with("My Guide v2.1.docx", &clean().build(), &Fake::passing());
+    let (dir, _, run) = run_with(
+        "My Guide v2.1 (accessible).docx",
+        &clean().build(),
+        &Fake::passing(),
+    );
     assert_eq!(run.exit, Exit::Pass);
     assert_eq!(
         dir.names(),
         [
+            "My Guide v2.1 (accessible).docx",
             "My Guide v2.1.accessibility.html",
             "My Guide v2.1.accessibility.json",
-            "My Guide v2.1.docx",
-            "My Guide v2.1.pdf"
+            "My Guide v2.1.pdf",
         ]
     );
 }
@@ -300,22 +306,30 @@ fn pipeline_fixes_the_metadata_and_lists_the_changes() {
 #[test]
 fn pipeline_exit_1_for_stage_1_errors() {
     let fake = Fake::passing();
-    let (dir, docx, run) = run_with("Guide.docx", &fixture(RuleId::Hdg002, true), &fake);
+    let (dir, docx, run) = run_with(
+        "Guide (accessible).docx",
+        &fixture(RuleId::Hdg002, true),
+        &fake,
+    );
     assert_eq!(run.exit, Exit::ErrorsFound);
     assert_eq!(run.exit.code(), 1);
     assert_eq!(fake.calls(), [0, 0, 0], "no tool, Word or veraPDF is used");
     assert_eq!(
         dir.names(),
         [
+            "Guide (accessible).docx",
             "Guide.accessibility.html",
             "Guide.accessibility.json",
-            "Guide.docx"
         ]
     );
     let html = fs::read_to_string(output_paths(&docx).1).unwrap();
     assert!(html.contains("Result: <strong>Fail</strong>"));
     assert!(html.contains("HDG-002"));
-    assert!(run.stdout.starts_with("Guide.docx: Fail"), "{}", run.stdout);
+    assert!(
+        run.stdout.starts_with("Guide (accessible).docx: Fail"),
+        "{}",
+        run.stdout
+    );
     assert!(run.stdout.contains("[HDG-002]"));
     assert!(run.stderr.is_empty());
 }
@@ -330,7 +344,7 @@ fn pipeline_writes_no_pdf_when_stage_1_has_errors() {
     assert_eq!(errors.len(), 17);
     for fixture in errors {
         let fake = Fake::passing();
-        let (dir, docx, run) = run_with("Guide.docx", &fixture.bytes, &fake);
+        let (dir, docx, run) = run_with("Guide (accessible).docx", &fixture.bytes, &fake);
         let name = fixture.file_name();
         assert_eq!(run.exit, Exit::ErrorsFound, "{name}");
         assert_eq!(fake.calls(), [0, 0, 0], "{name}");
@@ -355,7 +369,11 @@ fn pipeline_writes_no_pdf_when_stage_1_has_errors() {
 #[test]
 fn pipeline_refuses_doc_005_with_a_fail_report() {
     let fake = Fake::passing();
-    let (_dir, docx, run) = run_with("Guide.docx", &fixture(RuleId::Doc005, true), &fake);
+    let (_dir, docx, run) = run_with(
+        "Guide (accessible).docx",
+        &fixture(RuleId::Doc005, true),
+        &fake,
+    );
     assert_eq!(run.exit, Exit::ErrorsFound);
     assert_eq!(fake.calls(), [0, 0, 0]);
     let html = fs::read_to_string(output_paths(&docx).1).unwrap();
@@ -369,7 +387,11 @@ fn pipeline_refuses_doc_005_with_a_fail_report() {
 fn a_blocked_export_does_not_need_the_tools() {
     let mut fake = Fake::passing();
     fake.tools = Box::new(|| Err(VeraPdfError::JavaMissing("vendor/jre/bin/java.exe".into())));
-    let (_dir, _, run) = run_with("Guide.docx", &fixture(RuleId::Hdg002, true), &fake);
+    let (_dir, _, run) = run_with(
+        "Guide (accessible).docx",
+        &fixture(RuleId::Hdg002, true),
+        &fake,
+    );
     assert_eq!(run.exit, Exit::ErrorsFound);
 }
 
@@ -406,7 +428,7 @@ fn pipeline_runs_when_only_warnings_exist() {
         }),
         ..Fake::passing()
     };
-    let (dir, docx_path, run) = run_with("Guide.docx", &docx, &fake);
+    let (dir, docx_path, run) = run_with("Guide (accessible).docx", &docx, &fake);
     assert_eq!(run.exit, Exit::Pass, "{}", run.stdout);
     assert!(dir.names().contains(&"Guide.pdf".to_string()));
     let report = run.report.unwrap();
@@ -491,10 +513,10 @@ fn a_verapdf_failure_replaces_the_old_pdf_and_the_old_reports() {
     assert_eq!(
         dir.names(),
         [
+            "Guide (accessible).docx",
             "Guide.accessibility.html",
             "Guide.accessibility.json",
-            "Guide.docx",
-            "Guide.pdf"
+            "Guide.pdf",
         ],
         "no temporary file stays"
     );
@@ -561,7 +583,7 @@ fn pipeline_exit_2_on_a_timeout() {
 fn pipeline_exit_2_when_word_rejects_the_file() {
     let fake = Fake::word_fails(|| {
         ExportError::Word(WordError::Open {
-            path: "Guide.docx".into(),
+            path: "Guide (accessible).docx".into(),
             reason: "The file appears to be corrupted".to_string(),
         })
     });
@@ -587,7 +609,7 @@ fn pipeline_exit_2_for_a_locked_pdf_names_the_pdf() {
 #[test]
 fn a_locked_pdf_is_found_before_word_starts() {
     let dir = TempDir::new("pipeline-locked");
-    let docx = dir.write("Guide.docx", &clean().build());
+    let docx = dir.write("Guide (accessible).docx", &clean().build());
     let old = dir.write("Guide.pdf", OLD_PDF);
     dir.write("Guide.accessibility.html", OLD_HTML);
     dir.write("Guide.accessibility.json", OLD_JSON);
@@ -612,7 +634,7 @@ fn a_locked_pdf_is_found_before_word_starts() {
 #[test]
 fn a_pdf_that_is_locked_at_the_end_changes_nothing() {
     let dir = TempDir::new("pipeline-locked-late");
-    let docx = dir.write("Guide.docx", &clean().build());
+    let docx = dir.write("Guide (accessible).docx", &clean().build());
     let old = dir.write("Guide.pdf", OLD_PDF);
     dir.write("Guide.accessibility.html", OLD_HTML);
     dir.write("Guide.accessibility.json", OLD_JSON);
@@ -710,7 +732,11 @@ fn a_pdf_that_cannot_be_read_is_exit_2() {
 // C-07: the .docx cannot be read.
 #[test]
 fn an_unreadable_docx_is_exit_2() {
-    let (_dir, docx, run) = run_with("Guide.docx", b"plain text, not a zip", &Fake::passing());
+    let (_dir, docx, run) = run_with(
+        "Guide (accessible).docx",
+        b"plain text, not a zip",
+        &Fake::passing(),
+    );
     assert_tool_failure(&run, &docx, "not a .docx");
     let dir = TempDir::new("missing");
     let missing = dir.path().join("Missing.docx");
@@ -728,7 +754,7 @@ fn an_unreadable_docx_is_exit_2() {
 fn a_report_that_cannot_be_written_is_exit_2() {
     let stem = "G".repeat(225);
     let dir = TempDir::new("report-not-written");
-    let docx = dir.write(&format!("{stem}.docx"), &clean().build());
+    let docx = dir.write(&format!("{stem} (accessible).docx"), &clean().build());
     dir.write(&format!("{stem}.pdf"), OLD_PDF);
     dir.write(&format!("{stem}.accessibility.html"), OLD_HTML);
     dir.write(&format!("{stem}.accessibility.json"), OLD_JSON);
@@ -738,9 +764,9 @@ fn a_report_that_cannot_be_written_is_exit_2() {
     assert_eq!(
         dir.names(),
         [
+            format!("{stem} (accessible).docx"),
             format!("{stem}.accessibility.html"),
             format!("{stem}.accessibility.json"),
-            format!("{stem}.docx"),
             format!("{stem}.pdf"),
         ],
         "no new or temporary file"
@@ -759,7 +785,7 @@ fn a_report_that_cannot_be_written_is_exit_2() {
 #[test]
 fn a_report_that_cannot_be_replaced_leaves_the_new_pdf_and_says_so() {
     let dir = TempDir::new("report-not-replaced");
-    let docx = dir.write("Guide.docx", &clean().build());
+    let docx = dir.write("Guide (accessible).docx", &clean().build());
     dir.write("Guide.pdf", OLD_PDF);
     dir.write("Guide.accessibility.json", OLD_JSON);
     fs::create_dir(dir.path().join("Guide.accessibility.html")).unwrap();
@@ -775,10 +801,10 @@ fn a_report_that_cannot_be_replaced_leaves_the_new_pdf_and_says_so() {
     assert_eq!(
         dir.names(),
         [
+            "Guide (accessible).docx",
             "Guide.accessibility.html",
             "Guide.accessibility.json",
-            "Guide.docx",
-            "Guide.pdf"
+            "Guide.pdf",
         ],
         "no temporary file"
     );
@@ -795,7 +821,7 @@ fn a_report_that_cannot_be_replaced_leaves_the_new_pdf_and_says_so() {
 #[test]
 fn a_blocked_export_writes_its_reports_without_leaving_temporary_files() {
     let dir = TempDir::new("blocked-temp");
-    let docx = dir.write("Guide.docx", &fixture(RuleId::Hdg002, true));
+    let docx = dir.write("Guide (accessible).docx", &fixture(RuleId::Hdg002, true));
     dir.write("Guide.pdf", OLD_PDF);
     dir.write("Guide.accessibility.html", OLD_HTML);
     dir.write("Guide.accessibility.json", OLD_JSON);
@@ -804,10 +830,10 @@ fn a_blocked_export_writes_its_reports_without_leaving_temporary_files() {
     assert_eq!(
         dir.names(),
         [
+            "Guide (accessible).docx",
             "Guide.accessibility.html",
             "Guide.accessibility.json",
-            "Guide.docx",
-            "Guide.pdf"
+            "Guide.pdf",
         ]
     );
     let read = |name: &str| fs::read(dir.path().join(name)).unwrap();
@@ -820,24 +846,183 @@ fn a_blocked_export_writes_its_reports_without_leaving_temporary_files() {
     );
 }
 
-// Section 3 of the report: the export applies no fix, and it names the newest
-// backup that an earlier `adapdf fix` left next to the file.
+// ------------------------------------------------------- the folder of the guide
+
+fn names_in(folder: &Path) -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(folder)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+
+fn entry(n: u32, text: Option<&str>) -> adapdf::fix::FixLogEntry {
+    adapdf::fix::FixLogEntry {
+        time: format!("2026-03-0{n} 10:15:30"),
+        rule: RuleId::Doc001,
+        fix: adapdf::findings::FixId::SetTitle,
+        place: "The document's properties (File > Info)".to_string(),
+        summary: format!("Set the title {n}."),
+        text: text.map(str::to_string),
+    }
+}
+
+// S6-12: the export of an original writes only into `Guide - Adapdf`, which it
+// makes. Nothing else is written next to the original, and the original is as it
+// was.
 #[test]
-fn report_names_the_newest_backup_next_to_the_document() {
-    let dir = TempDir::new("backup");
-    let docx = dir.write("Guide.docx", &clean().build());
-    dir.write("Guide.backup-20260301-090000.docx", b"old");
-    dir.write("Guide.backup-20260304-101530.docx", b"newer");
-    dir.write("Other.backup-20270101-000000.docx", b"other guide");
+fn the_export_of_an_original_writes_only_into_its_adapdf_folder() {
+    let bytes = clean().build();
+    let dir = TempDir::new("original-layout");
+    let docx = dir.write("Guide.docx", &bytes);
     let run = export_docx(&docx, &Fake::passing(), &FixtureFonts, now());
-    assert_eq!(run.exit, Exit::Pass);
-    let report = run.report.unwrap();
-    assert!(report.fixes.applied.is_empty());
+    assert_eq!(run.exit, Exit::Pass, "{}", run.stderr);
+    assert_eq!(dir.names(), ["Guide - Adapdf", "Guide.docx"]);
+    let folder = dir.path().join("Guide - Adapdf");
     assert_eq!(
-        report.fixes.backup.as_deref(),
-        Some("Guide.backup-20260304-101530.docx")
+        names_in(&folder),
+        [
+            "Guide.accessibility.html",
+            "Guide.accessibility.json",
+            "Guide.pdf"
+        ]
     );
-    let html = fs::read_to_string(output_paths(&docx).1).unwrap();
-    assert!(html.contains("Guide.backup-20260304-101530.docx"));
-    assert!(html.contains("No fixes were applied in this run."));
+    let (pdf, html, json) = output_paths(&docx);
+    assert_eq!(pdf, folder.join("Guide.pdf"));
+    assert_eq!(html, folder.join("Guide.accessibility.html"));
+    assert_eq!(json, folder.join("Guide.accessibility.json"));
+    assert_eq!(fs::read(&docx).unwrap(), bytes);
+    let report = run.report.unwrap();
+    assert_eq!(report.fixes.original, None);
+    assert!(report.fixes.applied.is_empty());
+    let page = fs::read_to_string(html).unwrap();
+    assert!(page.contains("No fixes were made by Adapdf. The Word document is Guide.docx."));
+    assert!(!page.to_lowercase().contains("backup"));
+    // The files that the run says it wrote are those in the folder.
+    assert_eq!(run.files.len(), 3);
+    assert!(run.files.iter().all(|f| f.starts_with(&folder)));
+}
+
+// S6-12: the accessible copy in its folder gives `Guide.pdf` and the reports in
+// that folder, named after the original, and the report lists every fix of the
+// log, also those of an earlier day.
+#[test]
+fn the_export_of_the_copy_names_its_files_after_the_original_and_lists_the_fixes() {
+    let dir = TempDir::new("copy-layout");
+    let folder = dir.path().join("Guide - Adapdf");
+    fs::create_dir_all(&folder).unwrap();
+    let logged = adapdf::fix::fixlog::append(
+        &clean().build(),
+        &[entry(1, Some("A title")), entry(2, None)],
+    )
+    .unwrap();
+    let copy = folder.join("Guide (accessible).docx");
+    fs::write(&copy, &logged).unwrap();
+    let original = dir.write("Guide.docx", &clean().build());
+    let run = export_docx(&copy, &Fake::passing(), &FixtureFonts, now());
+    assert_eq!(run.exit, Exit::Pass, "{}", run.stderr);
+    assert_eq!(
+        names_in(&folder),
+        [
+            "Guide (accessible).docx",
+            "Guide.accessibility.html",
+            "Guide.accessibility.json",
+            "Guide.pdf"
+        ]
+    );
+    assert_eq!(dir.names(), ["Guide - Adapdf", "Guide.docx"]);
+    assert_eq!(fs::read(&original).unwrap(), clean().build());
+    assert_eq!(
+        fs::read(&copy).unwrap(),
+        logged,
+        "the export does not change the copy"
+    );
+    let report = run.report.unwrap();
+    assert_eq!(report.summary.document, "Guide (accessible).docx");
+    assert_eq!(report.summary.pdf.as_deref(), Some("Guide.pdf"));
+    assert_eq!(report.fixes.original.as_deref(), Some("Guide.docx"));
+    assert_eq!(report.fixes.applied.len(), 2);
+    let json: Value =
+        serde_json::from_str(&fs::read_to_string(folder.join("Guide.accessibility.json")).unwrap())
+            .unwrap();
+    assert_eq!(json["fixes"]["original"], "Guide.docx");
+    assert_eq!(json["fixes"]["applied"][0]["text"], "A title");
+    assert_eq!(json["fixes"]["applied"][1]["summary"], "Set the title 2.");
+    let page = fs::read_to_string(folder.join("Guide.accessibility.html")).unwrap();
+    for part in [
+        "The original Guide.docx was not changed. Adapdf made its fixes in Guide (accessible).docx.",
+        "2026-03-01 10:15:30",
+        "Set the title 2.",
+        "A title",
+    ] {
+        assert!(page.contains(part), "{part}");
+    }
+    assert!(!page.contains("No fixes were made by Adapdf"));
+}
+
+// C-11 for the new folder: a run that fails leaves no new folder, and a run that
+// was blocked by errors still writes its report into the folder.
+#[test]
+fn a_failed_run_leaves_no_new_folder_and_a_blocked_run_writes_its_report() {
+    let dir = TempDir::new("folder-failure");
+    let docx = dir.write("Guide.docx", &clean().build());
+    let fake = Fake::word_fails(|| ExportError::Word(WordError::NotInstalled));
+    let run = export_docx(&docx, &fake, &FixtureFonts, now());
+    assert_eq!(run.exit, Exit::ToolFailure);
+    assert_eq!(
+        dir.names(),
+        ["Guide.docx"],
+        "the folder was not left behind"
+    );
+
+    let dir = TempDir::new("folder-blocked");
+    let docx = dir.write("Guide.docx", &fixture(RuleId::Hdg002, true));
+    let run = export_docx(&docx, &Fake::passing(), &FixtureFonts, now());
+    assert_eq!(run.exit, Exit::ErrorsFound);
+    assert_eq!(dir.names(), ["Guide - Adapdf", "Guide.docx"]);
+    assert_eq!(
+        names_in(&dir.path().join("Guide - Adapdf")),
+        ["Guide.accessibility.html", "Guide.accessibility.json"],
+        "a report and no PDF"
+    );
+}
+
+// A fix log that is not a log of this tool stops the run before anything is written.
+#[test]
+fn a_fix_log_that_cannot_be_read_is_exit_2() {
+    let dir = TempDir::new("bad-log");
+    let base = clean().build();
+    let package = adapdf::docx::Package::from_bytes(&base).unwrap();
+    let broken_custom = r#"<?xml version="1.0"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="2" name="Adapdf fix log"><vt:lpwstr>not json</vt:lpwstr></property></Properties>"#;
+    let mut entries: Vec<(&str, &[u8])> = package
+        .parts()
+        .iter()
+        .map(|p| (p.name.as_str(), p.bytes.as_slice()))
+        .collect();
+    entries.push(("docProps/custom.xml", broken_custom.as_bytes()));
+    let docx = dir.write("Guide.docx", &adapdf::fixtures::zip_stored(&entries));
+    let run = export_docx(&docx, &Fake::passing(), &FixtureFonts, now());
+    assert_eq!(run.exit, Exit::ToolFailure);
+    assert!(run.stderr.contains("fix log"), "{}", run.stderr);
+    assert!(run.stdout.is_empty());
+    assert_eq!(dir.names(), ["Guide.docx"]);
+}
+
+// A failure of veraPDF has its place in words in the report, and the raw path of
+// veraPDF is kept apart.
+#[test]
+fn a_verapdf_failure_has_its_place_in_words_and_keeps_the_raw_path() {
+    let mut fake = Fake::passing();
+    fake.validate = Box::new(|_| Ok(validation(UA1_FAIL)));
+    let (_dir, _, run) = run(&fake);
+    assert_eq!(run.exit, Exit::ErrorsFound);
+    let report = run.report.unwrap();
+    let adapdf::report::VeraPdfSection::Ran { validation, .. } = &report.verapdf else {
+        panic!("veraPDF ran");
+    };
+    let failure = &validation.ua1.findings[0];
+    assert!(failure.context.as_deref().unwrap().starts_with("root/"));
+    let place = failure.place.as_deref().expect("a place in words");
+    assert!(place.to_lowercase().contains("figure"), "{place}");
 }

@@ -108,12 +108,14 @@ fn cli_export_exit_0_on_a_pass() {
         stdout.starts_with("Guide.docx: Pass (0 errors, 0 warnings)."),
         "{stdout}"
     );
+    // Everything that the command made is in the folder of the guide, and nothing
+    // else is next to the original.
+    assert_eq!(names(dir.path()), ["Guide - Adapdf", "Guide.docx"]);
     assert_eq!(
-        names(dir.path()),
+        names(&dir.path().join("Guide - Adapdf")),
         [
             "Guide.accessibility.html",
             "Guide.accessibility.json",
-            "Guide.docx",
             "Guide.pdf"
         ]
     );
@@ -388,7 +390,7 @@ fn verapdf_zero_failures_after_the_link_fixes() {
     let run = run_real(&docx);
     assert_eq!(run.exit, Exit::ErrorsFound, "{}", run.stderr);
     assert!(run.report.as_ref().unwrap().summary.pdf.is_none());
-    assert!(!dir.path().join("Guide.pdf").exists());
+    assert!(!dir.path().join("Guide - Adapdf").join("Guide.pdf").exists());
     let rules: Vec<RuleId> = adapdf::check_bytes(&original, &FixtureFonts)
         .unwrap()
         .iter()
@@ -444,5 +446,65 @@ fn verapdf_zero_failures_after_the_link_fixes() {
     assert!(contains(&pdf, b"/Contents(parking policy)"));
     assert!(contains(&pdf, b"/Contents(the same policy)"));
     assert!(contains(&pdf, b"/Contents(and again)"));
+    assert_eq!(wait_for_word_pids(&before), before);
+}
+
+// S5-13 (the place of a failure in words, with the real Word and the real veraPDF):
+// a guide with two tables is exported and checked. Whatever veraPDF reports at an
+// element of the structure tree has its place in words, and the raw path is kept. A
+// guide that passes has no failure to describe, and then the report still has the
+// two tables in its PDF (the structure tree is read for the numbers).
+#[test]
+fn verapdf_places_are_in_words_for_a_guide_with_two_tables() {
+    use adapdf::fixtures::Table;
+    let _lock = exclusive();
+    let before = word_pids();
+    let dir = TempDir::new("s5-places");
+    let look = r#"<w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/>"#;
+    let borders = r#"<w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders></w:tblPr>"#;
+    let docx = dir.write(
+        "Guide.docx",
+        &clean()
+            .table_style("TableGrid", "Table Grid", None, borders)
+            .table(
+                Table::new(&[&["Name", "Role"], &["Ann", "Lead"]])
+                    .style("TableGrid")
+                    .look(look),
+            )
+            .para("Between the tables.")
+            .table(
+                Table::new(&[&["Item", "Count"], &["Cups", "4"], &["Plates", "6"]])
+                    .style("TableGrid")
+                    .look(look),
+            )
+            .build(),
+    );
+    let run = run_real(&docx);
+    assert!(
+        matches!(run.exit, Exit::Pass | Exit::ErrorsFound),
+        "{}",
+        run.stderr
+    );
+    let report = run.report.expect("a report");
+    let adapdf::report::VeraPdfSection::Ran { validation, .. } = &report.verapdf else {
+        panic!("veraPDF ran");
+    };
+    for failure in validation.findings() {
+        if let Some(context) = &failure.context
+            && context.contains("(")
+            && context.contains(" obj SE")
+        {
+            let place = failure.place.as_deref().unwrap_or_else(|| {
+                panic!("a failure in the structure tree has a place in words: {context}")
+            });
+            println!(
+                "{}-{}: {place}   [{context}]",
+                failure.clause, failure.test_number
+            );
+            assert!(!place.contains("obj"), "{place}");
+        }
+    }
+    let pdf = fs::read(dir.path().join("Guide - Adapdf").join("Guide.pdf")).unwrap();
+    assert!(pdf.starts_with(b"%PDF-"));
     assert_eq!(wait_for_word_pids(&before), before);
 }

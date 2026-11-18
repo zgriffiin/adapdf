@@ -602,3 +602,94 @@ fn export_replaces_or_reports_a_locked_pdf() {
     assert_eq!(names(dir.path()), ["Guide.docx", "Guide.pdf"]);
     assert_eq!(wait_for_word_pids(&before), before);
 }
+
+// S3-21 (stage 5 place in words): the structure tree of a real Word export of a
+// guide with two tables (with a table style and `w:tblLook`: Word tags a table
+// that has neither as paragraphs only, with no `Table` element, which the fixtures
+// of the table rules do) gives the numbers that turn veraPDF's path into "Table 2,
+// body row 1, cell 2". The path is made from the real object numbers of the PDF
+// (the same form that veraPDF writes), and the words must name the second table.
+#[test]
+fn the_structure_tree_of_a_real_export_numbers_the_tables() {
+    use adapdf::fixtures::Table;
+    use adapdf::verapdf::{StructIndex, describe_place};
+
+    let _lock = exclusive();
+    let before = word_pids();
+    let dir = TempDir::new("s3-places");
+    let look = r#"<w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/>"#;
+    let docx = dir.write(
+        "Guide.docx",
+        &clean()
+            .table_style("TableGrid", "Table Grid", None, r#"<w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders></w:tblPr>"#)
+            .table(Table::new(&[&["Name", "Role"], &["Ann", "Lead"]]).style("TableGrid").look(look))
+            .para("Between the tables.")
+            .table(Table::new(&[&["Item", "Count"], &["Cups", "4"], &["Plates", "6"]]).style("TableGrid").look(look))
+            .build(),
+    );
+    let pdf = dir.path().join("Guide.pdf");
+    export(&docx, &pdf).expect("the export works");
+
+    let index = StructIndex::from_pdf(&pdf).expect("a structure tree");
+    let doc = lopdf::Document::load(&pdf).unwrap();
+    // The two tables, and the cells of the second one, in document order, with
+    // their real object numbers.
+    let mut tables: Vec<(u32, lopdf::Dictionary)> = Vec::new();
+    let tags_of = |dict: &lopdf::Dictionary| -> Option<String> {
+        dict.get(b"S")
+            .and_then(lopdf::Object::as_name)
+            .ok()
+            .map(|n| String::from_utf8_lossy(n).into_owned())
+    };
+    for (id, object) in &doc.objects {
+        if let Ok(dict) = object.as_dict()
+            && tags_of(dict).as_deref() == Some("Table")
+        {
+            tables.push((id.0, dict.clone()));
+        }
+    }
+    let bytes = fs::read(&pdf).unwrap();
+    assert_eq!(
+        structure_elements(&bytes, "Table"),
+        2,
+        "Word wrote two Table elements (read with the helper of the other tests)"
+    );
+    assert_eq!(tables.len(), 2, "Word wrote two Table elements");
+    // The table that comes second in the document has the larger position in the
+    // index: find it through the index, not through the object numbers.
+    let order: Vec<u32> = {
+        let mut ids: Vec<u32> = tables.iter().map(|(id, _)| *id).collect();
+        ids.sort_by_key(|id| {
+            let probe =
+                format!("root/K[0](1 0 obj SEDocument Document)/K[0]({id} 0 obj SETable Table)");
+            describe_place(&probe, Some(&index)).unwrap_or_default()
+        });
+        ids
+    };
+    let first = format!(
+        "root/K[0](1 0 obj SEDocument Document)/K[0]({} 0 obj SETable Table)",
+        order[0]
+    );
+    let second = format!(
+        "root/K[0](1 0 obj SEDocument Document)/K[1]({} 0 obj SETable Table)",
+        order[1]
+    );
+    assert_eq!(
+        describe_place(&first, Some(&index)).as_deref(),
+        Some("Table 1")
+    );
+    assert_eq!(
+        describe_place(&second, Some(&index)).as_deref(),
+        Some("Table 2")
+    );
+    // A cell of the second table: the row and the cell come from the path.
+    let cell = format!(
+        "root/K[0](1 0 obj SEDocument Document)/K[1]({} 0 obj SETable Table)/K[1](99 0 obj SETBody TBody)/K[0](98 0 obj SETR TR)/K[1](97 0 obj SETD TD)",
+        order[1]
+    );
+    assert_eq!(
+        describe_place(&cell, Some(&index)).as_deref(),
+        Some("Table 2, body row 1, cell 2")
+    );
+    assert_eq!(wait_for_word_pids(&before), before);
+}

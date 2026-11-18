@@ -97,13 +97,15 @@ fn exit_code_1_when_there_are_errors() {
 fn a_finding_for_the_whole_document_has_no_heading_in_its_location() {
     let path = fixture(RuleId::Doc001, true);
     let text = stdout(&check(&path, &[]));
+    // The words of Word, and not the name of a part of the file.
     assert!(
         text.contains(
-            "Where: the document (docProps/core.xml)
+            "Where: The document's properties (File > Info)
 "
         ),
         "{text}"
     );
+    assert!(!text.contains("docProps/core.xml"), "{text}");
     assert!(!text.contains("after the heading"), "{text}");
 }
 
@@ -215,6 +217,7 @@ fn json_shape_of_a_finding() {
     assert_eq!(
         f["location"],
         serde_json::json!({
+            "place": "paragraph 2 \"Three\", after the heading \"One\"",
             "heading": "One",
             "snippet": "Three",
             "paragraph_index": 1,
@@ -224,7 +227,7 @@ fn json_shape_of_a_finding() {
 }
 
 #[test]
-fn json_carries_the_suggested_title_and_the_fix_kind() {
+fn json_carries_the_fix_kind_and_no_title_suggestion() {
     let path = fixture(RuleId::Doc001, true);
     let out = check(&path, &["--json"]);
     let v = json(&out);
@@ -234,7 +237,13 @@ fn json_carries_the_suggested_title_and_the_fix_kind() {
         f["fix"],
         serde_json::json!({"kind": "ask", "id": "set-title"})
     );
-    assert_eq!(f["suggestion"], "Test guide");
+    // The titles that the app offers come from the document at the time of the
+    // fix (`fix::title_suggestions`), not from the finding.
+    assert_eq!(f["suggestion"], Value::Null);
+    assert_eq!(
+        f["location"]["place"],
+        "The document's properties (File > Info)"
+    );
     assert_eq!(f["location"]["paragraph_index"], Value::Null);
     assert_eq!(f["location"]["part"], "docProps/core.xml");
 }

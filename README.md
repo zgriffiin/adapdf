@@ -7,12 +7,13 @@ It checks the Word document, fixes what it safely can, exports a tagged PDF
 through Word, checks the PDF with veraPDF, and writes a report that serves as
 evidence. A person then confirms the result in PAC and signs off the checklist.
 
-Status: version 0.1.0, a **pre-release** (see the [changelog](CHANGELOG.md) and the
-[release notes](docs/release-notes/v0.1.0.md) for what is tested and what is not yet
+Status: version 0.2.0, a **pre-release** (see the [changelog](CHANGELOG.md) and the
+[release notes](docs/release-notes/v0.2.0.md) for what is tested and what is not yet
 confirmed: PAC has not run on real guides, and the installer was tried on one machine).
 The pipeline is built (stages 1 to 6 of the [pipeline spec](docs/specs/02-pipeline.md)).
 `adapdf check` runs the pre-check rules. `adapdf fix` applies the fixes (stage 2)
-after it asks about each one. `adapdf export` exports the PDF through Word (stage
+after it asks about each one. It never changes your original: the fixes go into an
+accessible copy, `<name> - Adapdf\<name> (accessible).docx`. `adapdf export` exports the PDF through Word (stage
 3), adds the missing PDF metadata (stage 4), runs veraPDF (stage 5) and writes
 the accessibility report as HTML and JSON (stage 6). The desktop app (Tauri and
 IBM Carbon, in `app/`) is built: see "The app". A per-user Windows installer is built (see "Build the installer"; the
@@ -75,16 +76,26 @@ vendor/           veraPDF and Java runtime for packaging (git ignores this folde
 ```
 cargo run -- check Guide.docx          # text report
 cargo run -- check Guide.docx --json   # the same results as JSON
-cargo run -- fix Guide.docx            # asks before each fix, writes a backup first
+cargo run -- fix Guide.docx            # asks before each fix; the fixes go into "Guide - Adapdf\Guide (accessible).docx"
+cargo run -- fix Guide.docx --continue    # the copy exists: keep working in it
+cargo run -- fix Guide.docx --start-over  # the copy exists: replace it with a new copy of the original
 cargo run -- export Guide.docx         # PDF and report, needs Word and vendor/
 ```
 
 Exit codes: 0 = no errors (warnings are allowed), 1 = errors found,
 2 = the tool failed (for example, the file cannot be read).
 
-`export` writes `Guide.pdf`, `Guide.accessibility.html` and
-`Guide.accessibility.json` next to the .docx. It starts its own hidden copy of
-Word and never uses a Word window that you have open. For `export`:
+Everything that Adapdf makes goes into one folder next to your guide, `Guide - Adapdf`:
+the accessible copy `Guide (accessible).docx`, `Guide.pdf`,
+`Guide.accessibility.html` and `Guide.accessibility.json`. Your original `Guide.docx`
+is never changed, and nothing else is written next to it. There are no backup files:
+the original is the backup. A file whose name ends with ` (accessible).docx` is
+treated as a working copy: in its folder `<name> - Adapdf` the outputs stay there; a
+copy that is anywhere else gets them next to it.
+
+`export` starts its own hidden copy of Word and never uses a Word window that you have
+open. It exports the file that you give it: the original as it is, or the copy. For
+`export`:
 
 - 0 = the report says Pass. 1 = the report says Fail: the pre-check found an
   error (no PDF is made, the report still is), the PDF has no tags, or veraPDF
@@ -94,20 +105,27 @@ Word and never uses a Word window that you have open. For `export`:
   no report is written.
 - An existing `Guide.pdf` is replaced, but only after the new PDF has been
   checked. If a tool fails after the export (exit 2), the folder is left as it
-  was. The tool does not change the .docx. The report names the newest
-  `Guide.backup-*.docx` next to it, if there is one.
-- The HTML report is an accessible page that works with no script: the checklist
-  of the person who reviews the PDF, the place to record the PAC result, and the
-  sign-off are form fields on the page.
+  was (a folder that the run made is removed again when it is empty). The tool does
+  not change the .docx. The report lists every fix that Adapdf made in the
+  document (from the fix log inside the accessible copy) and names the original.
+- The HTML report is an accessible page that works with no script and has no form
+  control: the PAC result, the checklist of the person who reviews the PDF and the
+  sign-off are recorded in the app, and the page shows them as text.
 - `ADAPDF_VENDOR` names another `vendor` folder (with `jre/` and `verapdf/`). It
   is for developers: only a debug build (and the tests) reads it, and then only
   that folder is used. A release build ignores it and uses its own `vendor/`.
 
 `fix` asks its questions on stderr and reads the answers from stdin. It does not
-write while Word has the file open (the `~$` lock file, or a file that cannot
-be opened for writing). It writes `Guide.backup-<yyyymmdd-hhmmss>.docx` (local time)
-next to the file before it changes anything. It never types alt text or a
-title for you.
+write while Word has the accessible copy open (the `~$` lock file, or a file that
+cannot be opened for writing). The original is only read, and the copy is written
+through a temporary file and moved into place. When `Guide (accessible).docx` already
+exists, `fix Guide.docx` stops (exit 2) and says why, unless you give `--continue`
+(work in the copy: its fixes stay and the new ones go in) or `--start-over`
+(replace the copy with a new copy of the original; this loses every change that was
+made in the copy, also in Word). Every fix is recorded inside the copy, as the
+custom document property `Adapdf fix log`, and the report lists them. `fix` never
+types alt text or a title for you; for the title it shows texts from the document
+(the file name, the Title paragraph, the first Heading 1) that you can copy.
 
 Checks before a change is done:
 
@@ -126,9 +144,11 @@ Debug builds keep only line tables for our own crate and no debug information fo
 
 The app is a Tauri 2 window with a page made with IBM Carbon. It calls the same
 library as the command line: choose a Word document (or drop one on the window),
-see the findings by severity, apply fixes, export, open the report, and sign off
-the checklist (the app saves the checklist, your name and the date into the report;
-the PDF is not changed). It needs Node 22 or later with pnpm, and the Rust tools.
+see the findings by severity, apply fixes, open the document in Word (the
+accessible copy, never the original), export, open the report, and sign off the
+checklist (the app saves the PAC result, the checklist, your name and the date into
+the report; the PDF is not changed). Every screen shows which file it works on and
+where it is. It needs Node 22 or later with pnpm, and the Rust tools.
 Run these in `app/`:
 
 ```
@@ -166,7 +186,7 @@ Git worktree). The script copies `vendor/` to `app/src-tauri/bundle-staging/` (G
 ignores it; the copy leaves out veraPDF's per-clause profile source folders, whose paths
 are too long for NSIS) and runs `pnpm tauri build` with
 `app/src-tauri/tauri.bundle.conf.json`. The installer is
-`target/release/bundle/nsis/Adapdf_0.1.0_x64-setup.exe` (about 40 MB). The first time,
+`target/release/bundle/nsis/Adapdf_0.2.0_x64-setup.exe` (about 40 MB). The first time,
 Tauri downloads its NSIS tools into `%LOCALAPPDATA%\tauri`: a build-time download. The
 installer and the app make no network calls. The installer is not signed, so Windows
 SmartScreen may warn. The script stops when `THIRD-PARTY-LICENSES.txt` is out of date

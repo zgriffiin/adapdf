@@ -1,9 +1,9 @@
 import { Button } from "@carbon/react";
 
 import type { ReportView, Signoff } from "../types";
-import { plural, verdictWord } from "../viewModel";
+import { folderOf, plural, precheckText, verdictWord } from "../viewModel";
 import { FindingList } from "./FindingList";
-import { ResultsHeading } from "./common";
+import { ResultsHeading, WorkingOn } from "./common";
 import { SignoffForm } from "./SignoffForm";
 
 interface Props {
@@ -13,6 +13,8 @@ interface Props {
   /** True when the report is about a document that the app has open. */
   canGoBack: boolean;
   onOpenReport: () => void;
+  onOpenFolder: () => void;
+  onChoosePacReport: () => Promise<string | null>;
   onSaveSignoff: (signoff: Signoff) => void;
   onBack: () => void;
   onStartOver: () => void;
@@ -37,6 +39,8 @@ export function ResultScreen({
   busy,
   canGoBack,
   onOpenReport,
+  onOpenFolder,
+  onChoosePacReport,
   onSaveSignoff,
   onBack,
   onStartOver,
@@ -62,6 +66,13 @@ export function ResultScreen({
           : "The PDF does not pass yet. Fix the problems below in Word, then export again."}
       </p>
 
+      <WorkingOn
+        path={`${folderOf(view.report_json)}\\${summary.document}`}
+        isCopy={report.fixes.original !== null}
+        busy={busy}
+        onOpenFolder={onOpenFolder}
+      />
+
       <div className="button-row">
         <Button onClick={onOpenReport} disabled={busy}>
           Open the report in your browser
@@ -80,10 +91,14 @@ export function ResultScreen({
       <dl className="facts">
         <dt>Result</dt>
         <dd>{verdictWord(summary.verdict)}</dd>
-        <dt>Errors</dt>
-        <dd>{summary.errors}</dd>
-        <dt>Warnings</dt>
-        <dd>{summary.warnings}</dd>
+        <dt>Word document (pre-check)</dt>
+        <dd>{precheckText(summary.precheck_errors, summary.precheck_warnings)}</dd>
+        <dt>PDF check (veraPDF PDF/UA-1)</dt>
+        <dd>
+          {report.verapdf.status === "ran"
+            ? `${plural(summary.pdf_failed_rules, "rule")} failed`
+            : "Not run (no PDF was made)"}
+        </dd>
         <dt>PDF</dt>
         <dd>{view.pdf ?? "None was written"}</dd>
         <dt>veraPDF (PDF/UA-1 check)</dt>
@@ -94,6 +109,29 @@ export function ResultScreen({
         <dd>{view.report_html}</dd>
       </dl>
 
+      <h3 className="section-heading">Fixes applied</h3>
+      {report.fixes.original !== null ? (
+        <p>
+          The original {report.fixes.original} was not changed. Adapdf made its fixes in {summary.document}.
+        </p>
+      ) : null}
+      {report.fixes.applied.length === 0 ? (
+        <p>No fixes were made by Adapdf. The Word document is {summary.document}.</p>
+      ) : (
+        <ul className="finding-list">
+          {report.fixes.applied.map((fix, index) => (
+            <li className="finding" key={`${fix.time}-${fix.rule}-${index}`}>
+              <p className="finding-title">
+                {fix.time}: {fix.rule}
+              </p>
+              <p>{fix.summary}</p>
+              <p className="hint">Where: {fix.place}</p>
+              {fix.text ? <p>Text typed or chosen: {fix.text}</p> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+
       {veraFailures.length > 0 ? (
         <section>
           <h3 className="section-heading">PDF/UA-1 rules that failed ({veraFailures.length})</h3>
@@ -103,6 +141,13 @@ export function ResultScreen({
                 <p className="finding-title">
                   {failure.clause}-{failure.test_number}: {failure.message}
                 </p>
+                {failure.place !== null ? <p>First place: {failure.place}.</p> : null}
+                {failure.context !== null ? (
+                  <details>
+                    <summary>Technical detail</summary>
+                    <p className="context">{failure.context}</p>
+                  </details>
+                ) : null}
                 <p>
                   <strong>How to fix:</strong> {failure.how_to_fix}
                 </p>
@@ -137,10 +182,12 @@ export function ResultScreen({
 
       <h3 className="section-heading">Checklist and sign-off</h3>
       <SignoffForm
-        key={report.checklist.items.map((item) => (item.done ? "1" : "0")).join("") + (report.checklist.name ?? "") + (report.checklist.date ?? "")}
+        key={report.checklist.items.map((item) => (item.done ? "1" : "0")).join("") + (report.checklist.name ?? "") + (report.checklist.date ?? "") + (report.pac.result ?? "") + (report.pac.pac_version ?? "") + (report.pac.report_file ?? "")}
         items={report.checklist.items}
         name={report.checklist.name}
         date={report.checklist.date}
+        pac={report.pac}
+        onChoosePacReport={onChoosePacReport}
         busy={busy}
         onSave={onSaveSignoff}
       />

@@ -348,6 +348,20 @@ const setValue = (page, selector, value) =>
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, ${q(value)});
     el.dispatchEvent(new Event("input", { bubbles: true }));
   })()`);
+const setSelect = (page, selector, value) =>
+  page.run(`(() => {
+    const el = document.querySelector(${q(selector)});
+    if (!el) throw new Error("no field " + ${q(selector)});
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(el, ${q(value)});
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  })()`);
+/** Clicks the first enabled button whose text starts with `start`. */
+const clickButtonStarting = (page, start) =>
+  page.run(`(() => {
+    const b = [...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith(${q(start)}) && !b.disabled);
+    if (!b) throw new Error("no enabled button starting " + ${q(start)});
+    b.click();
+  })()`);
 const choose = (page, path) => page.run(`(window.__chosen = window.__chosen || []).push(${q(path)})`);
 
 // -------------------------------------------------------------------- axe
@@ -355,6 +369,9 @@ const choose = (page, path) => page.run(`(window.__chosen = window.__chosen || [
 const results = [];
 
 async function axeScreen(page, name) {
+  // Carbon's buttons change colour over a short time (a transition). Axe must read the colours
+  // when they have settled, or it measures a button between its two colours.
+  await sleep(500);
   const outcome = await page.run(`(async () => {
     const r = await axe.run(document, {
       runOnly: { type: "tag", values: ${q(TAGS)} },
@@ -501,6 +518,20 @@ try {
   await page.until("the result of the fix", `document.querySelector('[role="status"]')?.textContent.includes("The fixes were applied")`);
   await axeScreen(page, "findings after a fix (success message)");
 
+  // 2b. The same document again: its accessible copy exists, so the page asks which to use.
+  await toFirstScreen(page);
+  await choose(page, docPath("LST-002-fail"));
+  await clickButton(page, "Choose a Word document");
+  await page.until("the question about the copy", hasHeading("LST-002-fail.docx has an accessible copy"));
+  await axeScreen(page, "the accessible copy exists: continue or start over");
+  await clickButton(page, "Start over from the original");
+  await page.until("the confirm", `document.body.innerText.includes("This replaces the accessible copy")`);
+  await axeScreen(page, "start over: the confirm question");
+  await clickButton(page, "No, keep the accessible copy");
+  await clickButton(page, "Continue with the accessible copy");
+  await page.until("the copy", hasHeading("LST-002-fail (accessible).docx: "));
+  await axeScreen(page, "findings of the accessible copy");
+
   // 3. The fix flow with text fields (the suggestion is the helper text).
   for (const name of ["DOC-001-fail", "IMG-001-fail"]) {
     await toFirstScreen(page);
@@ -510,6 +541,17 @@ try {
     await clickButton(page, "Fix problems");
     await page.until("the fix flow", hasHeading(`Fix problems in ${name}.docx`));
     await axeScreen(page, `fix flow of ${name}.docx (text field)`);
+    if (name === "DOC-001-fail") {
+      // A text from the document, chosen with one click: the field is white on the tile.
+      await clickButtonStarting(page, "Use the file name");
+      await axeScreen(page, "fix flow of DOC-001-fail.docx (a suggestion chosen)");
+      await clickButton(page, "Back to the findings");
+      await page.until("the findings", hasHeading("DOC-001-fail.docx: Found"));
+      await clickButton(page, "Open in Word");
+      await page.until("the question about the copy", `document.body.innerText.includes("Word opens the accessible copy")`);
+      await axeScreen(page, "findings of DOC-001-fail.docx: Open in Word asks to make the copy first");
+      await clickButton(page, "Cancel");
+    }
   }
 
   // 4. A report of an export that was blocked by errors (stage 1; Word is not started).
@@ -521,6 +563,10 @@ try {
   await clickButton(page, "Open an earlier report");
   await page.until("the report", hasHeading("Result for DOC-001-fail.docx"));
   await axeScreen(page, "result: Fail, export blocked by errors (and the empty sign-off form)");
+  await setSelect(page, "#pac-result", "pass");
+  await page.until("the PAC fields", `!!document.querySelector("#pac-version")`, 15);
+  await axeScreen(page, "sign-off form with the PAC result Pass (version and file)");
+  await setSelect(page, "#pac-result", "none");
   await clickButton(page, "Save sign-off");
   await page.until("the name error", `!!document.querySelector("#signoff-name-error")`, 15);
   await axeScreen(page, "sign-off form with the error for a missing name");

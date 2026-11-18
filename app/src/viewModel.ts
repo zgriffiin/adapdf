@@ -86,6 +86,41 @@ export function choicesFrom(offers: readonly OfferView[], selection: Selection):
   return choices;
 }
 
+/**
+ * What the screen says while "Apply fixes" is off: what is missing. `null` when a
+ * fix is chosen. The title needs text, and the text is not made up, so the hint
+ * says that it is typed or chosen from a suggestion.
+ */
+export function applyHint(offers: readonly OfferView[], chosen: number): string | null {
+  if (chosen > 0) {
+    return null;
+  }
+  const ready = offers.filter(isReady);
+  const titles = ready.filter((o) => o.fix === "set-title");
+  if (titles.length === 0) {
+    return "Choose at least one fix to apply.";
+  }
+  return ready.length > titles.length
+    ? "Choose at least one fix to apply. For the title, type it, or choose a suggestion."
+    : "Type a title, or choose a suggestion, to apply this fix.";
+}
+
+/** "2 errors, 1 warning" for the pre-check of the Word document. */
+export function precheckText(errors: number, warnings: number): string {
+  return `${plural(errors, "error")}, ${plural(warnings, "warning")}`;
+}
+
+/** The name of a file in a path, with `\` or `/` between the names. */
+export function fileNameOf(path: string): string {
+  return path.split(/[\\/]/).pop() ?? path;
+}
+
+/** The folder of a file in a path. */
+export function folderOf(path: string): string {
+  const cut = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
+  return cut < 0 ? "" : path.slice(0, cut);
+}
+
 /** "Apply fixes" is off until at least one fix is chosen. */
 export function canApply(offers: readonly OfferView[], selection: Selection, busy: boolean): boolean {
   return !busy && choicesFrom(offers, selection).length > 0;

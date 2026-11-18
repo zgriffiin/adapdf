@@ -1,8 +1,9 @@
-import { Button, Checkbox, TextInput } from "@carbon/react";
-import { useState } from "react";
+import { Button, Checkbox, Layer, TextInput } from "@carbon/react";
+import { useState, type ReactNode } from "react";
 
 import type { Choice, OfferView } from "../types";
 import {
+  applyHint,
   canApply,
   choicesFrom,
   emptySelection,
@@ -16,6 +17,10 @@ import { ResultsHeading } from "./common";
 
 interface Props {
   fileName: string;
+  /** The name of the accessible copy that the fixes are saved in. */
+  copyName: string;
+  /** The line that names the file and its folder, shown under the heading. */
+  workingOn: ReactNode;
   offers: OfferView[];
   busy: boolean;
   focusKey: number;
@@ -33,9 +38,11 @@ function toggled(set: ReadonlySet<string>, key: string, on: boolean): Set<string
   return next;
 }
 
-/** The suggestion is a hint under the field. It is never the value of the field. */
-function suggestionHint(offer: OfferView, what: string): string {
-  const suggestion = offer.finding.suggestion;
+/** The hint under a field: the tool does not make the text up. */
+function fieldHint(what: string, hasSuggestions: boolean, suggestion: string | null): string {
+  if (hasSuggestions) {
+    return `Type ${what}, or choose one of the texts from the document below. Nothing is filled in until you choose it.`;
+  }
   return suggestion !== null
     ? `Suggestion, not filled in: ${suggestion}. Type ${what} yourself.`
     : `Type ${what} yourself. The tool does not make it up.`;
@@ -55,9 +62,10 @@ function OfferHeader({ offer }: { offer: OfferView }) {
 /**
  * The fix screen: the fixes that the tool can make. An automatic fix is a check
  * box. A fix that needs the person's words is a labelled text field, empty until
- * the person types, with "mark as decorative" for pictures.
+ * the person types or chooses a text that comes from the document (the file name,
+ * the Title paragraph, the first Heading 1), with "mark as decorative" for pictures.
  */
-export function FixFlow({ fileName, offers, busy, focusKey, onApply, onCancel }: Props) {
+export function FixFlow({ fileName, copyName, workingOn, offers, busy, focusKey, onApply, onCancel }: Props) {
   const [selection, setSelection] = useState<Selection>(emptySelection);
   const ready = offers.filter(isReady);
   const auto = ready.filter((o) => !o.ask);
@@ -66,6 +74,7 @@ export function FixFlow({ fileName, offers, busy, focusKey, onApply, onCancel }:
   const unavailable = offers.filter((o) => o.availability.status === "unavailable");
   const chosen = choicesFrom(offers, selection).length;
   const allAutoTicked = auto.length > 0 && auto.every((o) => selection.ticked.has(offerKey(o)));
+  const hint = applyHint(offers, chosen);
 
   const tick = (key: string, on: boolean) =>
     setSelection((s) => ({ ...s, ticked: toggled(s.ticked, key, on) }));
@@ -80,15 +89,21 @@ export function FixFlow({ fileName, offers, busy, focusKey, onApply, onCancel }:
         ? new Set([...s.ticked, ...auto.map(offerKey)])
         : new Set([...s.ticked].filter((key) => !auto.some((o) => offerKey(o) === key))),
     }));
+  /** A suggestion fills the field. The person can still change the text. */
+  const suggest = (key: string, text: string) => {
+    type(key, text);
+    document.getElementById(`text-${key}`)?.focus();
+  };
 
   return (
     <section aria-labelledby="fix-heading">
       <ResultsHeading focusKey={focusKey} id="fix-heading">
         Fix problems in {fileName}
       </ResultsHeading>
+      {workingOn}
       <p>
-        Choose the fixes to make. Before it changes anything, the tool saves a backup copy of your
-        document next to it.
+        Choose the fixes to make. The fixes are saved in a copy, {copyName}. Your original is not
+        changed.
       </p>
 
       {auto.length > 0 ? (
@@ -145,14 +160,32 @@ export function FixFlow({ fileName, offers, busy, focusKey, onApply, onCancel }:
               return (
                 <li className="offer" key={key}>
                   <OfferHeader offer={offer} />
-                  <TextInput
-                    id={`text-${key}`}
-                    labelText={isTitle ? "Document title" : `Alt text for ${offer.finding.rule_id} (${placeOf(offer.finding)})`}
-                    helperText={suggestionHint(offer, what)}
-                    value={selection.texts[key] ?? ""}
-                    disabled={decorative}
-                    onChange={(event) => type(key, event.target.value)}
-                  />
+                  {/* A layer above the tile, so that the field is white on the grey tile and can be seen. */}
+                  <Layer>
+                    <TextInput
+                      id={`text-${key}`}
+                      labelText={isTitle ? "Document title" : `Alt text for ${offer.finding.rule_id} (${placeOf(offer.finding)})`}
+                      helperText={fieldHint(what, offer.suggestions.length > 0, offer.finding.suggestion)}
+                      value={selection.texts[key] ?? ""}
+                      disabled={decorative}
+                      onChange={(event) => type(key, event.target.value)}
+                    />
+                  </Layer>
+                  {offer.suggestions.length > 0 ? (
+                    <div role="group" aria-label="Texts from the document" className="suggestions">
+                      {offer.suggestions.map((suggestion) => (
+                        <Button
+                          key={suggestion.source}
+                          kind="tertiary"
+                          size="sm"
+                          disabled={decorative}
+                          onClick={() => suggest(key, suggestion.text)}
+                        >
+                          {suggestion.label}: {suggestion.text}
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
                   {isTitle ? null : (
                     <Checkbox
                       id={`decorative-${key}`}
@@ -206,7 +239,7 @@ export function FixFlow({ fileName, offers, busy, focusKey, onApply, onCancel }:
           Back to the findings
         </Button>
       </div>
-      {chosen === 0 ? <p className="hint">Choose at least one fix to apply.</p> : null}
+      {hint !== null ? <p className="hint">{hint}</p> : null}
     </section>
   );
 }

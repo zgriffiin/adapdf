@@ -1,7 +1,9 @@
 //! The sign-off (row A-08). A static HTML report cannot save what a person types
-//! or ticks without a script, so the app saves the human checklist and the
-//! sign-off into the report: the name, the date and the state of each of the
-//! seven items, in the JSON and in the HTML.
+//! or ticks without a script, so the app saves the PAC result (pass or fail, the
+//! PAC version and the PAC report file), the human checklist and the sign-off
+//! into the report: the name, the date and the state of each of the seven items,
+//! in the JSON and in the HTML. The page of the report has no form control: it
+//! shows what is saved here as text.
 //!
 //! The JSON is read back into a [`Report`], the checklist is changed, and both
 //! files are written again from the same value (the HTML with
@@ -17,10 +19,22 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use adapdf::report::html;
+use adapdf::report::{PacSection, html};
 use serde::Deserialize;
 
 use crate::commands::{CommandError, CommandResult, ReportView, read_report, report_paths};
+
+/// What the person recorded from PAC.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct PacInput {
+    /// `none` (not checked yet), `pass` (0 errors) or `fail`.
+    pub result: String,
+    /// The version of PAC. May be empty.
+    pub version: String,
+    /// The PAC report file: a file in the folder of the guide, chosen with the
+    /// file chooser. Saved as a path relative to the folder of the report.
+    pub report_file: Option<String>,
+}
 
 /// What the person typed and ticked.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -32,6 +46,46 @@ pub struct Signoff {
     pub date: String,
     /// The state of each checklist item, in the order of the report.
     pub items: Vec<bool>,
+    pub pac: PacInput,
+}
+
+/// The PAC report file as a path relative to the folder of the report, with `/`
+/// between the names. The file must be there, and must be in that folder or a folder
+/// below it: the report is evidence that is kept with its files.
+fn relative_pac_file(folder: &Path, chosen: &str) -> CommandResult<String> {
+    let chosen = chosen.trim();
+    let path = Path::new(chosen);
+    let relative: PathBuf = if path.is_absolute() {
+        path.strip_prefix(folder)
+            .map(Path::to_path_buf)
+            .map_err(|_| {
+                CommandError::new(format!(
+                    "Choose a PAC report that is in the folder {} (or in a folder below it), so that it stays with the report.",
+                    folder.display()
+                ))
+            })?
+    } else {
+        path.to_path_buf()
+    };
+    let plain = relative
+        .components()
+        .all(|c| matches!(c, std::path::Component::Normal(_)));
+    if relative.as_os_str().is_empty() || !plain {
+        return Err(CommandError::new(format!(
+            "The PAC report file {chosen} is not a file in the folder of the report."
+        )));
+    }
+    if !folder.join(&relative).is_file() {
+        return Err(CommandError::new(format!(
+            "The PAC report file {} is not there. Choose it again.",
+            relative.display()
+        )));
+    }
+    Ok(relative
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join("/"))
 }
 
 /// Whether the text is a real date written `yyyy-mm-dd` (the value of an HTML
@@ -140,6 +194,28 @@ pub fn save_signoff(report_json: &Path, signoff: &Signoff) -> CommandResult<Repo
     }
     checklist.name = Some(name.to_string());
     checklist.date = (!date.is_empty()).then(|| date.to_string());
+
+    let pac = &mut view.report.pac;
+    match signoff.pac.result.as_str() {
+        "none" => *pac = PacSection::default(),
+        result @ ("pass" | "fail") => {
+            pac.result = Some(result.to_string());
+            let version = signoff.pac.version.trim();
+            pac.pac_version = (!version.is_empty()).then(|| version.to_string());
+            pac.report_file = match signoff.pac.report_file.as_deref().map(str::trim) {
+                Some(file) if !file.is_empty() => Some(relative_pac_file(
+                    json_path.parent().unwrap_or(Path::new("")),
+                    file,
+                )?),
+                _ => None,
+            };
+        }
+        other => {
+            return Err(CommandError::new(format!(
+                "The PAC result {other:?} is not none, pass or fail."
+            )));
+        }
+    }
 
     let write_error = |path: &Path, what: &str, e: io::Error| {
         CommandError::new(format!(

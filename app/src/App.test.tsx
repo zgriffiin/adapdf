@@ -7,10 +7,15 @@ import { describe, expect, it } from "vitest";
 import { App } from "./App";
 import {
   CHECKLIST,
+  COPY,
+  GUIDE_FOLDER,
+  ORIGINAL,
   applyResultOf,
   checkOf,
   deferred,
   doc001,
+  titleSuggestions,
+  workingInfoOf,
   exportResultOf,
   img001,
   img007,
@@ -126,7 +131,7 @@ describe("the first screen", () => {
     expect(backend.calls).toEqual([]);
     act(() => backend.drop([DOCX]));
     await screen.findByRole("heading", { level: 2, name: /^Guide\.docx: Found 0 errors and 1 warning\.$/ });
-    expect(backend.calls.map((c) => c.command)).toEqual(["check", "fix_offers"]);
+    expect(backend.calls.map((c) => c.command)).toEqual(["working_info", "check", "fix_offers"]);
     expect(backend.calls[0]?.args).toEqual({ path: DOCX });
     // The document is checked again from the keyboard.
     await user.click(screen.getByRole("button", { name: "Check again" }));
@@ -181,18 +186,27 @@ describe("the findings screen (A-01, A-02, A-04)", () => {
   it("explains that fixes are not available when Word has the file open", async () => {
     await openDocument([lst002.lst001], [], {
       fix_offers: () => {
-        throw { message: "Guide.docx is open in Word. Close the document in Word, then run the fix again." };
+        throw { message: "Guide (accessible).docx is open in Word (the lock file is next to it). Close the document in Word first, then try again." };
       },
     });
     expect(screen.getByRole("status")).toHaveTextContent("The tool cannot offer fixes now.");
     expect(screen.getByRole("status")).toHaveTextContent("open in Word");
+    expect(screen.getByRole("status")).toHaveTextContent("Close the document in Word first, then try again.");
     expect(screen.queryByRole("button", { name: "Fix problems" })).not.toBeInTheDocument();
   });
 
   it("shows a suggestion as text that is not applied", async () => {
-    await openDocument([doc001], [offerOf(doc001)]);
+    await openDocument([img001], [offerOf(img001)]);
     expect(screen.getByText(/Suggestion \(not applied\):/)).toBeInTheDocument();
-    expect(screen.getByText(/Training guide: first steps/)).toBeInTheDocument();
+    expect(screen.getByText(/image1\.png/)).toBeInTheDocument();
+  });
+
+  it("shows where a problem is in Word's words, and never the name of a part", async () => {
+    await openDocument([lst002.lst001, doc001], [offerOf(lst002.lst001)]);
+    expect(screen.getByText(/paragraph 5 "3\. Close the file\.", after the heading "Test guide"/)).toBeInTheDocument();
+    expect(screen.getByText(/The document's properties \(File > Info\)/)).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent("docProps/core.xml");
+    expect(document.body).not.toHaveTextContent("word/");
   });
 
   it("has no WCAG 2.1 A or AA violation", async () => {
@@ -203,8 +217,15 @@ describe("the findings screen (A-01, A-02, A-04)", () => {
   it("puts the focus on the results heading, and the keys follow the reading order", async () => {
     const { user } = await openDocument([lst002.lst001, lst002.lst002], [offerOf(lst002.lst001)]);
     expect(heading()).toHaveFocus();
-    // Fix problems, Export PDF (disabled: skipped), Check again, Choose another file.
-    expect(await tabOrder(user, 3)).toEqual(["Fix problems", "Check again", "Choose another file"]);
+    // Open folder, Fix problems, Export PDF (disabled: skipped), Open in Word, Check again,
+    // Choose another file.
+    expect(await tabOrder(user, 5)).toEqual([
+      "Open folder",
+      "Fix problems",
+      "Open in Word",
+      "Check again",
+      "Choose another file",
+    ]);
     // The order in the page is the order of the keys: no positive tabindex.
     const tabindexes = [...document.querySelectorAll("[tabindex]")]
       .map((el) => Number(el.getAttribute("tabindex")))
@@ -240,19 +261,36 @@ describe("the fix flow (A-02, A-03, A-04)", () => {
     expect(screen.getByRole("button", { name: "Apply 1 fix" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "Apply 1 fix" }));
 
-    await waitFor(() => expect(backend.calls.at(-2)?.command).toBe("apply_fixes"));
+    await waitFor(() => expect(backend.calls.some((c) => c.command === "apply_fixes")).toBe(true));
     expect(backend.calls.find((c) => c.command === "apply_fixes")?.args).toEqual({
       path: DOCX,
       choices: [{ rule_id: "LST-001", position: 0, input: { kind: "confirm" } }],
+      startOver: false,
     });
-    // Back on the findings, with the result in the live region and the new findings.
-    const heading2 = await screen.findByRole("heading", { level: 2, name: /^Guide\.docx: Found 0 errors and 1 warning\.$/ });
+    // Back on the findings of the accessible copy, with the result in the live region and
+    // the new findings. The page works on the copy from now on.
+    const heading2 = await screen.findByRole("heading", {
+      level: 2,
+      name: /^Guide \(accessible\)\.docx: Found 0 errors and 1 warning\.$/,
+    });
     await waitFor(() => expect(heading2).toHaveFocus());
     const region = screen.getByRole("status");
     expect(region).toHaveTextContent("The fixes were applied.");
     expect(region).toHaveTextContent("1 fix applied.");
-    expect(region).toHaveTextContent("Backup: Guide.backup-20260305-101530.docx.");
+    expect(region).toHaveTextContent(
+      "Saved your fixes to Guide (accessible).docx. Your original Guide.docx was not changed.",
+    );
+    expect(region).not.toHaveTextContent("Backup");
+    expect(screen.getByText(/Working on:/).closest("p")).toHaveTextContent(
+      "Working on: Guide (accessible).docx in C:\\Docs\\Guide - Adapdf (the accessible copy)",
+    );
     expect(screen.getByRole("button", { name: "Export PDF" })).toBeEnabled();
+    // The next calls are about the copy.
+    const after = backend.calls.slice(backend.calls.findIndex((c) => c.command === "apply_fixes") + 1);
+    expect(after).toEqual([
+      { command: "working_info", args: { path: COPY } },
+      { command: "fix_offers", args: { path: COPY } },
+    ]);
   });
 
   it("selects and clears all automatic fixes", async () => {
@@ -266,16 +304,18 @@ describe("the fix flow (A-02, A-03, A-04)", () => {
     expect(screen.getByRole("button", { name: "Apply fixes" })).toBeDisabled();
   });
 
-  it("never fills in the title, and shows the suggestion as a hint", async () => {
+  it("never fills in the title: the field is empty until a text is typed or chosen", async () => {
     const { user, backend } = await openDocument([doc001], [offerOf(doc001)], {
       apply_fixes: () => applyResultOf([]),
     });
     await user.click(screen.getByRole("button", { name: "Fix problems" }));
     const field = screen.getByRole("textbox", { name: "Document title" });
     expect(field).toHaveValue("");
-    // The suggestion is the helper text of the field, which is not its value.
-    expect(field).toHaveAccessibleDescription(/Suggestion, not filled in: Training guide: first steps/);
+    // The hint says that nothing is filled in, and what the person can do.
+    expect(field).toHaveAccessibleDescription(/Nothing is filled in until you choose it\./);
     expect(screen.getByRole("button", { name: "Apply fixes" })).toBeDisabled();
+    // The hint names what is missing.
+    expect(screen.getByText("Type a title, or choose a suggestion, to apply this fix.")).toBeInTheDocument();
     // Nothing is sent until the person types.
     await user.type(field, "My own title");
     await user.click(screen.getByRole("button", { name: "Apply 1 fix" }));
@@ -331,7 +371,8 @@ describe("the fix flow (A-02, A-03, A-04)", () => {
 
   it("shows a fix that the tool refused", async () => {
     const refused: ApplyResult = applyResultOf([lst002.lst001], {
-      backup: null,
+      copy: null,
+      working_file: ORIGINAL,
       applied: [],
       refused: [{ rule_id: "LST-001", message: "m", reason: "The document has changed since the check." }],
     });
@@ -343,8 +384,10 @@ describe("the fix flow (A-02, A-03, A-04)", () => {
     await user.click(screen.getByRole("button", { name: "Apply 1 fix" }));
     const region = await screen.findByText(/Nothing was changed\./);
     expect(region).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("No backup was made, because nothing was written.");
+    expect(screen.getByRole("status")).toHaveTextContent("No file was changed, because nothing was written.");
     expect(screen.getByRole("status")).toHaveTextContent("The document has changed since the check.");
+    // Nothing was written, so the page still works on the original.
+    expect(screen.getByText(/Working on:/).closest("p")).toHaveTextContent("(your original)");
   });
 
   it("has no WCAG 2.1 A or AA violation, and the keys follow the reading order", async () => {
@@ -359,11 +402,15 @@ describe("the fix flow (A-02, A-03, A-04)", () => {
     await user.click(screen.getByRole("button", { name: "Fix problems" }));
     expect(await wcagViolations(document.body)).toEqual([]);
     // Apply fixes is off, so the keys skip it.
-    const labels = await tabOrder(user, 7);
+    const labels = await tabOrder(user, 11);
     const expected = [
+      "Open folder",
       "Select all automatic fixes",
       "LST-001: Do apply-list-style.",
       "Document title",
+      "Use the file name: Guide",
+      "Use the Title paragraph: Parks Training Guide",
+      "Use the first Heading 1: Pre-Requisites:",
       "Alt text for IMG-001",
       "Mark as decorative",
       "Yes, the alt text of the screenshot describes",
@@ -449,7 +496,7 @@ describe("the export (A-02, A-04)", () => {
     await user.click(screen.getByRole("button", { name: "Open the report in your browser" }));
     await waitFor(() => expect(backend.calls.some((c) => c.command === "open_report")).toBe(true));
     expect(backend.calls.find((c) => c.command === "open_report")?.args).toEqual({
-      path: "C:\\Docs\\Guide.accessibility.html",
+      path: `${GUIDE_FOLDER}\\Guide.accessibility.html`,
     });
     fail = true;
     await user.click(screen.getByRole("button", { name: "Open the report in your browser" }));
@@ -514,16 +561,18 @@ describe("the sign-off (A-04, A-08)", () => {
 
     await waitFor(() => expect(backend.calls.some((c) => c.command === "save_signoff")).toBe(true));
     expect(backend.calls.find((c) => c.command === "save_signoff")?.args).toEqual({
-      reportJson: "C:\\Docs\\Guide.accessibility.json",
+      reportJson: `${GUIDE_FOLDER}\\Guide.accessibility.json`,
       signoff: {
         name: "A. Reviewer",
         date: "2026-03-06",
         items: [true, true, true, true, true, false, false],
+        pac: { result: "none", version: "", report_file: null },
       },
     });
     const region = screen.getByRole("status");
     await waitFor(() => expect(region).toHaveTextContent("The sign-off was saved."));
     expect(region).toHaveTextContent("The PDF was not changed.");
+    expect(region).toHaveTextContent("The PAC result");
     // The form shows what was saved, and the focus is on the heading.
     await waitFor(() =>
       expect(screen.getByRole("heading", { level: 2, name: /^Result for/ })).toHaveFocus(),
@@ -624,5 +673,409 @@ describe("the sign-off (A-04, A-08)", () => {
     within(form()).getAllByRole("checkbox")[0]!.focus();
     const labels = await tabOrder(user, 8);
     expect(labels).toEqual([...CHECKLIST.slice(1), "Your name", "Date"]);
+  });
+});
+
+// ------------------------------------------------------ the files of a guide
+
+/** Opens `Guide.docx` when its accessible copy already exists. */
+async function openWithCopy(extra: Handlers = {}): Promise<{ user: User; backend: Backend }> {
+  const backend = setupBackend({
+    working_info: (args) => workingInfoOf(String(args.path), true),
+    check: () => checkOf(DOCX, [txb004]),
+    fix_offers: () => [offerOf(txb004)],
+    ...extra,
+  });
+  backend.chosen.push(DOCX);
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole("button", { name: "Choose a Word document" }));
+  await screen.findByRole("heading", { level: 2, name: "Guide.docx has an accessible copy" });
+  return { user, backend };
+}
+
+describe("every screen says which file it works on, and where it is (D)", () => {
+  it("shows the full name and the folder of the original, and says that it is never changed", async () => {
+    await openDocument([txb004], [offerOf(txb004)]);
+    expect(screen.getByText(/Working on:/).closest("p")).toHaveTextContent(
+      "Working on: Guide.docx in C:\\Docs (your original)",
+    );
+    expect(
+      screen.getByText(/Your original is never changed\. Fixes are saved in a copy, Guide \(accessible\)\.docx, in the folder Guide - Adapdf\./),
+    ).toBeInTheDocument();
+    expect(await wcagViolations(document.body)).toEqual([]);
+  });
+
+  it("opens the folder with the button, and shows why when it does not open", async () => {
+    let fail = false;
+    const { user, backend } = await openDocument([txb004], [], {
+      open_folder: () => {
+        if (fail) {
+          throw { message: "The folder could not be opened (no program)." };
+        }
+        return null;
+      },
+    });
+    await user.click(screen.getByRole("button", { name: "Open folder" }));
+    await waitFor(() => expect(backend.calls.some((c) => c.command === "open_folder")).toBe(true));
+    expect(backend.calls.find((c) => c.command === "open_folder")?.args).toEqual({ path: DOCX });
+    fail = true;
+    await user.click(screen.getByRole("button", { name: "Open folder" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("The folder did not open."));
+  });
+
+  it("shows the working file on the fix screen and on the result screen", async () => {
+    const { user } = await openDocument([lst002.lst001], [offerOf(lst002.lst001)], {
+      export: () => exportResultOf(viewOf()),
+    });
+    await user.click(screen.getByRole("button", { name: "Fix problems" }));
+    expect(screen.getByText(/Working on:/).closest("p")).toHaveTextContent("Guide.docx in C:\\Docs");
+    await user.click(screen.getByRole("button", { name: "Back to the findings" }));
+    // The check that has no error is exported, and the result names the folder.
+    expect(screen.getByRole("button", { name: "Export PDF" })).toBeDisabled();
+  });
+});
+
+describe("an accessible copy that exists (A)", () => {
+  it("asks which to use, and Continue is the first choice", async () => {
+    await openWithCopy();
+    expect(heading()).toHaveFocus();
+    expect(screen.getByText(/Adapdf made Guide \(accessible\)\.docx from this document earlier/)).toBeInTheDocument();
+    const buttons = screen.getAllByRole("button").map((b) => b.textContent);
+    expect(buttons.slice(0, 2)).toEqual(["Open folder", "Continue with the accessible copy"]);
+    expect(screen.getByRole("button", { name: "Start over from the original" })).toBeEnabled();
+    expect(await wcagViolations(document.body)).toEqual([]);
+  });
+
+  it("continues with the accessible copy: it is checked, and fixes go into it", async () => {
+    const { user, backend } = await openWithCopy({
+      check: (args) => checkOf(String(args.path), [txb004]),
+    });
+    await user.click(screen.getByRole("button", { name: "Continue with the accessible copy" }));
+    await screen.findByRole("heading", { level: 2, name: /^Guide \(accessible\)\.docx: Found/ });
+    expect(backend.calls.filter((c) => c.command === "check").map((c) => c.args)).toEqual([{ path: COPY }]);
+    expect(screen.getByText(/Working on:/).closest("p")).toHaveTextContent(
+      "Guide (accessible).docx in C:\\Docs\\Guide - Adapdf (the accessible copy)",
+    );
+  });
+
+  it("starts over only after an explicit confirm, and the question says what is lost", async () => {
+    const applied = applyResultOf([]);
+    const { user, backend } = await openWithCopy({
+      apply_fixes: () => applied,
+      fix_offers: () => [offerOf(lst002.lst001)],
+      check: () => checkOf(DOCX, [lst002.lst001]),
+    });
+    await user.click(screen.getByRole("button", { name: "Start over from the original" }));
+    // Nothing is replaced yet: the person is asked.
+    expect(
+      screen.getByText(/This replaces the accessible copy, including any changes you made to it in Word\./),
+    ).toBeInTheDocument();
+    expect(backend.calls.map((c) => c.command)).toEqual(["working_info"]);
+    expect(await wcagViolations(document.body)).toEqual([]);
+    // No: back to the two choices.
+    await user.click(screen.getByRole("button", { name: "No, keep the accessible copy" }));
+    expect(screen.getByRole("button", { name: "Continue with the accessible copy" })).toBeInTheDocument();
+    // Yes: the original is checked, and the next write replaces the copy.
+    await user.click(screen.getByRole("button", { name: "Start over from the original" }));
+    await user.click(screen.getByRole("button", { name: "Yes, replace the accessible copy" }));
+    await screen.findByRole("heading", { level: 2, name: /^Guide\.docx: Found/ });
+    expect(screen.getByRole("status")).toHaveTextContent("Starting over from the original.");
+    expect(backend.calls.some((c) => c.command === "create_copy" || c.command === "apply_fixes")).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Fix problems" }));
+    await user.click(screen.getByRole("checkbox", { name: /LST-001/ }));
+    await user.click(screen.getByRole("button", { name: "Apply 1 fix" }));
+    await waitFor(() => expect(backend.calls.some((c) => c.command === "apply_fixes")).toBe(true));
+    expect(backend.calls.find((c) => c.command === "apply_fixes")?.args).toEqual({
+      path: DOCX,
+      choices: [{ rule_id: "LST-001", position: 0, input: { kind: "confirm" } }],
+      startOver: true,
+    });
+  });
+});
+
+// ---------------------------------------------------------------- Open in Word
+
+describe("Open in Word (C)", () => {
+  it("opens the accessible copy in the person's Word, and says what to do next", async () => {
+    // The page works on the copy: Continue with the accessible copy.
+    const { user, backend } = await openWithCopy({
+      open_in_word: () => null,
+    });
+    await user.click(screen.getByRole("button", { name: "Continue with the accessible copy" }));
+    await screen.findByRole("heading", { level: 2, name: /^Guide \(accessible\)\.docx: Found/ });
+    await user.click(screen.getByRole("button", { name: "Open in Word" }));
+    await waitFor(() => expect(backend.calls.some((c) => c.command === "open_in_word")).toBe(true));
+    expect(backend.calls.find((c) => c.command === "open_in_word")?.args).toEqual({ path: COPY });
+    const region = screen.getByRole("status");
+    expect(region).toHaveTextContent("The document is open in Word.");
+    expect(region).toHaveTextContent("Make your changes in Word, save, then choose Check again.");
+  });
+
+  it("makes the copy first when the page has only the original, and then opens the copy", async () => {
+    const calls: string[] = [];
+    const { user, backend } = await openDocument([txb004], [offerOf(txb004)], {
+      create_copy: () => {
+        calls.push("create_copy");
+        return workingInfoOf(COPY);
+      },
+      open_in_word: () => {
+        calls.push("open_in_word");
+        return null;
+      },
+      check: (args) => checkOf(String(args.path), [txb004]),
+    });
+    await user.click(screen.getByRole("button", { name: "Open in Word" }));
+    // Word must not open the original: nothing is opened yet, the person is asked.
+    expect(screen.getByText(/Word opens the accessible copy, not your original/)).toBeInTheDocument();
+    expect(calls).toEqual([]);
+    expect(await wcagViolations(document.body)).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "Make the copy and open it in Word" }));
+    await waitFor(() => expect(calls).toEqual(["create_copy", "open_in_word"]));
+    expect(backend.calls.find((c) => c.command === "create_copy")?.args).toEqual({
+      path: DOCX,
+      startOver: false,
+    });
+    expect(backend.calls.find((c) => c.command === "open_in_word")?.args).toEqual({ path: COPY });
+    // The page now works on the copy, and says what to do in Word.
+    await screen.findByRole("heading", { level: 2, name: /^Guide \(accessible\)\.docx: Found/ });
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Make your changes in Word, save, then choose Check again.",
+      ),
+    );
+  });
+
+  it("can be cancelled: nothing is made and nothing is opened", async () => {
+    const { user, backend } = await openDocument([txb004], [offerOf(txb004)]);
+    await user.click(screen.getByRole("button", { name: "Open in Word" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText(/Word opens the accessible copy/)).not.toBeInTheDocument();
+    expect(backend.calls.some((c) => c.command === "create_copy" || c.command === "open_in_word")).toBe(false);
+  });
+
+  it("shows why Word did not open", async () => {
+    const { user } = await openWithCopy({
+      open_in_word: () => {
+        throw { message: "The document could not be opened in Word (no program)." };
+      },
+    });
+    await user.click(screen.getByRole("button", { name: "Continue with the accessible copy" }));
+    await screen.findByRole("heading", { level: 2, name: /^Guide \(accessible\)\.docx: Found/ });
+    await user.click(screen.getByRole("button", { name: "Open in Word" }));
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("The document did not open in Word."),
+    );
+  });
+
+  it("tells the person to close the document in Word when a fix is tried while it is open", async () => {
+    const { user } = await openWithCopy({
+      fix_offers: () => {
+        throw {
+          message:
+            "Guide (accessible).docx is open in Word (the lock file ~$ide (accessible).docx is next to it). Close the document in Word first, then try again.",
+        };
+      },
+    });
+    await user.click(screen.getByRole("button", { name: "Continue with the accessible copy" }));
+    await screen.findByRole("heading", { level: 2, name: /^Guide \(accessible\)\.docx: Found/ });
+    expect(screen.getByRole("status")).toHaveTextContent("Close the document in Word first, then try again.");
+    expect(screen.queryByRole("button", { name: "Fix problems" })).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------- title suggestions (B)
+
+describe("the title suggestions (B)", () => {
+  async function titleScreen(offer = offerOf(doc001)) {
+    const opened = await openDocument([doc001], [offer], { apply_fixes: () => applyResultOf([]) });
+    await opened.user.click(screen.getByRole("button", { name: "Fix problems" }));
+    return opened;
+  }
+
+  it("has a visible field: a text input on a layer above the tile, with its label", async () => {
+    await titleScreen();
+    const field = screen.getByRole("textbox", { name: "Document title" });
+    // The field is inside a Carbon layer, so that it is white on the grey tile and not grey on grey.
+    expect(field.closest(".cds--layer-one, .cds--layer-two, [class*='cds--layer']")).not.toBeNull();
+    expect(field.closest(".offer")).not.toBeNull();
+  });
+
+  it("offers the texts from the document as buttons that show the text", async () => {
+    await titleScreen();
+    const group = screen.getByRole("group", { name: "Texts from the document" });
+    expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "Use the file name: Guide",
+      "Use the Title paragraph: Parks Training Guide",
+      "Use the first Heading 1: Pre-Requisites:",
+    ]);
+    expect(await wcagViolations(document.body)).toEqual([]);
+  });
+
+  it("leaves out a text that the document does not have", async () => {
+    await titleScreen(offerOf(doc001, { suggestions: [titleSuggestions[0]!] }));
+    const group = screen.getByRole("group", { name: "Texts from the document" });
+    expect(within(group).getAllByRole("button")).toHaveLength(1);
+  });
+
+  it("has no buttons when the document gives no text", async () => {
+    await titleScreen(offerOf(doc001, { suggestions: [] }));
+    expect(screen.queryByRole("group", { name: "Texts from the document" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Document title" })).toHaveAccessibleDescription(
+      /Type the title yourself\./,
+    );
+  });
+
+  it("is empty until a button is clicked, then holds the text, and stays editable", async () => {
+    const { user, backend } = await titleScreen();
+    const field = screen.getByRole("textbox", { name: "Document title" });
+    expect(field).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Apply fixes" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Use the file name: Guide" }));
+    expect(field).toHaveValue("Guide");
+    expect(field).toHaveFocus();
+    expect(field).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Apply 1 fix" })).toBeEnabled();
+    // The person changes it.
+    await user.type(field, " v2");
+    expect(field).toHaveValue("Guide v2");
+    // Another button replaces the text.
+    await user.click(screen.getByRole("button", { name: "Use the first Heading 1: Pre-Requisites:" }));
+    expect(field).toHaveValue("Pre-Requisites:");
+    // Nothing was sent until Apply.
+    expect(backend.calls.some((c) => c.command === "apply_fixes")).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Apply 1 fix" }));
+    await waitFor(() => expect(backend.calls.some((c) => c.command === "apply_fixes")).toBe(true));
+    expect(backend.calls.find((c) => c.command === "apply_fixes")?.args.choices).toEqual([
+      { rule_id: "DOC-001", position: 0, input: { kind: "text", text: "Pre-Requisites:" } },
+    ]);
+  });
+
+  it("turns Apply off again when the text is cleared or only spaces, and the hint says what is missing", async () => {
+    const { user } = await titleScreen();
+    const field = screen.getByRole("textbox", { name: "Document title" });
+    await user.click(screen.getByRole("button", { name: "Use the file name: Guide" }));
+    expect(screen.queryByText(/Type a title, or choose a suggestion/)).not.toBeInTheDocument();
+    await user.clear(field);
+    expect(screen.getByRole("button", { name: "Apply fixes" })).toBeDisabled();
+    expect(screen.getByText("Type a title, or choose a suggestion, to apply this fix.")).toBeInTheDocument();
+    await user.type(field, "   ");
+    expect(screen.getByRole("button", { name: "Apply fixes" })).toBeDisabled();
+    expect(screen.getByText("Type a title, or choose a suggestion, to apply this fix.")).toBeInTheDocument();
+  });
+
+  it("says 'Choose at least one fix to apply.' when there is no title to type", async () => {
+    await openDocument([lst002.lst001], [offerOf(lst002.lst001)]);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Fix problems" }));
+    expect(screen.getByText("Choose at least one fix to apply.")).toBeInTheDocument();
+  });
+
+  it("says both when there is a title and other fixes", async () => {
+    const { user } = await openDocument([doc001, lst002.lst001], [offerOf(doc001), offerOf(lst002.lst001)]);
+    await user.click(screen.getByRole("button", { name: "Fix problems" }));
+    expect(
+      screen.getByText("Choose at least one fix to apply. For the title, type it, or choose a suggestion."),
+    ).toBeInTheDocument();
+  });
+});
+
+// --------------------------------------------------------- the result screen
+
+describe("the result screen after the changes of version 0.2", () => {
+  async function resultOf(view: ReportView) {
+    const opened = await openDocument([txb004], [], { export: () => exportResultOf(view) });
+    await opened.user.click(screen.getByRole("button", { name: "Export PDF" }));
+    await screen.findByRole("heading", { level: 2, name: /^Result for/ });
+    return opened;
+  }
+
+  it("shows the Word document and the PDF check apart, not one mixed number", async () => {
+    const view = viewOf(reportOf({ verdict: "fail", failedRules: 2, precheck: [txb004, lst002.lst001] }));
+    await resultOf(view);
+    const facts = screen.getByText("Word document (pre-check)").nextElementSibling;
+    expect(facts).toHaveTextContent("1 error, 1 warning");
+    expect(screen.getByText("PDF check (veraPDF PDF/UA-1)").nextElementSibling).toHaveTextContent(
+      "2 rules failed",
+    );
+    expect(screen.queryByText("Errors")).not.toBeInTheDocument();
+    expect(screen.queryByText("Warnings")).not.toBeInTheDocument();
+  });
+
+  it("shows the place of a PDF failure in words, with the technical detail apart", async () => {
+    await resultOf(viewOf(reportOf({ verdict: "fail", failedRules: 1 })));
+    expect(screen.getByText("First place: Link 2.")).toBeInTheDocument();
+    const details = screen.getByText("Technical detail").closest("details")!;
+    expect(details).not.toHaveAttribute("open");
+    expect(details).toHaveTextContent("root/K[0](5 0 obj SEDocument Document)");
+    expect(await wcagViolations(document.body)).toEqual([]);
+  });
+
+  it("lists the fixes that Adapdf made, and names the original", async () => {
+    const report = reportOf();
+    report.summary.document = "Guide (accessible).docx";
+    report.fixes = {
+      original: "Guide.docx",
+      applied: [
+        {
+          time: "2026-03-05 10:15:30",
+          rule: "DOC-001",
+          fix: "set-title",
+          place: "The document's properties (File > Info)",
+          summary: "Set the title.",
+          text: "Parks Training Guide",
+        },
+      ],
+    };
+    await resultOf(viewOf(report));
+    expect(
+      screen.getByText("The original Guide.docx was not changed. Adapdf made its fixes in Guide (accessible).docx."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Set the title.")).toBeInTheDocument();
+    expect(screen.getByText("Text typed or chosen: Parks Training Guide")).toBeInTheDocument();
+    expect(await wcagViolations(document.body)).toEqual([]);
+  });
+
+  it("says so when no fix was made", async () => {
+    await resultOf(viewOf());
+    expect(screen.getByText("No fixes were made by Adapdf. The Word document is Guide.docx.")).toBeInTheDocument();
+  });
+
+  it("records the PAC result with the sign-off, and the file is chosen with the file chooser", async () => {
+    const backend = setupBackend({
+      save_signoff: () => viewOf(),
+      export: () => exportResultOf(viewOf()),
+      check: () => checkOf(DOCX, [txb004]),
+      fix_offers: () => [],
+    });
+    backend.chosen.push(DOCX);
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Choose a Word document" }));
+    await screen.findByRole("heading", { level: 2, name: /^Guide\.docx: / });
+    await user.click(screen.getByRole("button", { name: "Export PDF" }));
+    await screen.findByRole("heading", { level: 2, name: /^Result for/ });
+    const form = screen.getByRole("form", { name: "Sign-off" });
+
+    // Not checked yet: no version and no file to give.
+    expect(within(form).getByRole("combobox", { name: "PAC result" })).toHaveValue("none");
+    expect(within(form).queryByRole("textbox", { name: "PAC version" })).not.toBeInTheDocument();
+    await user.selectOptions(within(form).getByRole("combobox", { name: "PAC result" }), "pass");
+    await user.type(within(form).getByRole("textbox", { name: "PAC version" }), "2024.1");
+    expect(within(form).getByText("None chosen")).toBeInTheDocument();
+    backend.chosen.push(`${GUIDE_FOLDER}\\PAC\\Guide-pac.pdf`);
+    await user.click(within(form).getByRole("button", { name: "Choose the PAC report file" }));
+    expect(await within(form).findByText("Guide-pac.pdf")).toBeInTheDocument();
+    expect(await wcagViolations(document.body)).toEqual([]);
+
+    await user.type(within(form).getByRole("textbox", { name: "Your name" }), "A. Reviewer");
+    await user.click(within(form).getByRole("button", { name: "Save sign-off" }));
+    await waitFor(() => expect(backend.calls.some((c) => c.command === "save_signoff")).toBe(true));
+    expect(backend.calls.find((c) => c.command === "save_signoff")?.args.signoff).toEqual({
+      name: "A. Reviewer",
+      date: "",
+      items: [false, false, false, false, false, false, false],
+      pac: { result: "pass", version: "2024.1", report_file: `${GUIDE_FOLDER}\\PAC\\Guide-pac.pdf` },
+    });
   });
 });

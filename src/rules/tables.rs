@@ -4,8 +4,7 @@
 //! first paragraph in the table, the nearest heading above it, and the text
 //! of the first cell as the snippet.
 
-use crate::docx::DOCUMENT_PART;
-use crate::findings::{Finding, Location, RuleId, snippet};
+use crate::findings::{Finding, Location, RuleId};
 use crate::model::Document;
 use crate::model::tables::{Table, VMerge};
 
@@ -13,21 +12,14 @@ use crate::model::tables::{Table, VMerge};
 /// its cells (in percent) have no text.
 pub const LAYOUT_EMPTY_CELLS_PERCENT: usize = 50;
 
-fn location(doc: &Document, table: &Table) -> Location {
+/// `number` counts the tables of the document from 1.
+fn location(doc: &Document, number: usize, table: &Table) -> Location {
     let first_cell = table
         .rows
         .first()
         .and_then(|r| r.cells.first())
         .map_or("", |c| c.text.as_str());
-    Location {
-        heading: table
-            .first_paragraph
-            .and_then(|i| doc.heading_above(i))
-            .map(|h| snippet(&h.text)),
-        snippet: Some(snippet(first_cell)),
-        paragraph_index: table.first_paragraph,
-        part: DOCUMENT_PART.to_string(),
-    }
+    Location::table(doc, number, first_cell, table.first_paragraph)
 }
 
 /// One finding for each table that `problem` gives a message for.
@@ -39,8 +31,9 @@ fn each_table(
 ) -> Vec<Finding> {
     doc.tables
         .iter()
-        .filter_map(|t| Some((t, problem(t)?)))
-        .map(|(t, message)| Finding::new(rule, message, how_to_fix, location(doc, t)))
+        .enumerate()
+        .filter_map(|(i, t)| Some((i, t, problem(t)?)))
+        .map(|(i, t, message)| Finding::new(rule, message, how_to_fix, location(doc, i + 1, t)))
         .collect()
 }
 
@@ -64,7 +57,7 @@ pub fn tbl_002(doc: &Document) -> Vec<Finding> {
     each_table(
         doc,
         RuleId::Tbl002,
-        "Move the inner table out of the cell, or replace it with rows and columns in the outer table. Use simple tables with one header row.",
+        "Click in the inner table and choose Table Layout > Select > Table. Cut it (Ctrl+X), click below the outer table, and paste it (Ctrl+V), or replace it with rows and columns in the outer table. Use simple tables with one header row.",
         |t| {
             t.nested.then(|| {
                 "This table is inside another table. Screen readers handle nested tables badly."
@@ -80,7 +73,7 @@ pub fn tbl_003(doc: &Document) -> Vec<Finding> {
     each_table(
         doc,
         RuleId::Tbl003,
-        "Split the merged cells (Table Layout > Split Cells) so that every row has the same number of cells. If you keep them, check the headers in PAC.",
+        "Select the merged cells and choose Table Layout > Split Cells, so that every row has the same number of cells. If you keep them, check the headers in PAC.",
         |t| {
             let merged = t
                 .rows
@@ -102,7 +95,7 @@ pub fn tbl_004(doc: &Document) -> Vec<Finding> {
     each_table(
         doc,
         RuleId::Tbl004,
-        "Use a table only for data with column headings. For layout, use paragraphs, styles, or columns with a section break. If this is a data table, you can ignore this warning.",
+        "Use a table only for data with column headings. For layout, click in the table and choose Table Layout > Convert to Text, then use paragraphs, styles, or columns with a section break (Layout > Breaks). If this is a data table, you can ignore this warning.",
         |t| {
             let cells: Vec<_> = t
                 .rows

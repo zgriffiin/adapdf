@@ -1,5 +1,7 @@
-import { InlineLoading, InlineNotification } from "@carbon/react";
+import { Button, InlineLoading, InlineNotification } from "@carbon/react";
 import { useEffect, useRef, type ReactNode } from "react";
+
+import { fileNameOf, folderOf } from "../viewModel";
 
 /**
  * The heading of a screen. It gets the keyboard focus when the screen shows and
@@ -62,6 +64,37 @@ export function StatusRegion({ status, working }: { status: Status | null; worki
           lowContrast
         />
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * The file that the app is working on, and where it is. Every screen that has a
+ * document shows it, so that a person always knows which file is changed and where
+ * it is. "Open folder" opens the folder in the file explorer.
+ */
+export function WorkingOn({
+  path,
+  isCopy,
+  busy,
+  onOpenFolder,
+}: {
+  /** The full path of the working file. */
+  path: string;
+  /** True when the file is the accessible copy; false for the original. */
+  isCopy: boolean;
+  busy: boolean;
+  onOpenFolder: () => void;
+}) {
+  return (
+    <div className="working-on">
+      <p>
+        <strong>Working on:</strong> {fileNameOf(path)} in {folderOf(path)}{" "}
+        {isCopy ? "(the accessible copy)" : "(your original)"}
+      </p>
+      <Button kind="ghost" size="sm" onClick={onOpenFolder} disabled={busy}>
+        Open folder
+      </Button>
     </div>
   );
 }

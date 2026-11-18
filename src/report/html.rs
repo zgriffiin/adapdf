@@ -5,8 +5,10 @@
 //! - `<html lang="en">`, a `<title>`, one `h1`, and the sections as `h2` with
 //!   `h3` below them (no level is skipped);
 //! - real tables, each with a `<caption>` and `<th scope>`;
-//! - the checklist, the PAC fields and the sign-off are labelled form controls
-//!   that work in a browser with no script. The page has no script at all;
+//! - the page has no form control. A static page cannot save what is typed or
+//!   ticked, so the PAC result, the checklist and the sign-off are shown as text
+//!   from the report, and are recorded in the Adapdf app. The page has no script
+//!   at all;
 //! - the style sheet is inline. Nothing is loaded from the network, and there is
 //!   no external font, style sheet, script or image;
 //! - every text colour has a contrast of at least 4.5:1 against its background
@@ -24,15 +26,16 @@ use super::{ExportInfo, FixesSection, MetadataSection, Report, VeraPdfSection, V
 use crate::findings::{Finding, Severity};
 use crate::verapdf::{ProfileResult, VeraFinding, WcagOutcome};
 
-/// The seven sections of spec 02, stage 6, in order.
+/// The seven sections of spec 02, stage 6, in order. The PDF metadata changes
+/// are inside "Technical details".
 pub const SECTIONS: [&str; 7] = [
     "Summary",
     "Pre-check findings",
     "Fixes applied",
-    "PDF metadata changes",
     "veraPDF result",
     "PAC",
-    "Human checklist",
+    "Human checklist and sign-off",
+    "Technical details",
 ];
 
 /// The style sheet. Each rule that sets a text colour sets its own background,
@@ -43,7 +46,7 @@ h1 { font-size: 1.75rem; margin: 0.5rem 0 1rem; }
 h2 { font-size: 1.4rem; margin: 2rem 0 0.5rem; border-bottom: 2px solid #525252; padding-bottom: 0.25rem; }
 h3 { font-size: 1.15rem; margin: 1.25rem 0 0.5rem; }
 a { color: #0043ce; }
-a:focus, input:focus, select:focus { outline: 3px solid #0f62fe; outline-offset: 2px; }
+a:focus, summary:focus { outline: 3px solid #0f62fe; outline-offset: 2px; }
 table { border-collapse: collapse; width: 100%; margin: 0.5rem 0 1rem; }
 caption { text-align: left; font-weight: bold; padding: 0.25rem 0; color: #161616; }
 th, td { border: 1px solid #8d8d8d; padding: 0.4rem 0.6rem; text-align: left; vertical-align: top; }
@@ -53,12 +56,9 @@ tbody th { background: #f4f4f4; color: #161616; }
 .pass { color: #0e6027; background: #defbe6; border-color: #0e6027; }
 .fail { color: #a2191f; background: #fff1f1; border-color: #a2191f; }
 .note { color: #525252; }
-fieldset { border: 1px solid #8d8d8d; margin: 0.75rem 0; padding: 0.5rem 1rem; }
-legend { font-weight: bold; color: #161616; }
-.field { margin: 0.5rem 0; }
-.field label { display: inline-block; min-width: 14rem; }
-input[type=text], input[type=date], select { font-size: 1rem; padding: 0.25rem; border: 1px solid #525252; color: #161616; background: #ffffff; min-width: 20rem; }
-.check { margin: 0.4rem 0; }
+summary { cursor: pointer; color: #0043ce; }
+details { margin: 0.25rem 0; }
+.context { font-family: Consolas, monospace; font-size: 0.85rem; word-break: break-all; color: #161616; }
 ";
 
 /// The style sheet that the report has inline, for tests that read its colours.
@@ -90,6 +90,14 @@ pub fn escape(text: &str) -> String {
 struct Cell {
     html: String,
     row_header: bool,
+}
+
+/// A cell with HTML that the caller has already made safe.
+fn html_cell(html: String) -> Cell {
+    Cell {
+        html,
+        row_header: false,
+    }
 }
 
 fn cell(text: &str) -> Cell {
@@ -183,11 +191,11 @@ pub fn render(report: &Report) -> String {
 
     section(&mut out, 1, |out| summary(out, report));
     section(&mut out, 2, |out| precheck(out, &report.precheck));
-    section(&mut out, 3, |out| fixes(out, &report.fixes));
-    section(&mut out, 4, |out| metadata(out, &report.pdf_metadata));
-    section(&mut out, 5, |out| verapdf(out, &report.verapdf));
-    section(&mut out, 6, pac);
-    section(&mut out, 7, |out| checklist(out, report));
+    section(&mut out, 3, |out| fixes(out, &report.fixes, &s.document));
+    section(&mut out, 4, |out| verapdf(out, &report.verapdf));
+    section(&mut out, 5, |out| pac(out, report));
+    section(&mut out, 6, |out| checklist(out, report));
+    section(&mut out, 7, |out| technical(out, report));
 
     out.push_str("</main>\n</body>\n</html>\n");
     out
@@ -217,10 +225,21 @@ fn summary(out: &mut String, report: &Report) {
     if let Some(reason) = &s.reason {
         paragraph(out, reason);
     }
-    let mut rows = vec![
+    let pdf_check = match &report.verapdf {
+        VeraPdfSection::Ran { .. } => format!("{} failed", plural(s.pdf_failed_rules, "rule")),
+        VeraPdfSection::NotRun { .. } => "Not run (no PDF was made)".to_string(),
+    };
+    let rows = vec![
         ("Result", s.verdict.word().to_string()),
-        ("Errors", s.errors.to_string()),
-        ("Warnings", s.warnings.to_string()),
+        (
+            "Word document (pre-check)",
+            format!(
+                "{}, {}",
+                plural(s.precheck_errors, "error"),
+                plural(s.precheck_warnings, "warning")
+            ),
+        ),
+        ("PDF check (veraPDF PDF/UA-1)", pdf_check),
         ("Document", s.document.clone()),
         (
             "PDF",
@@ -231,13 +250,7 @@ fn summary(out: &mut String, report: &Report) {
         ("Tool", format!("{} {}", s.tool, s.tool_version)),
         ("Date and time (local time)", s.generated_local.clone()),
     ];
-    if let Some(export) = &report.export {
-        rows.push(("Word build", export.word_build.clone()));
-    }
     facts(out, "Summary of the result", &rows);
-    if let Some(export) = &report.export {
-        export_details(out, export);
-    }
 }
 
 fn export_details(out: &mut String, export: &ExportInfo) {
@@ -273,16 +286,17 @@ fn export_details(out: &mut String, export: &ExportInfo) {
     );
 }
 
-fn location_text(finding: &Finding) -> String {
-    let loc = &finding.location;
-    let mut place = match (&loc.paragraph_index, &loc.snippet) {
-        (Some(index), Some(snippet)) => format!("Paragraph {} \"{snippet}\"", index + 1),
-        _ => format!("The document ({})", loc.part),
-    };
-    if let Some(heading) = &loc.heading {
-        let _ = write!(place, ", after the heading \"{heading}\"");
+/// Section 7: how Word made the PDF, and the changes to the PDF metadata.
+fn technical(out: &mut String, report: &Report) {
+    match &report.export {
+        Some(export) => export_details(out, export),
+        None => paragraph(
+            out,
+            "Word did not make a PDF, so there is nothing to show about the export.",
+        ),
     }
-    place
+    out.push_str("<h3>PDF metadata changes</h3>\n");
+    metadata(out, &report.pdf_metadata);
 }
 
 fn finding_rows(findings: &[&Finding]) -> Vec<Vec<Cell>> {
@@ -297,7 +311,7 @@ fn finding_rows(findings: &[&Finding]) -> Vec<Vec<Cell>> {
                 header_cell(f.rule_id.as_str()),
                 cell(severity_word(f.severity)),
                 cell(&f.message),
-                cell(&location_text(f)),
+                cell(&f.location.place),
                 cell(&how),
             ]
         })
@@ -327,37 +341,47 @@ fn precheck(out: &mut String, findings: &[Finding]) {
     }
 }
 
-fn fixes(out: &mut String, fixes: &FixesSection) {
-    if fixes.applied.is_empty() {
-        paragraph(out, "None. No fixes were applied in this run.");
-    } else {
-        let rows: Vec<Vec<Cell>> = fixes
-            .applied
-            .iter()
-            .map(|f| {
-                vec![
-                    header_cell(f.rule.as_str()),
-                    cell(&format!("{:?}", f.fix)),
-                    cell(&f.summary),
-                ]
-            })
-            .collect();
-        table(
-            out,
-            "Fixes applied to the Word document",
-            &["Rule", "Fix", "What was done"],
-            &rows,
-        );
-    }
-    match &fixes.backup {
-        Some(name) => paragraph(
+fn fixes(out: &mut String, fixes: &FixesSection, document: &str) {
+    if let Some(original) = &fixes.original {
+        paragraph(
             out,
             &format!(
-                "Backup file: {name}. The newest backup of this document that is next to it. The export itself does not change the Word document."
+                "The original {original} was not changed. Adapdf made its fixes in {document}."
             ),
-        ),
-        None => paragraph(out, "Backup file: none was found next to the document."),
+        );
     }
+    if fixes.applied.is_empty() {
+        paragraph(
+            out,
+            &format!("No fixes were made by Adapdf. The Word document is {document}."),
+        );
+        return;
+    }
+    let rows: Vec<Vec<Cell>> = fixes
+        .applied
+        .iter()
+        .map(|f| {
+            vec![
+                header_cell(&f.time),
+                cell(f.rule.as_str()),
+                cell(&f.place),
+                cell(&f.summary),
+                cell(f.text.as_deref().unwrap_or("")),
+            ]
+        })
+        .collect();
+    table(
+        out,
+        "Fixes that Adapdf made in the Word document, oldest first",
+        &[
+            "Date and time",
+            "Rule",
+            "Where",
+            "What was done",
+            "Text typed or chosen",
+        ],
+        &rows,
+    );
 }
 
 fn metadata(out: &mut String, section: &MetadataSection) {
@@ -389,7 +413,7 @@ fn metadata(out: &mut String, section: &MetadataSection) {
                 );
             }
             if !report.issues.is_empty() {
-                out.push_str("<h3>Problems that the tool does not fix</h3>\n");
+                out.push_str("<h4>Problems that the tool does not fix</h4>\n");
                 let rows: Vec<Vec<Cell>> = report
                     .issues
                     .iter()
@@ -416,14 +440,22 @@ fn vera_rows(findings: &[VeraFinding]) -> Vec<Vec<Cell>> {
     findings
         .iter()
         .map(|f| {
-            let mut what = f.message.clone();
+            let mut what = escape(&f.message);
+            if let Some(place) = &f.place {
+                let _ = write!(what, " First place: {}.", escape(place));
+            }
+            // veraPDF's own path stays, for people who use PAC or veraPDF.
             if let Some(context) = &f.context {
-                let _ = write!(what, " First place: {context}");
+                let _ = write!(
+                    what,
+                    "<details><summary>Technical detail</summary><p class=\"context\">{}</p></details>",
+                    escape(context)
+                );
             }
             vec![
                 header_cell(&format!("{}-{}", f.clause, f.test_number)),
                 cell(severity_word(f.severity)),
-                cell(&what),
+                html_cell(what),
                 cell(&f.how_to_fix),
                 cell(&f.failed_checks.to_string()),
                 cell(f.pre_check.map_or("None", |r| r.as_str())),
@@ -525,79 +557,76 @@ fn verapdf(out: &mut String, section: &VeraPdfSection) {
     }
 }
 
-fn pac(out: &mut String) {
+fn recorded(report: &Report) -> String {
+    let list = &report.checklist;
+    match (&list.name, &list.date) {
+        (Some(name), Some(date)) => format!(", recorded by {name} on {date}"),
+        (Some(name), None) => format!(", recorded by {name}"),
+        _ => String::new(),
+    }
+}
+
+fn pac(out: &mut String, report: &Report) {
     paragraph(
         out,
-        "PAC is the checker of record. Open the PDF in PAC, run the check, and save the PAC report next to the PDF. Then record the report and the result here.",
+        "PAC is the checker of record. Open the PDF in PAC, run the check, and save the PAC report next to the PDF. Then record the result in the Adapdf app.",
     );
-    out.push_str("<fieldset>\n<legend>PAC report</legend>\n");
-    out.push_str(
-        "<div class=\"field\"><label for=\"pac-file\">PAC report file (a file name or a link)</label> <input type=\"text\" id=\"pac-file\" name=\"pac-file\" /></div>\n",
-    );
-    out.push_str(
-        "<div class=\"field\"><label for=\"pac-version\">PAC version</label> <input type=\"text\" id=\"pac-version\" name=\"pac-version\" /></div>\n",
-    );
-    out.push_str(
-        "<div class=\"field\"><label for=\"pac-result\">PAC result</label> <select id=\"pac-result\" name=\"pac-result\">\n\
-<option value=\"\">Not checked yet</option>\n\
-<option value=\"pass\">Pass: 0 errors</option>\n\
-<option value=\"fail\">Fail: PAC found errors</option>\n\
-</select></div>\n",
-    );
-    out.push_str("</fieldset>\n");
+    let pac = &report.pac;
+    let line = match pac.result.as_deref() {
+        Some(result) => {
+            let word = if result == "pass" { "Pass" } else { "Fail" };
+            let mut line = format!("PAC: {word}");
+            if let Some(file) = &pac.report_file {
+                let _ = write!(line, ", report {file}");
+            }
+            if let Some(version) = &pac.pac_version {
+                let _ = write!(line, ", PAC {version}");
+            }
+            line.push_str(&recorded(report));
+            line
+        }
+        None => "PAC: not checked yet".to_string(),
+    };
+    paragraph(out, &line);
 }
 
 fn checklist(out: &mut String, report: &Report) {
     let list = &report.checklist;
     paragraph(
         out,
-        "A person checks each item in the PDF and ticks it. The automatic checks cannot decide these.",
+        "A person checks each item in the PDF. The automatic checks cannot decide these. Record the PAC result and sign off in the Adapdf app (open this report there). Changes made in this page are not saved.",
     );
-    // A report that was signed in the app has the sign-off in it. The same
-    // facts are in the form below, so a reader of the page sees them twice: as
-    // text, and as the state of the controls.
-    if let Some(name) = &list.name {
-        let done = list.items.iter().filter(|item| item.done).count();
-        let date = list
-            .date
-            .as_deref()
-            .map_or_else(|| "no date was given".to_string(), |d| format!("on {d}"));
-        paragraph(
-            out,
-            &format!(
-                "Signed off by {name}, {date}. {done} of {} checks are ticked.",
-                list.items.len()
-            ),
-        );
-    }
-    out.push_str("<fieldset>\n<legend>Checks that a person makes</legend>\n");
-    for (n, item) in list.items.iter().enumerate() {
-        let checked = if item.done {
-            " checked=\"checked\""
-        } else {
-            ""
-        };
-        let _ = writeln!(
-            out,
-            "<div class=\"check\"><input type=\"checkbox\" id=\"check-{n}\" name=\"check-{n}\"{checked} /> <label for=\"check-{n}\">{}</label></div>",
-            escape(&item.text),
-            n = n + 1
-        );
-    }
-    out.push_str("</fieldset>\n<fieldset>\n<legend>Sign-off</legend>\n");
-    let value = |v: &Option<String>| {
-        v.as_deref()
-            .map_or_else(String::new, |v| format!(" value=\"{}\"", escape(v)))
+    let rows: Vec<Vec<Cell>> = list
+        .items
+        .iter()
+        .map(|item| {
+            vec![
+                header_cell(&item.text),
+                cell(if item.done {
+                    "Checked"
+                } else {
+                    "Not checked yet"
+                }),
+            ]
+        })
+        .collect();
+    table(
+        out,
+        "Checks that a person makes",
+        &["Check", "Status"],
+        &rows,
+    );
+    let signed = match (&list.name, &list.date) {
+        (Some(name), Some(date)) => format!("Signed by {name} on {date}"),
+        (Some(name), None) => format!("Signed by {name} (no date was given)"),
+        (None, _) => "Not signed yet".to_string(),
     };
-    let _ = writeln!(
+    let done = list.items.iter().filter(|item| item.done).count();
+    paragraph(
         out,
-        "<div class=\"field\"><label for=\"signoff-name\">Name</label> <input type=\"text\" id=\"signoff-name\" name=\"signoff-name\"{} /></div>",
-        value(&list.name)
+        &format!(
+            "Sign-off: {signed}. {done} of {} checks are checked.",
+            list.items.len()
+        ),
     );
-    let _ = writeln!(
-        out,
-        "<div class=\"field\"><label for=\"signoff-date\">Date</label> <input type=\"date\" id=\"signoff-date\" name=\"signoff-date\"{} /></div>",
-        value(&list.date)
-    );
-    out.push_str("</fieldset>\n");
 }

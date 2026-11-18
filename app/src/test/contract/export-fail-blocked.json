@@ -2,26 +2,29 @@
   "exit_code": 1,
   "view": {
     "report": {
-      "schema_version": 1,
+      "schema_version": 2,
       "summary": {
         "verdict": "fail",
         "errors": 1,
         "warnings": 0,
+        "precheck_errors": 1,
+        "precheck_warnings": 0,
+        "pdf_failed_rules": 0,
         "reason": "The report has 1 error found by the pre-check of the Word document.",
         "tool": "adapdf",
-        "tool_version": "0.1.0",
+        "tool_version": "0.2.0",
         "generated_local": "2026-03-05 10:15:30",
         "document": "Guide.docx",
         "pdf": null
       },
-      "export": null,
       "precheck": [
         {
           "rule_id": "DOC-001",
           "severity": "error",
           "message": "The document has no title in its properties. PDF viewers show this title in the window bar, and screen readers read it out.",
-          "how_to_fix": "In Word, choose File > Info and type a title in the Title box.",
+          "how_to_fix": "In Word, choose File > Info, and type a title in the Title box on the right (choose Show All Properties if the box is not there).",
           "location": {
+            "place": "The document's properties (File > Info)",
             "heading": null,
             "snippet": null,
             "paragraph_index": null,
@@ -31,16 +34,12 @@
             "kind": "ask",
             "id": "set-title"
           },
-          "suggestion": "Test guide"
+          "suggestion": null
         }
       ],
       "fixes": {
-        "applied": [],
-        "backup": null
-      },
-      "pdf_metadata": {
-        "status": "not-run",
-        "reason": "Not run. No PDF was made, because the document has errors that must be fixed first (see the pre-check findings)."
+        "original": null,
+        "applied": []
       },
       "verapdf": {
         "status": "not-run",
@@ -84,15 +83,20 @@
         ],
         "name": null,
         "date": null
+      },
+      "export": null,
+      "pdf_metadata": {
+        "status": "not-run",
+        "reason": "Not run. No PDF was made, because the document has errors that must be fixed first (see the pre-check findings)."
       }
     },
-    "report_json": "C:\\Docs\\Guide.accessibility.json",
-    "report_html": "C:\\Docs\\Guide.accessibility.html",
+    "report_json": "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.json",
+    "report_html": "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.html",
     "pdf": null
   },
-  "console": "Guide.docx: Fail (1 error, 0 warnings).\nThe report has 1 error found by the pre-check of the Word document.\n- [DOC-001] The document has no title in its properties. PDF viewers show this title in the window bar, and screen readers read it out.\nWrote C:\\Docs\\Guide.accessibility.html\nWrote C:\\Docs\\Guide.accessibility.json\n",
+  "console": "Guide.docx: Fail (1 error, 0 warnings).\nThe report has 1 error found by the pre-check of the Word document.\n- [DOC-001] The document has no title in its properties. PDF viewers show this title in the window bar, and screen readers read it out.\nWrote C:\\Docs\\Guide - Adapdf\\Guide.accessibility.html\nWrote C:\\Docs\\Guide - Adapdf\\Guide.accessibility.json\n",
   "files": [
-    "C:\\Docs\\Guide.accessibility.html",
-    "C:\\Docs\\Guide.accessibility.json"
+    "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.html",
+    "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.json"
   ]
 }

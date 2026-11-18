@@ -161,10 +161,20 @@ impl Package {
     /// Names of the header and footer parts that `word/document.xml` points to.
     pub fn header_footer_parts(&self) -> Result<Vec<String>> {
         Ok(self
+            .header_footer_relationships()?
+            .into_iter()
+            .map(|(_, part)| part)
+            .collect())
+    }
+
+    /// The relationship id and the part name of each header and footer that
+    /// `word/document.xml` points to. A section names them by id.
+    pub fn header_footer_relationships(&self) -> Result<Vec<(String, String)>> {
+        Ok(self
             .relationships(DOCUMENT_PART)?
             .iter()
             .filter(|r| !r.external && (r.has_kind(REL_HEADER) || r.has_kind(REL_FOOTER)))
-            .map(|r| resolve_target(DOCUMENT_PART, &r.target))
+            .map(|r| (r.id.clone(), resolve_target(DOCUMENT_PART, &r.target)))
             .collect())
     }
 
