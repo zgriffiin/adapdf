@@ -213,7 +213,7 @@ function reportWatch(seen, vendorJre, exportRan) {
   for (const j of javas) {
     const path = j.exe ?? /^"([^"]+)"/.exec(j.cmd ?? "")?.[1];
     console.log(`  java.exe pid ${j.pid} (parent ${j.ppid}): ${path}`);
-    console.log(`    command line: ${(j.cmd ?? "").slice(0, 400)}`);
+    console.log(`    command line: ${(j.cmd ?? "").slice(0, 900)}`);
     if (!path || !path.toLowerCase().startsWith(vendorJre.toLowerCase())) {
       problems.push(`a java.exe that is not the bundled one: ${path}`);
     }
@@ -505,9 +505,9 @@ try {
     console.log(`     the real export of DOC-001-pass.docx gave: ${verdict}`);
     exportRan = true;
     const veraLines = await page.run(
-      `document.body.innerText.split("\\n").filter((l) => /veraPDF/.test(l)).slice(0, 4).join(" | ")`,
+      `document.body.innerText.split("\\n").filter((l) => /veraPDF|WCAG/.test(l)).slice(0, 6).join(" | ")`,
     );
-    console.log(`     the result names veraPDF: ${veraLines}`);
+    console.log(`     the result names veraPDF and WCAG: ${veraLines}`);
     if (installedExe && !/pass/i.test(verdict ?? "")) {
       throw new Error(`The export from the installed program did not give a Pass: ${verdict}`);
     }

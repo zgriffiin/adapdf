@@ -1,7 +1,7 @@
 //! N-05: the web UI loads nothing from the network (spec 01, constraints), and
 //! the window is configured to refuse it. Also the parts of `tauri.conf.json` and
-//! the capability file that the test plan fixes (rows I-02 and I-08, and the
-//! minimal permissions of the app).
+//! the capability file that the test plan fixes (the minimal permissions of the
+//! app; the installer settings are in `installer_config.rs`).
 //!
 //! These tests read the built page in `app/dist`. Run `pnpm build` in `app/`
 //! first (the test says so when `dist` is missing). They need no Node
