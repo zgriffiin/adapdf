@@ -2,3 +2,5 @@
 *.docx binary
 # The contract test compares these files byte for byte with what Rust writes.
 app/src/test/contract/*.json text eol=lf
+# collect-licenses.mjs --check compares this file byte for byte.
+THIRD-PARTY-LICENSES.txt text eol=lf
