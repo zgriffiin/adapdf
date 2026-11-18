@@ -421,7 +421,7 @@ The model parts for IMG, TXB and TBL are tested in `model::drawings::tests::*`
 | Fixtures open in Word (spec 02, Testing) | W-01 (`word_opens_every_fixture`) | implemented (M3a) |
 | Word automation base: own hidden Word, always quit (spec 02, "Rules for COM") | `tests/word.rs`: `the_session_quits_word_after_a_panic`, `the_session_quits_word_after_an_error`, `a_damaged_docx_gives_an_error_and_not_a_hang`, `a_missing_file_is_an_error` (windows_word). These cover the base only; the export rows S3-01 to S3-20 were built later (M4a, M4c, M4 review round 1: see "Stage 3: Word export"), and S3-17 is still planned. | implemented (M3a) |
 | App (file picker, findings list, export, report) | A-01 to A-10 | implemented (M5a): A-01 to A-04, A-07 to A-10, and the part of A-06 that a test can do. A-05 (manual walkthrough) and the manual part of A-06 are planned; the axe run (A-10) was repeated on the installed copy in M5b |
-| Installer | I-01 to I-13 | partly done (M5b): I-02, I-08 and the unit part of I-10 and I-11 are tests. I-01, I-03, I-04, I-10 and I-11 were run by hand on one machine (2026-11-17; an administrator account, shell not elevated, not a clean machine); I-05 is partly done (no clean machine, no other Java first on the PATH). I-06, I-07, I-09, I-12 and I-13 are planned (a person, or another machine). See "Before release" in "Known gaps in M5b". |
+| Installer | I-01 to I-13 | partly done (M5b): I-02, I-08 and the unit part of I-10 and I-11 are tests. I-01, I-03, I-04, I-10 and I-11 were run by hand on one machine (2026-11-17, and again on the release installer 2026-11-18; an administrator account, shell not elevated, not a clean machine; N-03 saw WebView2 connect to Microsoft in the default runs of 2026-11-18; with its background services turned off in the window, 13 runs of the rebuilt installer saw no connection to another address); I-05 is partly done (no clean machine, no other Java first on the PATH). I-06, I-07, I-09, I-12 and I-13 are planned (a person, or another machine). See "Before release" in "Known gaps in M5b". |
 | Word template and acceptance (spec 04) | T-01 to T-10 | planned (phase 1, template) |
 | No network (spec 01) | N-01 to N-05 | N-01 implemented (M4b: `tests/no_network.rs`; round 1 added the check of `src/`; M5a: the app's Windows tree, and the check of `app/src-tauri/src/`); N-05 implemented (M5a: `app/src-tauri/tests/frontend_bundle.rs`); N-03 partly (M5b: a sampled look at the connections, not a firewall log); N-04 checked by hand (M5b), no test; N-02 planned |
 | Phase 0 and PAC | The Phase 0 tables and P0-01 to P0-09 | planned (postponed) |
@@ -689,7 +689,7 @@ the test needs a parser, which needs a decision.
 |---|---|---|---|---|---|
 | N-01 | The shipped program has no HTTP client | `no_http_client_in_the_dependency_graph` | unit | `Cargo.lock` (read as text) and the `windows` crate features in `Cargo.toml` | None of `reqwest`, `hyper`, `ureq`, `curl`, `attohttpc`, `isahc`, `surf`, `h2`, `native-tls`, `rustls`, `openssl` is a package. No `windows` feature for networking (`Win32_Networking`, `Win32_NetworkManagement`). Equivalent check with `cargo tree -e normal`. **Implemented (M4b)** in `tests/no_network.rs`: the lock file (all packages, also those only used for tests), `Cargo.toml`, and `cargo tree -e normal --locked --offline`. The list of crates has 17 names; a third test shows that the check finds a client when there is one. **Round 1:** `the_source_makes_no_socket` reads every `.rs` file of `src/` and fails on `std::net`, `core::net`, `TcpStream`, `TcpListener`, `UdpSocket` or `ToSocketAddrs` (a connection made with the standard library is in no crate of the graph). Checked by mutation: a line `use std::net::TcpStream;` in `src/lib.rs` fails it; the file was restored. It reads the source text, so it does not see a socket made through a Windows API call (the `windows` features for the network are checked in the first test). |
 | N-02 | A full run works with the network off | `export_runs_with_the_network_disabled` | manual | A pass fixture, on a machine with the network adapters disabled | The same PDF and the same veraPDF result as with the network on. |
-| N-03 | The app, the bundled Java and WebView2 make no connection | `no_connection_attempts_in_a_full_run` | manual | A Windows Firewall rule that blocks outbound traffic for the installed app exe (built as `adapdf-app.exe`; the installed file name comes from `productName` (`Adapdf`) in `tauri.conf.json` unless `mainBinaryName` is set, so M5b writes the real name here), the bundled `java.exe` and `msedgewebview2.exe` (the one that the app starts), with logging on, and a full export in the app | The run succeeds and the firewall log has no entry for those three programs. **Partly done (M5b), 2026-11-17.** No firewall rule was made (that needs admin rights, and a change to the machine). Instead `node app/scripts/axe-webview.mjs --installed <exe> --watch` ran the installed `adapdf-app.exe` and, about every 1.3 seconds (18 and 20 looks in the two runs), listed the process tree of the app (`app/scripts/look-at-process-tree.ps1`: `adapdf-app.exe`, 6 `msedgewebview2.exe`, 2 `java.exe`, 2 `conhost.exe`) with the TCP and UDP endpoints that those processes own (`netstat -ano`), during the check of `LST-002-fail.docx` and the real export of `DOC-001-pass.docx`. Result: 3 endpoints, all on this machine only (listening, or the debugging port that the script itself opened), 0 to another address; the script fails on one. This is sampling: a connection that opens and closes between two looks is missed, and a firewall log is not made. Blind spots: a closed connection in TIME_WAIT is listed under PID 0 and has no owner in the look; DNS lookups go through the `Dnscache` service, not through the app; the script uses a scratch WebView2 profile and opens WebView2's debugging port, which a normal start does not; and Word is not a child of the app (COM starts it), so it is not in the watched tree. So this is evidence, not proof, that nothing is sent. The firewall-log test stays planned. The installed file name is `adapdf-app.exe` (the product name is `Adapdf`; the program keeps the package name). |
+| N-03 | The app, the bundled Java and WebView2 make no connection | `no_connection_attempts_in_a_full_run` | manual | A Windows Firewall rule that blocks outbound traffic for the installed app exe (built as `adapdf-app.exe`; the installed file name comes from `productName` (`Adapdf`) in `tauri.conf.json` unless `mainBinaryName` is set, so M5b writes the real name here), the bundled `java.exe` and `msedgewebview2.exe` (the one that the app starts), with logging on, and a full export in the app | The run succeeds and the firewall log has no entry for those three programs. **Partly done (M5b), 2026-11-17.** No firewall rule was made (that needs admin rights, and a change to the machine). Instead `node app/scripts/axe-webview.mjs --installed <exe> --watch` ran the installed `adapdf-app.exe` and, about every 1.3 seconds (18 and 20 looks in the two runs), listed the process tree of the app (`app/scripts/look-at-process-tree.ps1`: `adapdf-app.exe`, 6 `msedgewebview2.exe`, 2 `java.exe`, 2 `conhost.exe`) with the TCP and UDP endpoints that those processes own (`netstat -ano`), during the check of `LST-002-fail.docx` and the real export of `DOC-001-pass.docx`. Result: 3 endpoints, all on this machine only (listening, or the debugging port that the script itself opened), 0 to another address; the script fails on one. This is sampling: a connection that opens and closes between two looks is missed, and a firewall log is not made. Blind spots: a closed connection in TIME_WAIT is listed under PID 0 and has no owner in the look; DNS lookups go through the `Dnscache` service, not through the app; the script uses a scratch WebView2 profile and opens WebView2's debugging port, which a normal start does not; and Word is not a child of the app (COM starts it), so it is not in the watched tree. So this is evidence, not proof, that nothing is sent. The firewall-log test stays planned. The installed file name is `adapdf-app.exe` (the product name is `Adapdf`; the program keeps the package name). **Repeated on the release installer, 2026-11-18** (SHA-256 `ba8bf85783763c229255bd09596246870e065cd0b590a9f29b9fa82f1fb5c45c`): **not passed in the default runs.** 3 runs: the first 2 (default WebView2 settings) each saw one connection by the WebView2 network process (`msedgewebview2.exe --utility-sub-type=network.mojom.NetworkService`) to a Microsoft address (`150.171.23.17:443` TCP, and `52.123.249.57:443` UDP) and the script failed; the app, `java.exe` and Word made none. What was sent is not known. With `--browser-args "--disable-background-networking --disable-component-update --disable-features=msSmartScreenProtection,msEdgeEnhanceSecurityMode"` (diagnostic only, not in the product) the third run saw none. The run of 2026-11-17 saw none, so the traffic is not on every run. So "the app, the bundled Java and WebView2 make no connection" is **not shown**: WebView2 can connect to Microsoft by itself. See "How M5b builds the installer", step 5 of the run of 2026-11-18. **Second run of 2026-11-18, after the window was set to turn WebView2's background services off** (`additionalBrowserArgs` in `tauri.conf.json`, see "How M5b builds the installer"; installer SHA-256 `0d3f6c81108539cd278ee812365a85756c7ec152add0fcf99660c4c6659d419a`): `axe-webview.mjs --installed ... --no-java --watch`, **13 runs, with no `--browser-args`**, so the installed program's own arguments were in force (the script now checks the command line of WebView2's browser process, in every run, against `additionalBrowserArgs`: all present, 13 of 13). **0 connections to another address in 13 of 13 runs** (3 endpoints in each run, all on this machine: 14 to 17 looks per run), where the default settings had one in each of 2 of 2 runs (the third run of that day had diagnostic arguments). Same blind spots as above (sampling, no firewall log, the script's own debugging port and scratch profile, Word not in the tree); and 13 runs without a connection do not prove that the flags are the cause: the first runs of 2026-11-17 saw none either, and what WebView2 sends depends on the machine and the time. So the row stays **partly done**: the check of the sampled connections has not failed since the flags were set; the firewall-log test is still planned. |
 | N-04 | Only made-up documents are in git (AGENTS.md) | `repo_has_only_made_up_documents` | unit | `git ls-files` | The tracked `.docx` and `.pdf` files are the catalogue, the PDF fixtures and the template files, and nothing else. **Checked by hand (M5b), 2026-11-17; the test is still planned.** `git ls-files`: 82 `.docx` files, all in `tests/fixtures`; no `.pdf`, `.exe`, `.zip`, `.jar`, `.dll` or `.msi`; nothing from `vendor/`, `target/` or `app/src-tauri/bundle-staging/` (Git ignores all three). The installer and the staging copy of `vendor/` are build output, not source. |
 | N-05 | The web UI loads nothing from the network (spec 01, constraints) | `frontend_bundle_has_no_remote_urls` (`app/src-tauri/tests/frontend_bundle.rs`), with `the_remote_url_scan_finds_an_address`, `the_fonts_are_bundled` and `the_csp_allows_only_the_app_and_its_ipc` | Rust, after the front-end build (`pnpm build`) | The built front-end assets in `app/dist`, and `tauri.conf.json` | No `http://` or `https://` address in the built files (HTML, JavaScript, CSS) except the entries of an explicit list, each with its reason: XML namespace names (`http://www.w3.org/`), React's text for a minified error message (`https://react.dev/errors/`), a warning text of `prop-types` (`http://fb.me/use-check-prop-types`) and Tauri's own IPC origin (`http://ipc.localhost`). No protocol-relative `url(//`, `src="//"`, `href="//"` and no `@import`. `index.html` loads only `/assets/`. The style sheet names only IBM Plex Sans files that are in `dist/assets`. In the content security policy, `default-src`, `font-src`, `img-src`, `script-src` and `style-src` are `'self'` only, `connect-src` is `'self' ipc: http://ipc.localhost`, there is no `unsafe-inline`, `unsafe-eval`, `data:` or `blob:`, and `object-src` is `'none'`. The URL scan finds addresses written into the files; the policy also blocks a request that code makes at run time (`fetch()`), so both are needed. **Implemented (M5a).** Checked by mutation: a `<link href="https://fonts.googleapis.com/...">` added to `dist/index.html` fails the test (the file was restored). Also checked on the running app (see "How M5a builds the app"). |
 
@@ -729,17 +729,17 @@ failure is a message in the app, not an exit code.
 
 | # | Requirement | Planned test name | Level | Fixture or input | Pass condition |
 |---|---|---|---|---|---|
-| I-01 | No admin rights | `installer_asks_for_no_admin_rights` | manual | Run the installer as a standard user | No UAC prompt. Files are in `%LOCALAPPDATA%`. Nothing is written under `C:\Program Files` or to `HKLM`. **Done on the build machine (M5b), 2026-11-17, on an administrator account with the shell not elevated** (a filtered token: `whoami /groups` showed Medium Mandatory Level; the installer manifest is `asInvoker`). It is not a true standard user account, so what a standard user sees is **not yet tried** (I-06, I-09); `Adapdf_0.1.0_x64-setup.exe /S` finished with exit code 0 in 9 seconds, so no prompt waited for a click. Files: `%LOCALAPPDATA%\Adapdf`. No `Adapdf` key under `HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall`, `HKLM\Software\Adapdf` or `HKLM\Software\WOW6432Node\Adapdf`; nothing in `C:\Program Files`, `C:\Program Files (x86)` or the all-users Start menu. Not seen by a person: the screens of an interactive install (I-09). |
+| I-01 | No admin rights | `installer_asks_for_no_admin_rights` | manual | Run the installer as a standard user | No UAC prompt. Files are in `%LOCALAPPDATA%`. Nothing is written under `C:\Program Files` or to `HKLM`. **Done on the build machine (M5b), 2026-11-17, on an administrator account with the shell not elevated** (a filtered token: `whoami /groups` showed Medium Mandatory Level; the installer manifest is `asInvoker`). It is not a true standard user account, so what a standard user sees is **not yet tried** (I-06, I-09); `Adapdf_0.1.0_x64-setup.exe /S` finished with exit code 0 in 9 seconds, so no prompt waited for a click. Files: `%LOCALAPPDATA%\Adapdf`. No `Adapdf` key under `HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall`, `HKLM\Software\Adapdf` or `HKLM\Software\WOW6432Node\Adapdf`; nothing in `C:\Program Files`, `C:\Program Files (x86)` or the all-users Start menu. Not seen by a person: the screens of an interactive install (I-09). **Repeated on the release installer, 2026-11-18** (SHA-256 `ba8bf85783763c229255bd09596246870e065cd0b590a9f29b9fa82f1fb5c45c`): `/S` (Git Bash path conversion off, command line checked), exit code 0, no prompt; files in `%LOCALAPPDATA%\Adapdf`; no `HKLM` key in the 4 places, nothing in `C:\Program Files`, `C:\Program Files (x86)` or the all-users Start menu. Same limits as above (not a true standard user; no person saw the screens). |
 | I-02 | The installer is set to install for the current user only | `installer_config_is_per_user` (`app/src-tauri/tests/installer_config.rs`) | unit | `tauri.conf.json` | `bundle.targets` is `["nsis"]` and `bundle.windows.nsis.installMode` is `currentUser`, so the install folder is under `%LOCALAPPDATA%` and no admin prompt is shown. **Implemented (M5b).** Checked by mutation (`both` fails it). |
-| I-03 | Start menu entry | `installer_adds_a_start_menu_entry` | manual | After install | An entry for the current user exists and starts the app. **Done (M5b).** After the install, `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Adapdf.lnk` exists, and its target is `%LOCALAPPDATA%\Adapdf\adapdf-app.exe` (read with `WScript.Shell`; 2 installs). The shortcut was not clicked: the script started the same exe by its path. |
-| I-04 | Uninstall removes the files | `installer_uninstall_removes_files` | manual | Uninstall from Settings | The install folder and the Start menu entry are gone. Reports and backups next to the user's documents are not touched. **Partly done (M5b), 2026-11-17, 2 silent uninstalls** with `%LOCALAPPDATA%\Adapdf\uninstall.exe /S`: the folder `%LOCALAPPDATA%\Adapdf`, `Adapdf.lnk` and the `HKCU\...\Uninstall\Adapdf` entry are gone. Left behind, outside the repository (not deleted): `HKCU\Software\Adapdf\Adapdf` (one value, the install folder) and `%LOCALAPPDATA%\com.adapdf.desktop` (WebView2's data, about 48.5 MB: 48,572,325 bytes before the test and after it; it is from earlier runs of the app, and the test runs used a scratch data folder, so they did not change it). **Cause (read in the NSIS file that Tauri generated, `target/release/nsis/x64/installer.nsi`):** Tauri's NSIS template writes `HKCU\Software\Adapdf\Adapdf` on **every** install (`WriteRegStr SHCTX "${MANUPRODUCTKEY}" "" $INSTDIR`), so the 2 installs of the test wrote it again; it was not only an older install that left it. The uninstaller removes that key, and the folders `%APPDATA%\com.adapdf.desktop` and `%LOCALAPPDATA%\com.adapdf.desktop`, **only when the check box "Delete the application data" is ticked** on its confirm page (and not in update mode). A silent uninstall (`/S`) shows no page, so it never deletes them. The tick-box case was not run: **try that check box in an interactive uninstall** (I-09), and check that both are then gone. See "Known gaps in M5b". |
-| I-05 | The bundled veraPDF and Java run on a machine with no Java, in the installed app | `installer_runs_verapdf_without_java` | manual | The installed app on a machine (or Windows account, or folder tree) that has **no source tree of this project** and no Java: `where java` finds nothing and `JAVA_HOME` is unset; then choose `DOC-001-pass.docx` in the app and press Export PDF | The export runs veraPDF from the bundle (the result says Pass and names the veraPDF version). A second run with another Java first on the PATH still uses the bundled one. A third run with `ADAPDF_VENDOR` set to another folder still uses the bundled one (I-10). **Partly done on the build machine (M5b), 2026-11-17** (the proof of the bundled Java that the plan of M5b asks for; this machine has Java and a source tree, so the run of the clean machine is still planned, and so is the run with another Java first on the PATH): with `--no-java` the script took `JAVA_HOME` and the Eclipse Adoptium folder out of the environment of the started app (`where java` there: nothing) and the real export of `DOC-001-pass.docx` gave Pass with veraPDF 1.28.2. The `java.exe` that the app started (seen twice in each of 2 runs, parent: the app) was `%LOCALAPPDATA%\Adapdf\vendor\jre\bin\java.exe` with the class path `...\Adapdf\vendor\verapdf\bin\*`; the second one ran `--profile ...\vendor\verapdf\profiles\veraPDF-validation-profiles-rel-1.28\PDF_UA\WCAG-2-2-Machine.xml`, so the WCAG profile is in the installed copy and runs. The program names `java.exe` by its full path and never uses the PATH. Not done: a run with another Java first on the PATH. The run must be without the source tree: a debug build also looks for `vendor/` at the path of the source tree that it was built from (`CARGO_MANIFEST_DIR`), and would find the tools there and hide a `vendor/` that the installer did not place (I-11). A release build does not look there (review round 1, `a_release_build_looks_only_next_to_the_program`), but the machine without the source tree is still the proof. |
+| I-03 | Start menu entry | `installer_adds_a_start_menu_entry` | manual | After install | An entry for the current user exists and starts the app. **Done (M5b).** After the install, `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Adapdf.lnk` exists, and its target is `%LOCALAPPDATA%\Adapdf\adapdf-app.exe` (read with `WScript.Shell`; 2 installs). The shortcut was not clicked: the script started the same exe by its path. **Repeated on the release installer, 2026-11-18** (SHA-256 `ba8bf85783763c229255bd09596246870e065cd0b590a9f29b9fa82f1fb5c45c`): `Adapdf.lnk` exists, target `%LOCALAPPDATA%\Adapdf\adapdf-app.exe`; not clicked. |
+| I-04 | Uninstall removes the files | `installer_uninstall_removes_files` | manual | Uninstall from Settings | The install folder and the Start menu entry are gone. Reports and backups next to the user's documents are not touched. **Partly done (M5b), 2026-11-17, 2 silent uninstalls** with `%LOCALAPPDATA%\Adapdf\uninstall.exe /S`: the folder `%LOCALAPPDATA%\Adapdf`, `Adapdf.lnk` and the `HKCU\...\Uninstall\Adapdf` entry are gone. Left behind, outside the repository (not deleted): `HKCU\Software\Adapdf\Adapdf` (one value, the install folder) and `%LOCALAPPDATA%\com.adapdf.desktop` (WebView2's data, about 48.5 MB: 48,572,325 bytes before the test and after it; it is from earlier runs of the app, and the test runs used a scratch data folder, so they did not change it). **Cause (read in the NSIS file that Tauri generated, `target/release/nsis/x64/installer.nsi`):** Tauri's NSIS template writes `HKCU\Software\Adapdf\Adapdf` on **every** install (`WriteRegStr SHCTX "${MANUPRODUCTKEY}" "" $INSTDIR`), so the 2 installs of the test wrote it again; it was not only an older install that left it. The uninstaller removes that key, and the folders `%APPDATA%\com.adapdf.desktop` and `%LOCALAPPDATA%\com.adapdf.desktop`, **only when the check box "Delete the application data" is ticked** on its confirm page (and not in update mode). A silent uninstall (`/S`) shows no page, so it never deletes them. The tick-box case was not run: **try that check box in an interactive uninstall** (I-09), and check that both are then gone. See "Known gaps in M5b". **Repeated on the release installer, 2026-11-18** (SHA-256 `ba8bf85783763c229255bd09596246870e065cd0b590a9f29b9fa82f1fb5c45c`), 1 silent uninstall (`uninstall.exe /S`, Git Bash path conversion off): folder, `Adapdf.lnk` and the `HKCU\...\Uninstall\Adapdf` entry gone. Left, not deleted: `HKCU\Software\Adapdf\Adapdf`, `%LOCALAPPDATA%\com.adapdf.desktop` (48,572,325 bytes, unchanged) and `%LOCALAPPDATA%\tauri` (129,122,506 bytes, older than this build). The check box "Delete the application data" is still not tried. |
+| I-05 | The bundled veraPDF and Java run on a machine with no Java, in the installed app | `installer_runs_verapdf_without_java` | manual | The installed app on a machine (or Windows account, or folder tree) that has **no source tree of this project** and no Java: `where java` finds nothing and `JAVA_HOME` is unset; then choose `DOC-001-pass.docx` in the app and press Export PDF | The export runs veraPDF from the bundle (the result says Pass and names the veraPDF version). A second run with another Java first on the PATH still uses the bundled one. A third run with `ADAPDF_VENDOR` set to another folder still uses the bundled one (I-10). **Partly done on the build machine (M5b), 2026-11-17** (the proof of the bundled Java that the plan of M5b asks for; this machine has Java and a source tree, so the run of the clean machine is still planned, and so is the run with another Java first on the PATH): with `--no-java` the script took `JAVA_HOME` and the Eclipse Adoptium folder out of the environment of the started app (`where java` there: nothing) and the real export of `DOC-001-pass.docx` gave Pass with veraPDF 1.28.2. The `java.exe` that the app started (seen twice in each of 2 runs, parent: the app) was `%LOCALAPPDATA%\Adapdf\vendor\jre\bin\java.exe` with the class path `...\Adapdf\vendor\verapdf\bin\*`; the second one ran `--profile ...\vendor\verapdf\profiles\veraPDF-validation-profiles-rel-1.28\PDF_UA\WCAG-2-2-Machine.xml`, so the WCAG profile is in the installed copy and runs. The program names `java.exe` by its full path and never uses the PATH. Not done: a run with another Java first on the PATH. The run must be without the source tree: a debug build also looks for `vendor/` at the path of the source tree that it was built from (`CARGO_MANIFEST_DIR`), and would find the tools there and hide a `vendor/` that the installer did not place (I-11). A release build does not look there (review round 1, `a_release_build_looks_only_next_to_the_program`), but the machine without the source tree is still the proof. **Repeated on the release installer, 2026-11-18** (SHA-256 `ba8bf85783763c229255bd09596246870e065cd0b590a9f29b9fa82f1fb5c45c`), 3 runs of the script with `--no-java --watch`: no Java on the PATH of the app (`where java` finds nothing there); the export of `DOC-001-pass.docx` gave Pass (veraPDF 1.28.2); in each run the 2 `java.exe` that the app started were `%LOCALAPPDATA%\Adapdf\vendor\jre\bin\java.exe` with the class path `...\vendor\verapdf\bin\*`, the second with the WCAG machine profile from the installed `vendor\verapdf\profiles`. Still not done: a machine with no Java and no source tree, and another Java first on the PATH. |
 | I-06 | Awkward user names | `installer_with_awkward_user_name` | manual | A user name with a space and a non-ASCII letter | Install, run and uninstall work. Run it also on a true standard user account and under the city's IT policy (for example AppLocker rules for `%LOCALAPPDATA%`, which can block a program that runs from the user's profile). **Planned (not done in M5b).** |
 | I-07 | Word is missing | `app_without_word` | manual | The installed app on a machine with no Word | Choosing a document works and shows its findings. Pressing Export PDF on a document with no errors gives an error message in the app ("The export did not finish.", with the reason that names Word), the page goes back to the findings, and no PDF and no report is written. (The same failure is exit 2 on the command line, a developer tool that the installer does not ship: A-07.) **Not done (M5b):** the build machine has Word. (The M5b task called the proof of the bundled Java "I-07"; in this plan that is I-05.) |
 | I-08 | The installer does not download WebView2 (Windows 11 has it; spec 01, technology) | `installer_skips_webview2_download` (`app/src-tauri/tests/installer_config.rs`) | unit | `tauri.conf.json` | `bundle.windows.webviewInstallMode` is `{ "type": "skip" }`. Any other mode can download WebView2, which is a network call. **Implemented (M5b).** Checked by mutation (`downloadBootstrapper` fails it). |
 | I-09 | The install guide works for a new user (spec 01, phase 5) | `installer_guide_followed_without_help` | manual | The install guide, on a clean Windows 11 user account with no admin rights. A person who did not build the app follows it. | The person installs, runs a check and uninstalls without help. Any help given is a fail. **Planned (M5b built the guide, `docs/install-guide.md`; a person who did not build the app must still follow it on a clean account).** Run it on a true standard user account and under the city's IT policy (for example AppLocker rules for `%LOCALAPPDATA%`), not only on an administrator account. In the uninstall, try the check box "Delete the application data" (see I-04). |
-| I-10 | The installed app uses its own bundled `vendor/` and ignores `ADAPDF_VENDOR`, which is a developer override (decided in M4 review round 1) | `a_release_build_ignores_adapdf_vendor` and `a_release_build_looks_only_next_to_the_program` (`src/verapdf/mod.rs`); manual run of the release program | unit and manual | `Tool::locate_with` with a value and the kind of build, and `vendor_folders`; then the release app, `target/release/adapdf-app.exe` with `vendor/` next to it, started with `ADAPDF_VENDOR=C:/nowhere`, and a Pass export of `DOC-001-pass.docx` | Unit: with a release build (`debug_build` false) the value is ignored and the result equals the result with no value; a debug build uses exactly that folder; an empty value is not a folder; a release build tries only the folder next to the program (the source tree is a place for debug builds only). Manual, 2026-11-17 with Word 16.0.20527: (1) before review round 1, the release `adapdf.exe export` ignored the variable, exit 0 (it found the tools through the source tree path, which is now removed); (2) after it, `app/scripts/axe-webview.mjs` started a copy of the release app in a scratch folder with `vendor/` joined next to it and `ADAPDF_VENDOR=C:/nowhere` in the environment, and the real export of `DOC-001-pass.docx` gave Pass (see "How M5a builds the app"). The installed app (M5b) repeats it with the installer's own layout: **done, 2026-11-17**, the installed `adapdf-app.exe` started with `ADAPDF_VENDOR=C:/nowhere` and with no `vendor/` joined by the script, a real export of `DOC-001-pass.docx` gave Pass (Word 16.0, veraPDF 1.28.2), 2 runs. | the unit parts, the manual run on a release build and the run of the installed app are done |
-| I-11 | `vendor/` is placed next to the app exe by the installer, and the program finds it there (decided in review round 1: the installer ships the desktop app only, not the `adapdf` command line, which stays a developer tool) | `installer_places_vendor_next_to_the_exe` | unit (`tauri.conf.json`) and manual | M5b: `bundle.resources` in `tauri.conf.json` (or the mechanism that M5b chooses) maps the `vendor` folder to `vendor` next to the program. Manual: install, then look in the install folder | Unit: `bundle.resources` has the `vendor` mapping. Manual: after the install, `jre\bin\java.exe` and `verapdf\bin` are in a `vendor` folder next to the app exe (`Tool::locate` looks only there in a release build), and the export of I-05 works. **Implemented (M5b).** Unit: `installer_places_vendor_next_to_the_exe` reads `app/src-tauri/tauri.bundle.conf.json` (`bundle-staging/vendor/` goes to `vendor/`; the licence files go to `THIRD-PARTY.md` and `licenses/`), requires that `tauri.conf.json` has no `resources` (so that `cargo test -p adapdf-app` needs no `vendor/`: the bundle settings are added only by `scripts/build-installer.ps1`, with `--config`), and that the installer has no licence page; `installer_config_has_a_neutral_name_and_no_machine_paths` requires the name and publisher `Adapdf` and no drive letter, rooted or backslash path in either file (checked by mutation: `resources/`, and a path in the publisher). Manual: the installed folder has `adapdf-app.exe`, `uninstall.exe`, `THIRD-PARTY.md`, `licenses\IBM-Plex-OFL-1.1.txt` (from v0.1.0 also `licenses\THIRD-PARTY-LICENSES.txt` and `licenses\Adapdf-LICENSE.txt`) and `vendor\` with `jre\bin\java.exe` and `verapdf\bin`; Tauri puts a resource at its target path next to the exe, so `Tool::locate` needed no change. |
+| I-10 | The installed app uses its own bundled `vendor/` and ignores `ADAPDF_VENDOR`, which is a developer override (decided in M4 review round 1) | `a_release_build_ignores_adapdf_vendor` and `a_release_build_looks_only_next_to_the_program` (`src/verapdf/mod.rs`); manual run of the release program | unit and manual | `Tool::locate_with` with a value and the kind of build, and `vendor_folders`; then the release app, `target/release/adapdf-app.exe` with `vendor/` next to it, started with `ADAPDF_VENDOR=C:/nowhere`, and a Pass export of `DOC-001-pass.docx` | Unit: with a release build (`debug_build` false) the value is ignored and the result equals the result with no value; a debug build uses exactly that folder; an empty value is not a folder; a release build tries only the folder next to the program (the source tree is a place for debug builds only). Manual, 2026-11-17 with Word 16.0.20527: (1) before review round 1, the release `adapdf.exe export` ignored the variable, exit 0 (it found the tools through the source tree path, which is now removed); (2) after it, `app/scripts/axe-webview.mjs` started a copy of the release app in a scratch folder with `vendor/` joined next to it and `ADAPDF_VENDOR=C:/nowhere` in the environment, and the real export of `DOC-001-pass.docx` gave Pass (see "How M5a builds the app"). The installed app (M5b) repeats it with the installer's own layout: **done, 2026-11-17**, the installed `adapdf-app.exe` started with `ADAPDF_VENDOR=C:/nowhere` and with no `vendor/` joined by the script, a real export of `DOC-001-pass.docx` gave Pass (Word 16.0, veraPDF 1.28.2), 2 runs. **Repeated on the release installer, 2026-11-18** (SHA-256 `ba8bf85783763c229255bd09596246870e065cd0b590a9f29b9fa82f1fb5c45c`): installed `adapdf-app.exe`, `ADAPDF_VENDOR=C:/nowhere`, no `vendor/` joined, 3 runs, a real export of `DOC-001-pass.docx` gave Pass each time. | the unit parts, the manual run on a release build and the run of the installed app are done |
+| I-11 | `vendor/` is placed next to the app exe by the installer, and the program finds it there (decided in review round 1: the installer ships the desktop app only, not the `adapdf` command line, which stays a developer tool) | `installer_places_vendor_next_to_the_exe` | unit (`tauri.conf.json`) and manual | M5b: `bundle.resources` in `tauri.conf.json` (or the mechanism that M5b chooses) maps the `vendor` folder to `vendor` next to the program. Manual: install, then look in the install folder | Unit: `bundle.resources` has the `vendor` mapping. Manual: after the install, `jre\bin\java.exe` and `verapdf\bin` are in a `vendor` folder next to the app exe (`Tool::locate` looks only there in a release build), and the export of I-05 works. **Implemented (M5b).** Unit: `installer_places_vendor_next_to_the_exe` reads `app/src-tauri/tauri.bundle.conf.json` (`bundle-staging/vendor/` goes to `vendor/`; the licence files go to `THIRD-PARTY.md` and `licenses/`), requires that `tauri.conf.json` has no `resources` (so that `cargo test -p adapdf-app` needs no `vendor/`: the bundle settings are added only by `scripts/build-installer.ps1`, with `--config`), and that the installer has no licence page; `installer_config_has_a_neutral_name_and_no_machine_paths` requires the name and publisher `Adapdf` and no drive letter, rooted or backslash path in either file (checked by mutation: `resources/`, and a path in the publisher). Manual: the installed folder has `adapdf-app.exe`, `uninstall.exe`, `THIRD-PARTY.md`, `licenses\IBM-Plex-OFL-1.1.txt` (from v0.1.0 also `licenses\THIRD-PARTY-LICENSES.txt` and `licenses\Adapdf-LICENSE.txt`) and `vendor\` with `jre\bin\java.exe` and `verapdf\bin`; Tauri puts a resource at its target path next to the exe, so `Tool::locate` needed no change. **Repeated on the release installer, 2026-11-18** (SHA-256 `ba8bf85783763c229255bd09596246870e065cd0b590a9f29b9fa82f1fb5c45c`): the installed folder has `adapdf-app.exe`, `uninstall.exe`, `THIRD-PARTY.md`, `licenses\THIRD-PARTY-LICENSES.txt` (byte-identical to the repository file, with the WebView2 SDK notice), `licenses\Adapdf-LICENSE.txt`, `licenses\IBM-Plex-OFL-1.1.txt`, `vendor\jre\bin\java.exe` and `vendor\verapdf`; the export works from them. |
 | I-12 | Upgrade over an existing install | `installer_upgrade_keeps_the_user_data` | manual | Install one build, run the app once (so WebView2 data exists), then run the installer of a later build over it, with and without the app closed | The second install finishes without an error, the install folder has only the files of the new build (no file of the old one that the new one does not have), the Start menu entry and the uninstall entry still work, and the app starts. The user's guides, PDFs and reports are not touched. **Planned (not done in M5b):** the build machine run was a first install, twice, each followed by an uninstall. |
 | I-13 | Install and uninstall while the app is running | `installer_while_the_app_runs` | manual | Start the app (and an export that has started `java.exe`), then run the installer, and in a second run the uninstaller | The installer or the uninstaller tells the person to close the app, or stops it, and does not leave a half-installed folder or a locked file that stops a later install. No `adapdf-app.exe`, `java.exe` or `msedgewebview2.exe` of the app is left. **Planned (not done in M5b).** |
 
@@ -2229,20 +2229,75 @@ installer show a page that a person must accept, with Markdown text. It was take
 veraPDF and of the Java runtime are in `vendor/`), and `installer_config.rs` checks that
 the setting is not there.
 
-**The installer.** `target/release/bundle/nsis/Adapdf_0.1.0_x64-setup.exe`, 41,792,563
-bytes (39.86 MiB), SHA-256 `3714d9316c3617c5c0dac661cbba18fba755ad9daf0ca2935533636e6a5edd0b`
-(of the file that was tested; a new build gives another value). `target/release/bundle` is 40
-MB. The build did not change `Cargo.lock` or `app/pnpm-lock.yaml` (`git status`).
+**WebView2 arguments (N-03).** The window in `tauri.conf.json` sets `additionalBrowserArgs`:
 
-**The installed folder** (`%LOCALAPPDATA%\Adapdf`, 175 MB, top 2 levels):
+```
+--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,msEdgeEnhanceSecurityMode
+--disable-background-networking --disable-component-update --disable-domain-reliability
+```
+
+(one line in the file). Setting `additionalBrowserArgs` **replaces** Tauri's default (wry 0.57.2,
+`src/webview2/mod.rs`: `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection`; the app has
+no autoplay and no proxy setting), so the 3 defaults are repeated, and the new feature is added to
+the same list: Chromium takes the last `--disable-features`, so there must be one only. The app
+loads only its own bundled pages (the CSP is `'self'`), so these services have no job in it. What
+each does, and where that is written:
+
+| Argument | Effect | Source, and what was and was not checked |
+|---|---|---|
+| `msWebOOUI`, `msPdfOOUI` | Edge features: the "mini menu" (web and PDF out-of-box UI) | wry's own comment (issue 535 of wry); a default, kept so the window behaves as before |
+| `msSmartScreenProtection` | Edge SmartScreen checks of pages and downloads, which call Microsoft | wry's comment (Tauri issue 1345); a default, kept |
+| `msEdgeEnhanceSecurityMode` | Edge "enhanced security mode" | The feature name is Edge's; it was in the diagnostic run of this work that saw no external connection. **No Microsoft or Chromium text was read for it**, so its effect in WebView2 is not confirmed apart from that run |
+| `--disable-background-networking` | "Disable several subsystems which run network requests in the background" (made for performance tests) | The comment on `kDisableBackgroundNetworking` in Chromium's `chrome/common/chrome_switches.cc`, read in the source of the tag 130.0.6723.58 (the runtime on this machine is 157.0.4341.60; the file of 157 was not read) |
+| `--disable-component-update` | Turns off Chromium's component updater | The switch is declared in the same file with no comment; the effect is from its name and the diagnostic run, not from a text |
+| `--disable-domain-reliability` | "Disables Domain Reliability Monitoring" (a service that reports network errors to the browser maker) | The comment in the same file (tag 130.0.6723.58); the description in brackets is from general knowledge, not from that text |
+
+Left out on purpose: `--no-pings` ("Don't send hyperlink auditing pings": the pages have no such
+links), `--disable-sync` (WebView2 has no browser sign-in), and anything for metrics or crash
+reports (`--metrics-recording-only` does not turn an upload off; no switch was found whose effect
+can be shown from a text). Chromium switches are not a stable interface of WebView2, so each run of
+the driven test reads the command line of the browser process, and the connection watch shows
+whether it still works on a newer runtime. `window_turns_off_webview2_background_networking`
+(`installer_config.rs`) requires the 3 defaults, the new feature, one `--disable-features` only,
+and the 3 flags; it was checked by 6 mutations (a flag removed, a second `--disable-features`, a
+default removed, the new feature removed, the whole setting removed, `--disable-component-update`
+removed): each failed the test, and the file was restored. None of the arguments concerns drag
+and drop, the file dialog, focus or fonts, and the driven test showed that the page, the IPC
+(every command) and the export work with them. Drag and drop, the real file dialog (the script
+replaces it) and focus were **not tried** by a person with these arguments.
+
+**The installer.** The release installer of v0.1.0 was built again on 2026-11-18 with these
+arguments: `Adapdf_0.1.0_x64-setup.exe`, 41,829,183 bytes (39.89 MiB), SHA-256
+`0d3f6c81108539cd278ee812365a85756c7ec152add0fcf99660c4c6659d419a` (the build took 1 minute 42
+seconds; the staging folder was deleted after it). It is the file of "The second run of
+2026-11-18" below. The first release installer of 2026-11-18 (the next paragraph) is
+the one without them. The release installer of v0.1.0 (built 2026-11-18 from the tree of commit
+`9cbcc04`, with `-Vendor C:/Users/dgriffin3/Adapdf/vendor`):
+`target/release/bundle/nsis/Adapdf_0.1.0_x64-setup.exe`, 41,837,226 bytes (39.90 MiB),
+SHA-256 `ba8bf85783763c229255bd09596246870e065cd0b590a9f29b9fa82f1fb5c45c`. This is the file
+that the run of 2026-11-18 (below) installed and uninstalled; a new build gives another
+value. The first M5b build (run of 2026-11-17, before the licence files were added) was
+41,792,563 bytes, SHA-256 `3714d9316c3617c5c0dac661cbba18fba755ad9daf0ca2935533636e6a5edd0b`.
+`target/release/bundle` is 40 MB. The build did not change `Cargo.lock` or
+`app/pnpm-lock.yaml` (`git status` was clean after it). The build script took about 2
+minutes (cached Rust build). Its steps all passed: the check of `vendor/` and of the font
+licence, the licence check (`collect-licenses.mjs --check`: 268 crates, 77 npm packages, 208
+distinct texts, "up to date"), the two robocopy runs (exit codes below 8), the check that the
+two merged profile files are in the staging copy, the check of path lengths (none over 150
+characters), and `pnpm tauri build` (page, release program, NSIS). The script prints nothing
+for a step that passes, except the licence check.
+
+**The installed folder** (`%LOCALAPPDATA%\Adapdf`, 175 MB in the first build and 176 MB in
+the release build, top 2 levels; all of it, with the two licence files, was seen in the
+install of 2026-11-18):
 
 ```
 adapdf-app.exe
 uninstall.exe
 THIRD-PARTY.md
 licenses/IBM-Plex-OFL-1.1.txt
-licenses/THIRD-PARTY-LICENSES.txt   (v0.1.0)
-licenses/Adapdf-LICENSE.txt         (v0.1.0)
+licenses/THIRD-PARTY-LICENSES.txt
+licenses/Adapdf-LICENSE.txt
 vendor/jre/        NOTICE, bin/ (java.exe and the runtime), conf/, legal/, lib/, release
 vendor/verapdf/    bin/, model/, plugins/, profiles/, verapdf.bat, verapdf-gui.bat
 ```
@@ -2288,7 +2343,154 @@ source tree of the worktree present). Steps, in order:
    and `WixTools314` 117 MB, from 2026-04; both older than M5b). No scratch folder is left in
    `C:\tmp` for the script.
 
-**Checks** (2026-11-17, on the final tree; the page was built by `pnpm build`):
+**The run of 2026-11-18 on the release installer** (same machine and account; SHA-256
+`ba8bf857...c45c`, the file above, run from `target/release/bundle/nsis/`; Word 16.0 not
+running before or after any step; Eclipse Adoptium JDK 21 on the PATH and `JAVA_HOME` set).
+
+1. Before: no `WINWORD.EXE`, no `adapdf-app.exe`, no `%LOCALAPPDATA%\Adapdf`;
+   `%LOCALAPPDATA%\com.adapdf.desktop` 48,572,325 bytes; `%LOCALAPPDATA%\tauri` 129,122,506
+   bytes; `HKCU\Software\Adapdf\Adapdf` there (from the run of 2026-11-17).
+2. **A mistake in the first start, and what it showed.** Started from Git Bash as
+   `"$f" /S`, Git Bash turned `/S` into `S:/`, so the installer was not silent: it showed its
+   wizard. It was ended by the coordinator's request (nothing was installed: no folder, no
+   uninstall entry, no shortcut; the `HKCU\Software\Adapdf\Adapdf` key was the one from
+   before). The second start used `MSYS_NO_PATHCONV=1` and the process list
+   (`Get-CimInstance Win32_Process`) showed the command line ending in ` /S`. Rule for the
+   manual runs: set `MSYS_NO_PATHCONV=1` in Git Bash (or use PowerShell) and look at the
+   command line before waiting. The run of 2026-11-17 (exit code 0, no prompt, folder made)
+   fits a silent start; its command history was not kept, so it cannot be shown again.
+3. Silent install, exit code 0 (the duration was not timed). The folder, the
+   `HKCU\...\Uninstall\Adapdf` entry (DisplayName `Adapdf`, Publisher `Adapdf`, version 0.1.0,
+   InstallLocation and UninstallString under `%LOCALAPPDATA%\Adapdf`, no `HKLM` entry in any of
+   the 4 places) and `Adapdf.lnk` (target `%LOCALAPPDATA%\Adapdf\adapdf-app.exe`) were made.
+   Nothing in `C:\Program Files`, `C:\Program Files (x86)` or the all-users Start menu. The
+   folder has `adapdf-app.exe`, `uninstall.exe`, `THIRD-PARTY.md`,
+   `licenses\THIRD-PARTY-LICENSES.txt`, `licenses\Adapdf-LICENSE.txt`,
+   `licenses\IBM-Plex-OFL-1.1.txt`, `vendor\jre\bin\java.exe` and `vendor\verapdf\` (176 MB).
+   `licenses\THIRD-PARTY-LICENSES.txt` is byte-identical to the file in the repository
+   (`cmp`) and has the Microsoft WebView2 SDK licence and notice (texts 153 and 154);
+   `licenses\Adapdf-LICENSE.txt` is byte-identical to `LICENSE`.
+4. `node scripts/axe-webview.mjs --installed %LOCALAPPDATA%\Adapdf\adapdf-app.exe --no-java
+   --watch`, 3 runs (the first 2 as the 2026-11-17 run; the third is the diagnostic below).
+   In each: `where java` in the environment of the program finds nothing; the check of
+   `LST-002-fail.docx` and the fix flow worked; the real export of `DOC-001-pass.docx` gave
+   **Pass** ("veraPDF 1.28.2", names the WCAG profile run); axe on 14 screens: **0 violations, 0
+   colour contrast, 0 contrast checks undecided**; 2 `java.exe` seen, both
+   `%LOCALAPPDATA%\Adapdf\vendor\jre\bin\java.exe` with the class path
+   `%LOCALAPPDATA%\Adapdf\vendor\verapdf\bin\*`, started by the app (the second one
+   `--profile ...\PDF_UA\WCAG-2-2-Machine.xml`); the script ended only its own process tree.
+5. **N-03 did not pass in the default runs.** The watch found a connection to another address
+   in run 1 and in run 2, and the script exited 1 both times: run 1 `TCP 192.168.1.146:57184 ->
+   150.171.23.17:443 ESTABLISHED`, run 2 `UDP 0.0.0.0:63888 -> 52.123.249.57:443` (QUIC). Both
+   were owned by `msedgewebview2.exe --type=utility
+   --utility-sub-type=network.mojom.NetworkService` in the tree of the app (the WebView2
+   runtime's own network process, not the app's code, `java.exe` or Word); 150.171.23.17 is a
+   Microsoft address in Redmond (ipinfo.io; no reverse DNS name). What was sent is not known
+   (sampling, no packet capture). The run of 2026-11-17 saw none of this (3 local endpoints),
+   so it is not on every run. Run 3, a **diagnostic, not the product's setting**: the same
+   command with `--browser-args "--disable-background-networking --disable-component-update
+   --disable-features=msSmartScreenProtection,msEdgeEnhanceSecurityMode"` saw 3 endpoints, all
+   local, 0 to other addresses (17 looks, exit 0). One run is not proof that those flags
+   stop it. Open: WebView2 can reach Microsoft on its own with a fresh profile (it is outside
+   the app's code); whether to set those arguments in the app, or to state it in the guide
+   and the release notes, is a decision for the owner.
+6. Silent uninstall with `%LOCALAPPDATA%\Adapdf\uninstall.exe /S` (`MSYS_NO_PATHCONV=1`; the
+   process finished too fast to look at its command line, so only the result shows that it was
+   silent: no wizard waited, exit code 0): the folder, `Adapdf.lnk` and the
+   `HKCU\...\Uninstall\Adapdf` entry were gone. Left, outside the repository, not deleted:
+   `HKCU\Software\Adapdf\Adapdf` (one value, the install folder), `%LOCALAPPDATA%\com.adapdf.desktop`
+   (48,572,325 bytes, unchanged: the runs used a scratch data folder) and `%LOCALAPPDATA%\tauri`
+   (129,122,506 bytes: `NSIS` 7.9 MB, `WixTools314` 117 MB, both older than this build). No
+   `adapdf-app.exe`, `java.exe`, installer or uninstaller process left, and no
+   `WINWORD.EXE` before or after (also before and after each run of the script, which checks
+   it itself). The scratch folders of the script were removed.
+7. Not repeated on 2026-11-18: a second install and uninstall (done twice on 2026-11-17).
+
+**The second run of 2026-11-18: the window turns WebView2's background services off** (same
+machine and account; the installer rebuilt with `additionalBrowserArgs` set; 41,829,183 bytes,
+SHA-256 `0d3f6c81108539cd278ee812365a85756c7ec152add0fcf99660c4c6659d419a`; built from the tree
+of commit `9cbcc04` plus the uncommitted changes of this work). Word 16.0 was not running before
+or after any step (`tasklist /FI "IMAGENAME eq WINWORD.EXE"`, and the script prints it before and
+after each run: "none" in all 13 runs).
+
+1. **Silent install.** `MSYS_NO_PATHCONV=1 ./Adapdf_0.1.0_x64-setup.exe /S`. The process list
+   (`Get-CimInstance Win32_Process`) showed the installer's own command line ending in ` /S`:
+   `...\target\release\bundle\nsis\Adapdf_0.1.0_x64-setup.exe /S`. Exit code 0, no prompt. The
+   folder (`adapdf-app.exe`, `uninstall.exe`, `THIRD-PARTY.md`, `licenses\`, `vendor\jre`,
+   `vendor\verapdf`) and `Adapdf.lnk` were made.
+2. **The installed program really passes the flags** (checked with no override at all: a
+   small script started the installed `adapdf-app.exe` with
+   `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` taken out of its environment, read the command line
+   of WebView2's browser process, then ended the process tree that it started): `...\EdgeWebView\Application\157.0.4341.60\msedgewebview2.exe
+   --embedded-browser-webview=1 --webview-exe-name=adapdf-app.exe --webview-exe-version=0.1.0
+   --user-data-dir=... --noerrdialogs --embedded-browser-webview-dpi-awareness=2
+   --disable-background-networking --disable-component-update --disable-domain-reliability
+   --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,msEdgeEnhanceSecurityMode
+   --lang=en-US ...`. One `--disable-features`, and the 3 defaults of Tauri are in it.
+3. **How the driven test attaches without replacing the program's flags.** The script opens
+   WebView2's debugging port with the environment variable
+   `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`. WebView2 adds the words of that variable after the
+   program's own `additionalBrowserArgs`; it does not replace them. Seen on the command line of the
+   browser process in all 13 runs: the program's words first, then `--remote-allow-origins=*
+   --remote-debugging-port=<port>`. (Run 1: `--noerrdialogs --disable-background-networking
+   --disable-component-update --disable-domain-reliability
+   --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,msEdgeEnhanceSecurityMode
+   --remote-allow-origins=* --remote-debugging-port=53066 --lang=en-US`.) The script now reads
+   the command line of the browser process in every `--watch` run and fails when a word of
+   `additionalBrowserArgs` (read from `src-tauri/tauri.conf.json`) is missing, so a run tests the
+   shipped settings, not a copy of them. The option `--browser-args` stays for a diagnostic run
+   and is not used here.
+4. **13 runs of `node app/scripts/axe-webview.mjs --installed %LOCALAPPDATA%\Adapdf\adapdf-app.exe
+   --no-java --watch`**, `ADAPDF_VENDOR=C:/nowhere`, no `--browser-args`. In every run: `where java`
+   in the environment of the program finds nothing; the check of `LST-002-fail.docx` and its fix
+   flow worked; the real export of `DOC-001-pass.docx` gave **Pass** (veraPDF 1.28.2); axe on 14
+   screens: **0 violations, 0 colour contrast, 0 contrast checks undecided**; the browser
+   process had every argument of `additionalBrowserArgs`; **endpoints seen: 3, all on this
+   machine, 0 to another address** (14 to 17 looks per run: 2 runs with 14, 6 with 16, 5 with 17);
+   Word not running before or after. **Network result: no connection to another address in 13 of
+   13 runs** (address, port, protocol and owning process of an external connection: none to list).
+   The java proof is a separate matter, and a flaw of the script showed up in it: veraPDF's two
+   `java.exe` run for a short time, and a look at one that is ending can give no path and no
+   command line. The first script (runs 1 to 7) failed such a run with `a java.exe that is not the
+   bundled one: undefined`: **runs 4, 5 and 6 exited 1 for that reason only** (their network
+   result was the same: 3 local endpoints, no external one; the export gave Pass; 0 violations).
+   The script was changed (not the check of the path: a `java.exe` with a known path that is not
+   the bundled one still fails): a `java.exe` with no path seen is listed as "not proved", and
+   the run still needs at least one `java.exe` that is proved to be the bundled one. Runs 8 to
+   13 ran with the changed script and **all exited 0**. Bundled Java proved
+   (`%LOCALAPPDATA%\Adapdf\vendor\jre\bin\java.exe`, parent: the app) in 11 of the 13 runs;
+   in runs 4 and 5 no `java.exe` was seen with a path, so the proof is missing there (runs 4 and 5
+   would fail with the changed script too; they are counted as run, not as java proofs).
+5. **Silent uninstall, and two mistakes of mine that showed how it works.**
+   `uninstall.exe` of an NSIS installer copies itself to `%TEMP%\~nsu1.tmp\Un.exe` and starts that
+   copy with its own arguments and `_?=<install folder>`; the first process then ends. So the
+   process to look at is `Un.exe`. A look at the first process (`uninstall.exe`) could not read
+   its command line (WMI gave an empty value: the process ended at once). The copy was seen:
+   `"C:\tmp\~nsu1.tmp\Un.exe" /S _?=C:\Users\dgriffin3\AppData\Local\Adapdf\` (here `%TEMP%` is
+   `C:\tmp`). With the final method the uninstall was silent: the folder `%LOCALAPPDATA%\Adapdf`,
+   `Adapdf.lnk` and the `HKCU\...\Uninstall\Adapdf` entry were gone. Two earlier uninstalls were
+   started in a shell where `MSYS_NO_PATHCONV=1` was not set (`export X && cmd &` runs the
+   `export` in the background subshell too, so the next command did not have it): Git Bash
+   changed `/S` to `S:/`, the copy was `Un.exe S:/ _?=...`, it showed its wizard and waited, and
+   the folder stayed. Both `Un.exe` processes were started by this test; they were ended by
+   their process id (39596 and 37580) and their `C:\tmp\~nsu*.tmp` folders were removed. Rule:
+   set the variable on its own line, or start the program from PowerShell, and look at the command
+   line of `Un.exe` (not of `uninstall.exe`). A folder `~nsu1.tmp` with `Un.exe` stayed in `%TEMP%`
+   after the silent uninstall (it is in `C:\tmp` here; removed). It was not checked whether this
+   happens with the usual `%TEMP%`; a silent uninstall started by PowerShell's `Start-Process`
+   also removed everything.
+6. **Left after the final uninstall** (outside the repository, not deleted):
+   `HKCU\Software\Adapdf\Adapdf`, `%LOCALAPPDATA%\com.adapdf.desktop` (48,572,325 bytes,
+   unchanged: the runs use a scratch data folder) and `%LOCALAPPDATA%\tauri` (129,122,506 bytes,
+   unchanged). No `adapdf-app.exe`, `java.exe`, `Un.exe`, `uninstall.exe` or installer process
+   left, and no scratch folder of the script left in `C:\tmp`. The installs and uninstalls of
+   this test were more than the minimum because of the two mistakes above and the wish to see the
+   command line of `Un.exe`: 6 installs and 7 uninstalls in all (2 of the uninstalls were the
+   wizard ones above, so the next install ran over what they left; that install was silent too).
+
+**Checks** (2026-11-17, on the final tree; the page was built by `pnpm build`; re-run on
+2026-11-18 with the same results: `cargo fmt --all --check` no difference, root `cargo test`
+775 passed, `cargo test -p adapdf-app` 33 passed, `collect-licenses.mjs --check` up to date):
 
 | Command | Result |
 |---|---|
@@ -2368,6 +2570,22 @@ the test that it should, and the files were restored.
 - veraPDF now ships to users. `scripts/fetch-vendor.ps1` checks it against a SHA-256 value
   that the project computed itself from the download, and the PGP signature that veraPDF
   publishes was not verified. Verify it, or take the value from a publisher's checksum.
+- N-03 did not pass in the default runs of 2026-11-18: WebView2's own network process
+  connected to a Microsoft address in 2 of 2 default runs (the run of 2026-11-17 saw none). The
+  owner decided to turn WebView2's background services off in the window (`additionalBrowserArgs`,
+  see "WebView2 arguments (N-03)"). With them, 13 runs from the installed copy saw no connection
+  to another address ("The second run of 2026-11-18"). That is sampling, not a firewall log, and
+  13 runs do not prove that the arguments are the cause. The install guide and the release notes
+  say only what was tested. A run on another machine, and the firewall-log test, are still to do.
+
+**Done.** Build the release installer and repeat install, check, export and uninstall on
+that exact file: **done 2026-11-18**, `Adapdf_0.1.0_x64-setup.exe`, SHA-256
+`ba8bf85783763c229255bd09596246870e065cd0b590a9f29b9fa82f1fb5c45c` (silent install,
+check and Pass export and 14-screen axe run from the installed copy, silent uninstall; one
+computer, one administrator account, shell not elevated). The N-03 result above is the
+exception to "no problem found", until the second run of 2026-11-18 (the installer of SHA-256
+`0d3f6c81108539cd278ee812365a85756c7ec152add0fcf99660c4c6659d419a`, with the WebView2 arguments:
+silent install, 13 runs, no connection to another address, silent uninstall).
 
 ## Third-party licence texts (v0.1.0)
 

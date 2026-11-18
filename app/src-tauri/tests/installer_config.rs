@@ -122,3 +122,46 @@ fn installer_config_has_a_neutral_name_and_no_machine_paths() {
         }
     }
 }
+
+/// N-03: the window turns off WebView2's background networking. Tauri's default
+/// browser arguments (`--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection`,
+/// from wry 0.57) are dropped when this setting exists, so they are repeated here.
+#[test]
+fn window_turns_off_webview2_background_networking() {
+    let config = read("tauri.conf.json");
+    let windows = config["app"]["windows"].as_array().unwrap();
+    assert_eq!(windows.len(), 1, "the test reads the only window");
+    let args = windows[0]["additionalBrowserArgs"]
+        .as_str()
+        .expect("the window has no additionalBrowserArgs");
+    let words: Vec<&str> = args.split_whitespace().collect();
+    // Chromium takes the last --disable-features, so there must be one only.
+    let lists: Vec<&&str> = words
+        .iter()
+        .filter(|w| w.starts_with("--disable-features="))
+        .collect();
+    assert_eq!(
+        lists.len(),
+        1,
+        "need exactly one --disable-features: {args}"
+    );
+    let mut features: Vec<&str> = lists[0]["--disable-features=".len()..].split(',').collect();
+    features.sort_unstable();
+    assert_eq!(
+        features,
+        [
+            "msEdgeEnhanceSecurityMode",
+            "msPdfOOUI",
+            "msSmartScreenProtection",
+            "msWebOOUI"
+        ],
+        "Tauri's defaults (msWebOOUI, msPdfOOUI, msSmartScreenProtection) and the network features"
+    );
+    for flag in [
+        "--disable-background-networking",
+        "--disable-component-update",
+        "--disable-domain-reliability",
+    ] {
+        assert!(words.contains(&flag), "{flag} is missing from: {args}");
+    }
+}

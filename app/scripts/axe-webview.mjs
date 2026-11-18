@@ -36,9 +36,16 @@
 // * `--watch` looks about once a second at the processes that the program started (its
 //   own process tree) and at the network connections that they own (`netstat -ano`).
 //   It lists each `java.exe` that was started (its path and command line) and fails
-//   when one is not the bundled one, when none was seen, or when a process of the tree
+//   when one is not the bundled one, when none was proved to be the bundled one (a
+//   java.exe whose path was not seen, because it was ending at the look, is listed as
+//   not proved), or when a process of the tree
 //   has a connection to an address that is not on this machine (rows I-07 and N-03).
 //   This is sampling: a connection that opens and closes between two looks is missed.
+//   It also reads the command line of WebView2's browser process and fails when a
+//   word of `additionalBrowserArgs` in `src-tauri/tauri.conf.json` is not in it (row
+//   N-03: the arguments that the program ships are the ones that are tested).
+// * `--browser-args "<args>"` adds browser arguments for a diagnostic run. Never needed:
+//   the program passes its own (`additionalBrowserArgs`) and the script must not hide them.
 // * `--default-profile` leaves WebView2's user data folder at its default
 //   (`%LOCALAPPDATA%\com.adapdf.desktop`), as when a person starts the program, so that
 //   what an uninstall leaves behind can be seen (row I-04).
@@ -68,6 +75,8 @@ const noJava = process.argv.includes("--no-java");
 const watch = process.argv.includes("--watch");
 const defaultProfile = process.argv.includes("--default-profile");
 const extraBrowserArgs = option("--browser-args", "");
+const shippedArgs =
+  JSON.parse(readFileSync(join(appDir, "src-tauri", "tauri.conf.json"), "utf8")).app.windows[0].additionalBrowserArgs ?? "";
 const axeSource = readFileSync(join(appDir, "node_modules", "axe-core", "axe.min.js"), "utf8");
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 
@@ -149,6 +158,9 @@ function programEnvironment(port) {
       throw new Error("Java is still on the PATH of the program.");
     }
   }
+  // WebView2 adds the words of this variable after the `additionalBrowserArgs` of the
+  // program; it does not replace them. `reportWatch` proves it on the command line of
+  // WebView2's browser process, so the shipped arguments are in force during the run.
   env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = `--remote-debugging-port=${port} --remote-allow-origins=* ${extraBrowserArgs}`.trim();
   if (!defaultProfile) {
     env.WEBVIEW2_USER_DATA_FOLDER = join(scratch, "webview2");
@@ -205,21 +217,44 @@ function startWatch(rootPid) {
 /** Prints what the watch saw. Gives the problems found (an empty list is a pass). */
 function reportWatch(seen, vendorJre, exportRan) {
   const problems = [];
+  const browsers = seen.procs.filter((p) => /^msedgewebview2\.exe$/i.test(p.name) && p.cmd && !/ --type=/.test(p.cmd));
+  if (browsers.length === 0) {
+    problems.push("the browser process of WebView2 was not seen, so its arguments are not known");
+  }
+  for (const b of browsers) {
+    const words = b.cmd.split(/\s+/);
+    const missing = shippedArgs.split(/\s+/).filter(Boolean).filter((w) => !words.includes(w));
+    console.log(`  WebView2 browser process ${b.pid}: ${missing.length === 0 ? "has every argument of additionalBrowserArgs" : "MISSING " + missing.join(" ")}`);
+    console.log(`    flags: ${words.filter((w) => w.startsWith("--") && !/^--(user-data-dir|webview-exe-name|webview-exe-version|embedded-browser-webview-dpi-awareness|embedded-browser-webview|mojo-named-platform-channel-pipe)/.test(w)).join(" ")}`);
+    if (missing.length > 0) {
+      problems.push(`WebView2 does not run with: ${missing.join(" ")}`);
+    }
+  }
   const byName = new Map();
   for (const p of seen.procs) byName.set(p.name, (byName.get(p.name) ?? 0) + 1);
   console.log(`\nWatch: ${seen.looks} looks at the process tree of the program.`);
   console.log(`  processes seen (${seen.procs.length}): ${[...byName].map(([n, c]) => `${n} x${c}`).join(", ")}`);
   const javas = seen.procs.filter((p) => /^java\.exe$/i.test(p.name));
+  let provenBundled = 0;
   for (const j of javas) {
     const path = j.exe ?? /^"([^"]+)"/.exec(j.cmd ?? "")?.[1];
+    if (!path) {
+      // A look at a process that is ending can show no path and no command line (veraPDF's
+      // runs are short). It started under the program (it is in its tree) and cannot be
+      // proved from this look; it is not a failure, but one other java.exe must be proved.
+      console.log(`  java.exe pid ${j.pid} (parent ${j.ppid}): path not seen (the process was ending), not proved`);
+      continue;
+    }
     console.log(`  java.exe pid ${j.pid} (parent ${j.ppid}): ${path}`);
     console.log(`    command line: ${(j.cmd ?? "").slice(0, 900)}`);
-    if (!path || !path.toLowerCase().startsWith(vendorJre.toLowerCase())) {
+    if (path.toLowerCase().startsWith(vendorJre.toLowerCase())) {
+      provenBundled++;
+    } else {
       problems.push(`a java.exe that is not the bundled one: ${path}`);
     }
   }
-  if (exportRan && javas.length === 0) {
-    problems.push("no java.exe was seen during the export (a run of veraPDF is shorter than a look?)");
+  if (exportRan && provenBundled === 0) {
+    problems.push("no java.exe was proved to be the bundled one during the export (a run of veraPDF is shorter than a look?)");
   }
   const remote = seen.connections.filter((c) => c.remote && !isLoopback(c.remote) && !/^(\*:\*|0\.0\.0\.0:0|\[::\]:0)$/.test(c.remote));
   const local = seen.connections.filter((c) => !remote.includes(c));

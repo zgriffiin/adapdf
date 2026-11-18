@@ -11,9 +11,11 @@ a report. The report is your evidence for the file. A person still has to check
 the PDF in PAC and sign off.
 
 Adapdf does not send your documents anywhere. It does its work on your computer
-and does not need a network connection for it. (The tests on one computer found
-no connection from Adapdf to another address. Word, and Windows, can still use the
-network for their own reasons.)
+and does not need a network connection for it. Adapdf's window turns off the
+background services of WebView2 (the Microsoft component that draws the window).
+In 13 test runs on one computer, no connection to another address was seen. The
+test looks at the connections about once a second, so it can miss a short one.
+Word and Windows manage their own updates and can still use the network.
 
 ## What you need
 
