@@ -16,8 +16,21 @@ to them.
   Licence: GNU GPL v3 or later, or Mozilla Public License v2 or later (a dual
   licence). Adapdf distributes it under the MPL-2.0 option. The licence texts are
   in the files `vendor/verapdf/model/veraPDF-model-rel-1.28/LICENSE.GPL` and
-  `LICENSE.MPL`. Source code: <https://github.com/veraPDF> and
-  <https://software.verapdf.org/releases/1.28/>. Web site: <https://verapdf.org/>.
+  `LICENSE.MPL`. Source code of this exact version, tag `v1.28.2` of
+  <https://github.com/veraPDF/veraPDF-apps/tree/v1.28.2>,
+  <https://github.com/veraPDF/veraPDF-library/tree/v1.28.2>,
+  <https://github.com/veraPDF/veraPDF-validation/tree/v1.28.2>,
+  <https://github.com/veraPDF/veraPDF-parser/tree/v1.28.2> and
+  <https://github.com/veraPDF/veraPDF-model/tree/v1.28.2>; the validation profiles
+  have no 1.28.2 tag, and their newest 1.28 tag is
+  <https://github.com/veraPDF/veraPDF-validation-profiles/tree/v1.28.1>. The release
+  is at <https://software.verapdf.org/releases/1.28/>. Web site: <https://verapdf.org/>.
+  The veraPDF program file `vendor/verapdf/bin/greenfield-apps-1.28.2.jar` also holds
+  libraries of other projects that veraPDF builds into it, among them Jackson,
+  Mozilla Rhino, JAXB, JavaBeans Activation, JCommander and StAX utilities, each under
+  its own licence. Adapdf ships the file as veraPDF publishes it, without change; the
+  list of those libraries, their licences and their versions are given by veraPDF's
+  build (the `pom.xml` files at the tags above).
 - Eclipse Temurin JRE (Java runtime), version 21.0.13+9, x64, Windows.
   Licence: GNU GPL v2 with the Classpath Exception. The folder `vendor/jre/legal/`
   has the licence text of the runtime and of every part of it, and `vendor/jre/NOTICE`
@@ -39,7 +52,7 @@ to them.
 | The licence texts of veraPDF (GPLv3+ and MPLv2+) ship, and the source of veraPDF can be had. | Done. The texts are in `vendor/verapdf/model/`, and the links are above. |
 | Java and veraPDF run as separate programs, and Adapdf does not link to them. | Done. Said above. The code starts them as processes (`src/verapdf`). |
 | The source of the Temurin runtime is offered from the same place as the download. | At release. The maintainer attaches the archive named above to the GitHub release and checks its SHA-256 against the value above. Until it is attached, this point is open. |
-| The licence texts of the Rust crates and the npm packages in the build ship. | Done. `scripts/collect-licenses.mjs` writes `THIRD-PARTY-LICENSES.txt`, which the installer puts at `licenses/THIRD-PARTY-LICENSES.txt`. Six crates publish no licence file in their package (`alloc-stdlib` 0.2.4 and 0.3.0, `selectors` 0.38.0, `webview2-com` and `webview2-com-sys` 0.39.1, `webview2-com-macros` 0.8.1); their texts were taken from the upstream repositories into `licenses/upstream/`, which the script uses for them (sources in `licenses/upstream/README.md`). |
+| The licence texts of the Rust crates and the npm packages in the build ship. | Done. `scripts/collect-licenses.mjs` writes `THIRD-PARTY-LICENSES.txt`, which the installer puts at `licenses/THIRD-PARTY-LICENSES.txt`. Six crates publish no licence file in their package (`alloc-stdlib` 0.2.4 and 0.3.0, `selectors` 0.38.0, `webview2-com` and `webview2-com-sys` 0.39.1, `webview2-com-macros` 0.8.1); their texts were taken from the upstream repositories into `licenses/upstream/`, which the script uses for them (sources in `licenses/upstream/README.md`). `webview2-com-sys` also links Microsoft's `WebView2LoaderStatic.lib` (WebView2 SDK 1.0.3800.47) into the program; Microsoft's licence and notice for it, from the `Microsoft.Web.WebView2` 1.0.3800.47 NuGet package, are in the same folder and in `THIRD-PARTY-LICENSES.txt`. |
 | The licence of IBM Plex Sans (SIL OFL 1.1) ships. | Done. `licenses/IBM-Plex-OFL-1.1.txt` in the folder of the program (it is also in `THIRD-PARTY-LICENSES.txt`). |
 | The licence of Adapdf ships. | Done. `LICENSE` is in the repository and in the installer at `licenses/Adapdf-LICENSE.txt`. |
 

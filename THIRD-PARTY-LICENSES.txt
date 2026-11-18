@@ -7,7 +7,7 @@ licence texts are in the folder vendor next to the program (see THIRD-PARTY.md).
 The list is made by scripts/collect-licenses.mjs. It is checked by the maintainer. It is
 not legal advice.
 
-Rust crates: 268. npm packages: 77. Distinct texts: 206.
+Rust crates: 268. npm packages: 77. Distinct texts: 208.
 
 == Rust crates ==
 
@@ -247,118 +247,118 @@ web-time 1.1.0: MIT OR Apache-2.0; text 150, 151
 web_atoms 0.2.6: MIT OR Apache-2.0; text 13, 68
 webview2-com 0.39.1: MIT; text 152
 webview2-com-macros 0.8.1: MIT; text 152
-webview2-com-sys 0.39.1: MIT; text 152
-weezl 0.2.1: MIT OR Apache-2.0; text 13, 153
+webview2-com-sys 0.39.1: MIT; text 152, 153, 154
+weezl 0.2.1: MIT OR Apache-2.0; text 13, 155
 winapi-util 0.1.11: Unlicense OR MIT; text 6, 117, 8
-window-vibrancy 0.8.1: Apache-2.0 OR MIT; text 13, 154, 155
-windows 0.62.2: MIT OR Apache-2.0; text 156, 157
-windows-collections 0.3.2: MIT OR Apache-2.0; text 156, 157
-windows-core 0.62.2: MIT OR Apache-2.0; text 156, 157
-windows-future 0.3.2: MIT OR Apache-2.0; text 156, 157
-windows-implement 0.60.2: MIT OR Apache-2.0; text 156, 157
-windows-interface 0.59.3: MIT OR Apache-2.0; text 156, 157
-windows-link 0.2.1: MIT OR Apache-2.0; text 156, 157
-windows-numerics 0.3.1: MIT OR Apache-2.0; text 156, 157
-windows-result 0.4.1: MIT OR Apache-2.0; text 156, 157
-windows-strings 0.5.1: MIT OR Apache-2.0; text 156, 157
-windows-sys 0.61.2: MIT OR Apache-2.0; text 156, 157
-windows-threading 0.2.1: MIT OR Apache-2.0; text 156, 157
-windows-version 0.1.7: MIT OR Apache-2.0; text 156, 157
-winnow 1.0.5: MIT; text 158
+window-vibrancy 0.8.1: Apache-2.0 OR MIT; text 13, 156, 157
+windows 0.62.2: MIT OR Apache-2.0; text 158, 159
+windows-collections 0.3.2: MIT OR Apache-2.0; text 158, 159
+windows-core 0.62.2: MIT OR Apache-2.0; text 158, 159
+windows-future 0.3.2: MIT OR Apache-2.0; text 158, 159
+windows-implement 0.60.2: MIT OR Apache-2.0; text 158, 159
+windows-interface 0.59.3: MIT OR Apache-2.0; text 158, 159
+windows-link 0.2.1: MIT OR Apache-2.0; text 158, 159
+windows-numerics 0.3.1: MIT OR Apache-2.0; text 158, 159
+windows-result 0.4.1: MIT OR Apache-2.0; text 158, 159
+windows-strings 0.5.1: MIT OR Apache-2.0; text 158, 159
+windows-sys 0.61.2: MIT OR Apache-2.0; text 158, 159
+windows-threading 0.2.1: MIT OR Apache-2.0; text 158, 159
+windows-version 0.1.7: MIT OR Apache-2.0; text 158, 159
+winnow 1.0.5: MIT; text 160
 writeable 0.6.4: Unicode-3.0; text 73
-wry 0.57.2: Apache-2.0 OR MIT; text 13, 159, 160
+wry 0.57.2: Apache-2.0 OR MIT; text 13, 161, 162
 yoke 0.8.4: Unicode-3.0; text 73
 yoke-derive 0.8.4: Unicode-3.0; text 73
 zerofrom 0.1.8: Unicode-3.0; text 73
 zerofrom-derive 0.1.8: Unicode-3.0; text 73
-zeroize 1.9.1: Apache-2.0 OR MIT; text 52, 161
+zeroize 1.9.1: Apache-2.0 OR MIT; text 52, 163
 zeroize_derive 1.5.0: Apache-2.0 OR MIT; text 52, 25
 zerotrie 0.2.5: Unicode-3.0; text 73
 zerovec 0.11.9: Unicode-3.0; text 73
 zerovec-derive 0.11.7: Unicode-3.0; text 73
-zip 9.5.1: MIT; text 162
-zlib-rs 0.6.8: Zlib; text 163
+zip 9.5.1: MIT; text 164
+zlib-rs 0.6.8: Zlib; text 165
 zmij 1.0.23: MIT; text 3
 
 == npm packages ==
 
-@babel/runtime 7.29.14: MIT; text 164
-@babel/runtime 8.1.2: MIT; text 164
-@carbon/colors 11.62.0: Apache-2.0; text 165
-@carbon/feature-flags 1.12.0: Apache-2.0; text 165
-@carbon/grid 11.66.0: Apache-2.0; text 165
-@carbon/icon-helpers 10.85.0: Apache-2.0; text 165
-@carbon/icons-react 11.92.0: Apache-2.0; text 165
-@carbon/layout 11.63.0: Apache-2.0; text 165
-@carbon/motion 11.56.0: Apache-2.0; text 165
-@carbon/react 1.120.0: Apache-2.0; text 165
-@carbon/styles 1.119.0: Apache-2.0; text 165
-@carbon/themes 11.85.0: Apache-2.0; text 165
-@carbon/type 11.71.0: Apache-2.0; text 165
-@carbon/utilities 0.29.0: Apache-2.0; text 165
-@floating-ui/core 1.8.0: MIT; text 166
-@floating-ui/dom 1.8.0: MIT; text 166
-@floating-ui/react 0.27.20: MIT; text 166
-@floating-ui/react-dom 2.1.9: MIT; text 166
-@floating-ui/utils 0.2.12: MIT; text 166
-@ibm/plex 6.4.1: OFL-1.1; text 167
-@ibm/plex-mono 2.5.0: OFL-1.1; text 167
-@ibm/plex-sans 1.1.0: OFL-1.1; text 167
-@ibm/plex-sans-arabic 1.1.0: OFL-1.1; text 167
-@ibm/plex-sans-devanagari 1.1.0: OFL-1.1; text 167
-@ibm/plex-sans-hebrew 1.1.0: OFL-1.1; text 167
-@ibm/plex-sans-thai 1.1.0: OFL-1.1; text 167
-@ibm/plex-sans-thai-looped 1.1.0: OFL-1.1; text 167
-@ibm/plex-serif 2.0.0: OFL-1.1; text 167
+@babel/runtime 7.29.14: MIT; text 166
+@babel/runtime 8.1.2: MIT; text 166
+@carbon/colors 11.62.0: Apache-2.0; text 167
+@carbon/feature-flags 1.12.0: Apache-2.0; text 167
+@carbon/grid 11.66.0: Apache-2.0; text 167
+@carbon/icon-helpers 10.85.0: Apache-2.0; text 167
+@carbon/icons-react 11.92.0: Apache-2.0; text 167
+@carbon/layout 11.63.0: Apache-2.0; text 167
+@carbon/motion 11.56.0: Apache-2.0; text 167
+@carbon/react 1.120.0: Apache-2.0; text 167
+@carbon/styles 1.119.0: Apache-2.0; text 167
+@carbon/themes 11.85.0: Apache-2.0; text 167
+@carbon/type 11.71.0: Apache-2.0; text 167
+@carbon/utilities 0.29.0: Apache-2.0; text 167
+@floating-ui/core 1.8.0: MIT; text 168
+@floating-ui/dom 1.8.0: MIT; text 168
+@floating-ui/react 0.27.20: MIT; text 168
+@floating-ui/react-dom 2.1.9: MIT; text 168
+@floating-ui/utils 0.2.12: MIT; text 168
+@ibm/plex 6.4.1: OFL-1.1; text 169
+@ibm/plex-mono 2.5.0: OFL-1.1; text 169
+@ibm/plex-sans 1.1.0: OFL-1.1; text 169
+@ibm/plex-sans-arabic 1.1.0: OFL-1.1; text 169
+@ibm/plex-sans-devanagari 1.1.0: OFL-1.1; text 169
+@ibm/plex-sans-hebrew 1.1.0: OFL-1.1; text 169
+@ibm/plex-sans-thai 1.1.0: OFL-1.1; text 169
+@ibm/plex-sans-thai-looped 1.1.0: OFL-1.1; text 169
+@ibm/plex-serif 2.0.0: OFL-1.1; text 169
 @ibm/telemetry-js 1.12.0: Apache-2.0; text 52
-@internationalized/number 3.6.9: Apache-2.0; text 168
-@parcel/watcher 2.6.0: MIT; text 169
-@parcel/watcher-win32-x64 2.6.0: MIT; text 169
-@swc/helpers 0.5.24: Apache-2.0; text 170
-@tauri-apps/api 2.12.4: Apache-2.0 OR MIT; text 56, 134, 171
+@internationalized/number 3.6.9: Apache-2.0; text 170
+@parcel/watcher 2.6.0: MIT; text 171
+@parcel/watcher-win32-x64 2.6.0: MIT; text 171
+@swc/helpers 0.5.24: Apache-2.0; text 172
+@tauri-apps/api 2.12.4: Apache-2.0 OR MIT; text 56, 134, 173
 @tauri-apps/plugin-dialog 2.8.4: MIT OR Apache-2.0; text 135
-chokidar 5.0.0: MIT; text 172
-classnames 2.5.1: MIT; text 173
-color 4.2.3: MIT; text 174
-color-convert 2.0.1: MIT; text 175
-color-name 1.1.4: MIT; text 176
-color-string 1.9.1: MIT; text 177
-compute-scroll-into-view 3.2.2: MIT; text 178
-copy-to-clipboard 4.0.2: MIT; text 179
+chokidar 5.0.0: MIT; text 174
+classnames 2.5.1: MIT; text 175
+color 4.2.3: MIT; text 176
+color-convert 2.0.1: MIT; text 177
+color-name 1.1.4: MIT; text 178
+color-string 1.9.1: MIT; text 179
+compute-scroll-into-view 3.2.2: MIT; text 180
+copy-to-clipboard 4.0.2: MIT; text 181
 detect-libc 2.1.2: Apache-2.0; text 10
-downshift 9.4.0: MIT; text 180
-es-toolkit 1.53.2: MIT; text 181, 182
-flatpickr 4.6.13: MIT; text 183
-framer-motion 13.5.1: MIT; text 184
-immutable 5.2.1: MIT; text 185
-invariant 2.2.4: MIT; text 186
-is-arrayish 0.3.4: MIT; text 187
-is-extglob 2.1.1: MIT; text 188
-is-glob 4.0.3: MIT; text 189
-js-tokens 4.0.0: MIT; text 190
-loose-envify 1.4.0: MIT; text 191
-motion 13.5.1: MIT; text 192
-motion-dom 13.5.1: MIT; text 192
-motion-utils 13.5.0: MIT; text 192
-node-addon-api 7.1.1: MIT; text 193
-object-assign 4.1.1: MIT; text 194
-picomatch 4.0.7: MIT; text 195
-prop-types 15.8.1: MIT; text 186
-react 19.3.1: MIT; text 196
-react-dom 19.3.1: MIT; text 196
-react-fast-compare 3.2.3: MIT; text 197
-react-is 16.13.1: MIT; text 198
-react-is 18.3.1: MIT; text 198
-readdirp 5.1.1: MIT; text 199
-sass 1.108.2: MIT; text 200
-scheduler 0.28.0: MIT; text 196
-simple-swizzle 0.2.4: MIT; text 201
-source-map-js 1.2.2: BSD-3-Clause; text 202
-tabbable 6.5.2: MIT; text 203
-temporal-polyfill 1.0.8: MIT; text 204
-temporal-spec 1.0.1: Apache-2.0; text 205
-temporal-utils 1.0.4: MIT; text 204
-tslib 2.9.1: 0BSD; text 206
+downshift 9.4.0: MIT; text 182
+es-toolkit 1.53.2: MIT; text 183, 184
+flatpickr 4.6.13: MIT; text 185
+framer-motion 13.5.1: MIT; text 186
+immutable 5.2.1: MIT; text 187
+invariant 2.2.4: MIT; text 188
+is-arrayish 0.3.4: MIT; text 189
+is-extglob 2.1.1: MIT; text 190
+is-glob 4.0.3: MIT; text 191
+js-tokens 4.0.0: MIT; text 192
+loose-envify 1.4.0: MIT; text 193
+motion 13.5.1: MIT; text 194
+motion-dom 13.5.1: MIT; text 194
+motion-utils 13.5.0: MIT; text 194
+node-addon-api 7.1.1: MIT; text 195
+object-assign 4.1.1: MIT; text 196
+picomatch 4.0.7: MIT; text 197
+prop-types 15.8.1: MIT; text 188
+react 19.3.1: MIT; text 198
+react-dom 19.3.1: MIT; text 198
+react-fast-compare 3.2.3: MIT; text 199
+react-is 16.13.1: MIT; text 200
+react-is 18.3.1: MIT; text 200
+readdirp 5.1.1: MIT; text 201
+sass 1.108.2: MIT; text 202
+scheduler 0.28.0: MIT; text 198
+simple-swizzle 0.2.4: MIT; text 203
+source-map-js 1.2.2: BSD-3-Clause; text 204
+tabbable 6.5.2: MIT; text 205
+temporal-polyfill 1.0.8: MIT; text 206
+temporal-spec 1.0.1: Apache-2.0; text 207
+temporal-utils 1.0.4: MIT; text 206
+tslib 2.9.1: 0BSD; text 208
 
 == Licence and notice texts ==
 
@@ -10031,7 +10031,131 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 153 (file name: LICENSE-MIT)
+Text 153 (file name: LICENSE-WebView2-SDK.txt)
+Used by: crate webview2-com-sys 0.39.1
+------------------------------------------------------------------------------
+
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+   * The name of Microsoft Corporation, or the names of its contributors
+may not be used to endorse or promote products derived from this
+software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+------------------------------------------------------------------------------
+Text 154 (file name: NOTICE-WebView2-SDK.txt)
+Used by: crate webview2-com-sys 0.39.1
+------------------------------------------------------------------------------
+
+NOTICES AND INFORMATION
+Do Not Translate or Localize
+
+This software incorporates material from third parties. Microsoft makes certain
+open source code available at https://3rdpartysource.microsoft.com, or you may
+send a check or money order for US $5.00, including the product name, the open
+source component name, and version number, to:
+
+Source Code Compliance Team
+Microsoft Corporation
+One Microsoft Way
+Redmond, WA 98052
+USA
+
+Notwithstanding any other terms, you may reverse engineer this software to the
+extent required to debug changes to any libraries licensed under the GNU Lesser
+General Public License.
+
+----------------------------------------------------------------
+
+Antlr3.Runtime 3.5.2-rc1 - BSD 3-Clause
+
+[The "BSD license"]
+Copyright (c) 2011 The ANTLR Project
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+ 3. Neither the name of the copyright holder nor the names of its
+    contributors may be used to endorse or promote products derived from
+    this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+---------------------------------------------------------
+
+---------------------------------------------------------
+
+StringTemplate4 4.0.9-rc1 - BSD 3-Clause
+
+[The "BSD license"]
+Copyright (c) 2011 The ANTLR Project
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+ 3. Neither the name of the copyright holder nor the names of its
+    contributors may be used to endorse or promote products derived from
+    this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+---------------------------------------------------------
+
+------------------------------------------------------------------------------
+Text 155 (file name: LICENSE-MIT)
 Used by: crate weezl 0.2.1
 ------------------------------------------------------------------------------
 
@@ -10058,7 +10182,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 154 (file name: LICENSE-MIT)
+Text 156 (file name: LICENSE-MIT)
 Used by: crate window-vibrancy 0.8.1
 ------------------------------------------------------------------------------
 
@@ -10085,7 +10209,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 155 (file name: LICENSE.spdx)
+Text 157 (file name: LICENSE.spdx)
 Used by: crate window-vibrancy 0.8.1
 ------------------------------------------------------------------------------
 
@@ -10110,7 +10234,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/window-vibrancy.git
 Creator: Person: Daniel Thompson-Yvetot
 
 ------------------------------------------------------------------------------
-Text 156 (file name: license-apache-2.0)
+Text 158 (file name: license-apache-2.0)
 Used by: crate windows 0.62.2; crate windows-collections 0.3.2; crate windows-core 0.62.2; crate windows-future 0.3.2; crate windows-implement 0.60.2; crate windows-interface 0.59.3; crate windows-link 0.2.1; crate windows-numerics 0.3.1; crate windows-result 0.4.1; crate windows-strings 0.5.1; crate windows-sys 0.61.2; crate windows-threading 0.2.1; crate windows-version 0.1.7
 ------------------------------------------------------------------------------
 
@@ -10317,7 +10441,7 @@ Apache License
    limitations under the License.
 
 ------------------------------------------------------------------------------
-Text 157 (file name: license-mit)
+Text 159 (file name: license-mit)
 Used by: crate windows 0.62.2; crate windows-collections 0.3.2; crate windows-core 0.62.2; crate windows-future 0.3.2; crate windows-implement 0.60.2; crate windows-interface 0.59.3; crate windows-link 0.2.1; crate windows-numerics 0.3.1; crate windows-result 0.4.1; crate windows-strings 0.5.1; crate windows-sys 0.61.2; crate windows-threading 0.2.1; crate windows-version 0.1.7
 ------------------------------------------------------------------------------
 
@@ -10344,7 +10468,7 @@ MIT License
     SOFTWARE
 
 ------------------------------------------------------------------------------
-Text 158 (file name: LICENSE-MIT)
+Text 160 (file name: LICENSE-MIT)
 Used by: crate winnow 1.0.5
 ------------------------------------------------------------------------------
 
@@ -10368,7 +10492,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 159 (file name: LICENSE-MIT)
+Text 161 (file name: LICENSE-MIT)
 Used by: crate wry 0.57.2
 ------------------------------------------------------------------------------
 
@@ -10395,7 +10519,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 160 (file name: LICENSE.spdx)
+Text 162 (file name: LICENSE.spdx)
 Used by: crate wry 0.57.2
 ------------------------------------------------------------------------------
 
@@ -10421,7 +10545,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/wry.git
 Creator: Person: Daniel Thompson-Yvetot
 
 ------------------------------------------------------------------------------
-Text 161 (file name: LICENSE-MIT)
+Text 163 (file name: LICENSE-MIT)
 Used by: crate zeroize 1.9.1
 ------------------------------------------------------------------------------
 
@@ -10452,7 +10576,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 162 (file name: LICENSE)
+Text 164 (file name: LICENSE)
 Used by: crate zip 9.5.1
 ------------------------------------------------------------------------------
 
@@ -10479,7 +10603,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 163 (file name: LICENSE)
+Text 165 (file name: LICENSE)
 Used by: crate zlib-rs 0.6.8
 ------------------------------------------------------------------------------
 
@@ -10504,7 +10628,7 @@ freely, subject to the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 
 ------------------------------------------------------------------------------
-Text 164 (file name: LICENSE)
+Text 166 (file name: LICENSE)
 Used by: npm @babel/runtime 7.29.14; npm @babel/runtime 8.1.2
 ------------------------------------------------------------------------------
 
@@ -10532,7 +10656,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 165 (file name: LICENSE)
+Text 167 (file name: LICENSE)
 Used by: npm @carbon/colors 11.62.0; npm @carbon/feature-flags 1.12.0; npm @carbon/grid 11.66.0; npm @carbon/icon-helpers 10.85.0; npm @carbon/icons-react 11.92.0; npm @carbon/layout 11.63.0; npm @carbon/motion 11.56.0; npm @carbon/react 1.120.0; npm @carbon/styles 1.119.0; npm @carbon/themes 11.85.0; npm @carbon/type 11.71.0; npm @carbon/utilities 0.29.0
 ------------------------------------------------------------------------------
 
@@ -10739,7 +10863,7 @@ Apache License
    limitations under the License.
 
 ------------------------------------------------------------------------------
-Text 166 (file name: LICENSE)
+Text 168 (file name: LICENSE)
 Used by: npm @floating-ui/core 1.8.0; npm @floating-ui/dom 1.8.0; npm @floating-ui/react 0.27.20; npm @floating-ui/react-dom 2.1.9; npm @floating-ui/utils 0.2.12
 ------------------------------------------------------------------------------
 
@@ -10765,7 +10889,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 167 (file name: LICENSE.txt)
+Text 169 (file name: LICENSE.txt)
 Used by: npm @ibm/plex 6.4.1; npm @ibm/plex-mono 2.5.0; npm @ibm/plex-sans 1.1.0; npm @ibm/plex-sans-arabic 1.1.0; npm @ibm/plex-sans-devanagari 1.1.0; npm @ibm/plex-sans-hebrew 1.1.0; npm @ibm/plex-sans-thai 1.1.0; npm @ibm/plex-sans-thai-looped 1.1.0; npm @ibm/plex-serif 2.0.0
 ------------------------------------------------------------------------------
 
@@ -10864,7 +10988,7 @@ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 168 (file name: LICENSE)
+Text 170 (file name: LICENSE)
 Used by: npm @internationalized/number 3.6.9
 ------------------------------------------------------------------------------
 
@@ -11071,7 +11195,7 @@ Apache License
    limitations under the License.
 
 ------------------------------------------------------------------------------
-Text 169 (file name: LICENSE)
+Text 171 (file name: LICENSE)
 Used by: npm @parcel/watcher 2.6.0; npm @parcel/watcher-win32-x64 2.6.0
 ------------------------------------------------------------------------------
 
@@ -11098,7 +11222,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 170 (file name: LICENSE)
+Text 172 (file name: LICENSE)
 Used by: npm @swc/helpers 0.5.24
 ------------------------------------------------------------------------------
 
@@ -11305,7 +11429,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ------------------------------------------------------------------------------
-Text 171 (file name: LICENSE.spdx)
+Text 173 (file name: LICENSE.spdx)
 Used by: npm @tauri-apps/api 2.12.4
 ------------------------------------------------------------------------------
 
@@ -11331,7 +11455,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/tauri.git
 Creator: Person: Daniel Thompson-Yvetot
 
 ------------------------------------------------------------------------------
-Text 172 (file name: LICENSE)
+Text 174 (file name: LICENSE)
 Used by: npm chokidar 5.0.0
 ------------------------------------------------------------------------------
 
@@ -11358,7 +11482,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 173 (file name: LICENSE)
+Text 175 (file name: LICENSE)
 Used by: npm classnames 2.5.1
 ------------------------------------------------------------------------------
 
@@ -11385,7 +11509,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 174 (file name: LICENSE)
+Text 176 (file name: LICENSE)
 Used by: npm color 4.2.3
 ------------------------------------------------------------------------------
 
@@ -11411,7 +11535,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 175 (file name: LICENSE)
+Text 177 (file name: LICENSE)
 Used by: npm color-convert 2.0.1
 ------------------------------------------------------------------------------
 
@@ -11437,7 +11561,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 176 (file name: LICENSE)
+Text 178 (file name: LICENSE)
 Used by: npm color-name 1.1.4
 ------------------------------------------------------------------------------
 
@@ -11451,7 +11575,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 177 (file name: LICENSE)
+Text 179 (file name: LICENSE)
 Used by: npm color-string 1.9.1
 ------------------------------------------------------------------------------
 
@@ -11477,7 +11601,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 178 (file name: LICENSE)
+Text 180 (file name: LICENSE)
 Used by: npm compute-scroll-into-view 3.2.2
 ------------------------------------------------------------------------------
 
@@ -11504,7 +11628,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 179 (file name: LICENSE)
+Text 181 (file name: LICENSE)
 Used by: npm copy-to-clipboard 4.0.2
 ------------------------------------------------------------------------------
 
@@ -11531,7 +11655,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 180 (file name: LICENSE)
+Text 182 (file name: LICENSE)
 Used by: npm downshift 9.4.0
 ------------------------------------------------------------------------------
 
@@ -11557,7 +11681,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 181 (file name: LICENSE)
+Text 183 (file name: LICENSE)
 Used by: npm es-toolkit 1.53.2
 ------------------------------------------------------------------------------
 
@@ -11584,7 +11708,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 182 (file name: NOTICE)
+Text 184 (file name: NOTICE)
 Used by: npm es-toolkit 1.53.2
 ------------------------------------------------------------------------------
 
@@ -11629,7 +11753,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 183 (file name: LICENSE.md)
+Text 185 (file name: LICENSE.md)
 Used by: npm flatpickr 4.6.13
 ------------------------------------------------------------------------------
 
@@ -11656,7 +11780,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 184 (file name: LICENSE.md)
+Text 186 (file name: LICENSE.md)
 Used by: npm framer-motion 13.5.1
 ------------------------------------------------------------------------------
 
@@ -11683,7 +11807,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 185 (file name: LICENSE)
+Text 187 (file name: LICENSE)
 Used by: npm immutable 5.2.1
 ------------------------------------------------------------------------------
 
@@ -11710,7 +11834,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 186 (file name: LICENSE)
+Text 188 (file name: LICENSE)
 Used by: npm invariant 2.2.4; npm prop-types 15.8.1
 ------------------------------------------------------------------------------
 
@@ -11737,7 +11861,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 187 (file name: LICENSE)
+Text 189 (file name: LICENSE)
 Used by: npm is-arrayish 0.3.4
 ------------------------------------------------------------------------------
 
@@ -11764,7 +11888,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 188 (file name: LICENSE)
+Text 190 (file name: LICENSE)
 Used by: npm is-extglob 2.1.1
 ------------------------------------------------------------------------------
 
@@ -11791,7 +11915,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 189 (file name: LICENSE)
+Text 191 (file name: LICENSE)
 Used by: npm is-glob 4.0.3
 ------------------------------------------------------------------------------
 
@@ -11818,7 +11942,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 190 (file name: LICENSE)
+Text 192 (file name: LICENSE)
 Used by: npm js-tokens 4.0.0
 ------------------------------------------------------------------------------
 
@@ -11845,7 +11969,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 191 (file name: LICENSE)
+Text 193 (file name: LICENSE)
 Used by: npm loose-envify 1.4.0
 ------------------------------------------------------------------------------
 
@@ -11872,7 +11996,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 192 (file name: LICENSE.md)
+Text 194 (file name: LICENSE.md)
 Used by: npm motion 13.5.1; npm motion-dom 13.5.1; npm motion-utils 13.5.0
 ------------------------------------------------------------------------------
 
@@ -11899,7 +12023,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 193 (file name: LICENSE.md)
+Text 195 (file name: LICENSE.md)
 Used by: npm node-addon-api 7.1.1
 ------------------------------------------------------------------------------
 
@@ -11914,7 +12038,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 194 (file name: license)
+Text 196 (file name: license)
 Used by: npm object-assign 4.1.1
 ------------------------------------------------------------------------------
 
@@ -11941,7 +12065,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 195 (file name: LICENSE)
+Text 197 (file name: LICENSE)
 Used by: npm picomatch 4.0.7
 ------------------------------------------------------------------------------
 
@@ -11968,7 +12092,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 196 (file name: LICENSE)
+Text 198 (file name: LICENSE)
 Used by: npm react 19.3.1; npm react-dom 19.3.1; npm scheduler 0.28.0
 ------------------------------------------------------------------------------
 
@@ -11995,7 +12119,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 197 (file name: LICENSE)
+Text 199 (file name: LICENSE)
 Used by: npm react-fast-compare 3.2.3
 ------------------------------------------------------------------------------
 
@@ -12023,7 +12147,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 198 (file name: LICENSE)
+Text 200 (file name: LICENSE)
 Used by: npm react-is 16.13.1; npm react-is 18.3.1
 ------------------------------------------------------------------------------
 
@@ -12050,7 +12174,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 199 (file name: LICENSE)
+Text 201 (file name: LICENSE)
 Used by: npm readdirp 5.1.1
 ------------------------------------------------------------------------------
 
@@ -12077,7 +12201,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 200 (file name: LICENSE)
+Text 202 (file name: LICENSE)
 Used by: npm sass 1.108.2
 ------------------------------------------------------------------------------
 
@@ -13742,7 +13866,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 201 (file name: LICENSE)
+Text 203 (file name: LICENSE)
 Used by: npm simple-swizzle 0.2.4
 ------------------------------------------------------------------------------
 
@@ -13769,7 +13893,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 202 (file name: LICENSE)
+Text 204 (file name: LICENSE)
 Used by: npm source-map-js 1.2.2
 ------------------------------------------------------------------------------
 
@@ -13802,7 +13926,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ------------------------------------------------------------------------------
-Text 203 (file name: LICENSE)
+Text 205 (file name: LICENSE)
 Used by: npm tabbable 6.5.2
 ------------------------------------------------------------------------------
 
@@ -13829,7 +13953,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 204 (file name: LICENSE)
+Text 206 (file name: LICENSE)
 Used by: npm temporal-polyfill 1.0.8; npm temporal-utils 1.0.4
 ------------------------------------------------------------------------------
 
@@ -13856,7 +13980,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Text 205 (file name: LICENSE)
+Text 207 (file name: LICENSE)
 Used by: npm temporal-spec 1.0.1
 ------------------------------------------------------------------------------
 
@@ -13881,7 +14005,7 @@ Portions of this software are derived from the TypeScript project
 licensed under the Apache License, Version 2.0.
 
 ------------------------------------------------------------------------------
-Text 206 (file name: LICENSE.txt)
+Text 208 (file name: LICENSE.txt)
 Used by: npm tslib 2.9.1
 ------------------------------------------------------------------------------
 
