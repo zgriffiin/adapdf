@@ -150,8 +150,8 @@ Notes on the link rules (decided 2026-11-16, from the S5-10 result in the
   the PDF with its bookmarks (`CreateBookmarks`) and its headings. In Word the
   same change is References > Table of Contents > Custom Table of Contents, then
   clear "Use hyperlinks instead of page numbers".
-- Neither fix changes the PDF. Stage 4 still writes only document-level
-  metadata.
+- Neither fix changes the PDF. After the export, stage 4 still writes only
+  document-level metadata and the `/Scope` of table header cells.
 
 ## Colour and text
 

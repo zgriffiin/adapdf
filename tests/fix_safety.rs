@@ -358,8 +358,8 @@ impl FileSystem for Failing {
     }
 }
 
-/// S2-14: a failed write of the new copy leaves no copy, no partial file and no
-/// temporary file, and the original is untouched.
+/// S2-14: a failed write of the new copy leaves no copy, no partial file, no
+/// temporary file and no empty folder, and the original is untouched.
 #[test]
 fn a_failed_write_leaves_no_partial_copy_and_the_original_intact() {
     let (bytes, requests) = doc_002();
@@ -388,12 +388,13 @@ fn a_failed_write_leaves_no_partial_copy_and_the_original_intact() {
             !accessible_copy_path(&original).exists(),
             "no copy, no partial copy"
         );
-        let leftovers = if guide_folder(&dir).exists() {
-            names_in(&guide_folder(&dir))
-        } else {
-            Vec::new()
-        };
-        assert!(leftovers.is_empty(), "no temporary file: {leftovers:?}");
+        // The write made the folder, so a failed write does not leave it behind
+        // (and so no temporary file is left in it either).
+        assert!(
+            !guide_folder(&dir).exists(),
+            "no folder is left: {:?}",
+            dir.names()
+        );
         assert_eq!(
             dir.names().iter().filter(|n| n.ends_with(".docx")).count(),
             1

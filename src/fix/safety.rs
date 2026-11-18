@@ -376,21 +376,35 @@ pub fn prepare(
 
 impl Prepared {
     /// Writes `new` to the copy: a temporary file in the same folder first,
-    /// then a move over the copy. When this fails, the copy is as it was.
+    /// then a move over the copy. When this fails, the copy is as it was, and a
+    /// folder that this write made is removed again if it is still empty.
     pub fn write(self, fs: &dyn FileSystem, new: &[u8]) -> Result<PathBuf, FixError> {
-        if let Some(folder) = self.copy.parent().filter(|f| !f.as_os_str().is_empty())
-            && !fs.exists(folder)
-        {
+        let folder = self.copy.parent().filter(|f| !f.as_os_str().is_empty());
+        let made = folder.filter(|f| !fs.exists(f));
+        if let Some(folder) = made {
             fs.create_dir_all(folder)
                 .map_err(|source| FixError::Write {
                     file: self.copy.clone(),
                     source,
                 })?;
         }
-        let temp = write_temp(fs, &self.copy, new)?;
+        // Fails when a file is in the folder, which is what is wanted.
+        let undo_folder = || {
+            if let Some(folder) = made {
+                let _ = std::fs::remove_dir(folder);
+            }
+        };
+        let temp = match write_temp(fs, &self.copy, new) {
+            Ok(temp) => temp,
+            Err(error) => {
+                undo_folder();
+                return Err(error);
+            }
+        };
         drop(self.held); // let go of the copy so it can be replaced
         if let Err(source) = fs.rename(&temp, &self.copy) {
             let _ = fs.remove_file(&temp);
+            undo_folder();
             return Err(FixError::Write {
                 file: self.copy,
                 source,

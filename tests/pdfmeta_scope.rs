@@ -8,8 +8,9 @@ mod pdf_support;
 use std::collections::BTreeSet;
 
 use adapdf::pdfmeta::{self, Outcome, SourceMetadata, TableScopeChange, UnscopedHeader};
+use adapdf::verapdf::{StructIndex, describe_place};
 use lopdf::{Document, Object};
-use pdf_support::{Pdf, TITLE, TableSpec, elements, scopes};
+use pdf_support::{Pdf, TITLE, TableSpec, TempDir, elements, scopes};
 
 fn source() -> SourceMetadata {
     SourceMetadata {
@@ -515,4 +516,63 @@ fn the_report_names_of_the_scopes_are_stable() {
     assert_eq!(json["unscoped_headers"][0]["table"], 1);
     assert_eq!(json["unscoped_headers"][0]["row"], 2);
     assert_eq!(json["unscoped_headers"][0]["cell"], 2);
+}
+
+/// A table inside a cell of another table is a table of its own: it gets the
+/// next table number, in the order of the document. The numbers are the ones of
+/// `verapdf::place`.
+#[test]
+fn a_table_inside_a_cell_is_numbered_like_a_verapdf_place() {
+    let inner = TableSpec::new().head(&["TH TH"]).body(&["TD TH"]);
+    let outer = TableSpec::new()
+        .head(&["TH TH"])
+        .body(&["TH TD", "TH TD"])
+        .nest_in_body(1, 1, inner);
+    let original = with_tables(vec![outer], false);
+    let outcome = run(&original);
+
+    // The outer table is table 1 and the inner table is table 2.
+    assert_eq!(
+        outcome.report.table_scopes,
+        vec![change(1, 2, 2), change(2, 2, 0)]
+    );
+    assert_eq!(
+        scopes_after(&original, &outcome, "TH"),
+        scope_names(&[COLUMN, COLUMN, ROW, ROW, COLUMN, COLUMN, None])
+    );
+    // The heading in the middle of the inner table: row 2 of table 2 (its header
+    // row is row 1), cell 2.
+    assert_eq!(outcome.report.unscoped_headers, vec![unscoped(2, 2, 2)]);
+
+    // A veraPDF path to the inner table, and to the same cell, gets the table
+    // number of stage 4 from `verapdf::place`.
+    let dir = TempDir::new("nested-scope");
+    let path = dir.write("Nested.pdf", &original);
+    let index = StructIndex::from_pdf(&path).expect("a structure tree");
+    let id = |tag: &str, n: usize| elements(&original, tag)[n].0.0;
+    let at = |position: usize, tag: &str, n: usize| {
+        format!("/K[{position}]({} 0 obj SE{tag} {tag})", id(tag, n))
+    };
+    let to_inner_table = format!(
+        "root/document[0]/StructTreeRoot[0](1 0 obj PDStructTreeRoot)/K[0](2 0 obj SEDocument Document){}{}{}{}{}",
+        at(0, "Table", 0),
+        at(1, "TBody", 0),
+        at(1, "TR", 2),
+        at(1, "TD", 1),
+        at(0, "Table", 1),
+    );
+    assert_eq!(
+        describe_place(&to_inner_table, Some(&index)).as_deref(),
+        Some("Table 2")
+    );
+    let to_cell = format!(
+        "{to_inner_table}{}{}{}",
+        at(1, "TBody", 1),
+        at(0, "TR", 4),
+        at(1, "TH", 6)
+    );
+    assert_eq!(
+        describe_place(&to_cell, Some(&index)).as_deref(),
+        Some("Table 2, body row 1, cell 2")
+    );
 }

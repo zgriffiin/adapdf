@@ -479,21 +479,38 @@ pub fn read_report(report_json: &Path) -> CommandResult<ReportView> {
     report_paths(report_json)?;
     let text = std::fs::read_to_string(report_json)
         .map_err(|e| failure(report_json, format!("the report cannot be read: {e}")))?;
-    let report: Report = serde_json::from_str(&text).map_err(|e| {
+    // The layout version first: a report of another version may lack fields that
+    // this version needs, and the person must get this message, not "missing field".
+    #[derive(Deserialize)]
+    struct Layout {
+        schema_version: u32,
+    }
+    let not_ours = |e: serde_json::Error| {
         failure(
             report_json,
             format!("this is not a report that this tool wrote ({e})"),
         )
-    })?;
-    if report.schema_version != SCHEMA_VERSION {
+    };
+    let layout: Layout = serde_json::from_str(&text).map_err(not_ours)?;
+    if layout.schema_version < SCHEMA_VERSION {
         return Err(failure(
             report_json,
             format!(
-                "this report has layout version {}, and this tool reads version {SCHEMA_VERSION}",
-                report.schema_version
+                "This report was made by an older version of Adapdf (layout {}). Export the document again to make a new report.",
+                layout.schema_version
             ),
         ));
     }
+    if layout.schema_version > SCHEMA_VERSION {
+        return Err(failure(
+            report_json,
+            format!(
+                "This report was made by a newer version of Adapdf (layout {}). Update Adapdf to open it.",
+                layout.schema_version
+            ),
+        ));
+    }
+    let report: Report = serde_json::from_str(&text).map_err(not_ours)?;
     ReportView::new(report, report_json)
 }
 

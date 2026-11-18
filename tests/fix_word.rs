@@ -820,6 +820,7 @@ fn the_fix_log_survives_a_save_in_word() {
         .no_language()
         .title("")
         .para("Hello")
+        .paragraph(Para::empty().raw_run(&Image::picture().xml()))
         .build();
     let found = findings(&bytes);
     // A title with awkward characters and a long one, and a fix with no text.
@@ -875,9 +876,21 @@ fn the_fix_log_survives_a_save_in_word() {
         written,
         "the log survives a save in Word"
     );
-    // A new fix on the file that Word wrote adds to the log, and nothing is lost.
-    let more = of(&findings(&fs::read(&saved).unwrap()), RuleId::Doc003);
-    assert!(more.is_empty());
+    // A new fix on the file that Word wrote (the picture has no alt text yet) adds
+    // to the log that Word wrote, and the old entries stay. This reads and rewrites
+    // the `docProps/custom.xml` that Word wrote.
+    let saved_findings = of(&findings(&fs::read(&saved).unwrap()), RuleId::Img001);
+    assert_eq!(saved_findings.len(), 1, "the picture still has no alt text");
+    let outcome = fix_file(
+        &saved,
+        &[FixRequest::text(&saved_findings[0], "A car park")],
+    )
+    .expect("the fix runs on the file that Word wrote");
+    let fixed_again = log_in_file(&outcome.copy.expect("a copy"));
+    assert_eq!(fixed_again.len(), 3);
+    assert_eq!(fixed_again[..2], written[..], "the old entries are kept");
+    assert_eq!(fixed_again[2].rule, RuleId::Img001);
+    assert_eq!(fixed_again[2].text.as_deref(), Some("A car park"));
     assert_eq!(wait_for_word_pids(&before), before);
 }
 

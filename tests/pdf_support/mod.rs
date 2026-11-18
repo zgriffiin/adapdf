@@ -75,6 +75,8 @@ pub struct Cell {
     pub attributes: Attributes,
     /// A `/Scope` in the attributes (`Row`, `Column` or `Both`).
     pub scope: Option<String>,
+    /// A table inside the cell.
+    pub nested: Option<Box<TableSpec>>,
 }
 
 impl TableSpec {
@@ -112,6 +114,7 @@ impl TableSpec {
                     tag: tag.to_string(),
                     attributes,
                     scope,
+                    nested: None,
                 }
             })
             .collect()
@@ -134,6 +137,12 @@ impl TableSpec {
 
     pub fn rows(mut self, rows: &[&str]) -> TableSpec {
         self.rows = rows.iter().map(|r| TableSpec::cells(r)).collect();
+        self
+    }
+
+    /// Puts `inner` in a cell of the body (counted from 0).
+    pub fn nest_in_body(mut self, row: usize, cell: usize, inner: TableSpec) -> TableSpec {
+        self.body[row][cell].nested = Some(Box::new(inner));
         self
     }
 }
@@ -375,6 +384,10 @@ fn set_kids(doc: &mut Document, id: ObjectId, kids: Vec<Object>) {
 
 fn add_cell(doc: &mut Document, cell: &Cell, parent: ObjectId) -> ObjectId {
     let id = add_element(doc, &cell.tag, parent);
+    if let Some(inner) = &cell.nested {
+        let table = add_table(doc, inner, id);
+        set_kids(doc, id, vec![table.into()]);
+    }
     if cell.attributes == Attributes::None && cell.scope.is_none() {
         return id;
     }

@@ -35,11 +35,20 @@ need Word sit behind the cargo feature `windows_word`.
 
 ## Checks before you finish
 
+For every change (fast, a few minutes):
+
 ```
-cargo fmt --check
+cargo fmt --all --check
 cargo clippy --all-targets -- -D warnings
 cargo test
+cargo test -p adapdf-app          # if you changed the app (run pnpm build first)
+pnpm test                         # in app/, if you changed app/src
 ```
+
+Also run only the Word or veraPDF test file of the area you changed, for
+example `cargo test --features windows_word --test fix_word`. Do not run the
+full `--features windows_word,verapdf` suite (25 to 30 minutes) for a change.
+It runs once per release, before the installer is built.
 
 After you change a fixture or the fixture builder, run
 `cargo run --example gen-fixtures`. A test fails when `tests/fixtures/` differs

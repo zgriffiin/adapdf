@@ -921,9 +921,30 @@ fn a_file_that_is_not_a_report_of_this_tool_is_refused() {
         .write("Later.accessibility.json", json.to_string().as_bytes());
     let before = fs::read(&later).unwrap();
     let error = save_signoff(&later, &five_of_seven("A. Reviewer", "2026-03-06")).unwrap_err();
-    assert!(error.message.contains("layout version 4"), "{error}");
+    assert!(
+        error.message.contains("newer version of Adapdf (layout 4)"),
+        "{error}"
+    );
     assert_eq!(fs::read(&later).unwrap(), before);
     assert!(!saved.dir.path().join("Later.accessibility.html").exists());
+}
+
+/// A report that version 0.1.0 wrote (layout 1, `test-data/report-v0.1.0-lst002-fail.json`,
+/// the file of 0.1.0's own contract test) gets the plain message of an older layout, and
+/// not "missing field". Reading it and signing it are refused, and the file is not changed.
+#[test]
+fn a_report_of_version_0_1_0_is_refused_with_a_plain_message() {
+    let saved = saved_report();
+    let old = include_bytes!("../test-data/report-v0.1.0-lst002-fail.json");
+    let path = saved.dir.write("Old.accessibility.json", old);
+    let expected = "This report was made by an older version of Adapdf (layout 1). Export the document again to make a new report.";
+    let error = read_report(&path).unwrap_err();
+    assert!(error.message.contains(expected), "{error}");
+    assert!(!error.message.contains("missing field"), "{error}");
+    let error = save_signoff(&path, &five_of_seven("A. Reviewer", "2026-03-06")).unwrap_err();
+    assert!(error.message.contains(expected), "{error}");
+    assert_eq!(fs::read(&path).unwrap(), old);
+    assert!(!saved.dir.path().join("Old.accessibility.html").exists());
 }
 
 /// A report that came from a real run has a checklist of 7 items, and the
