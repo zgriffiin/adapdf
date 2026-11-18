@@ -11,6 +11,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
 description = "Checks Word training guides for accessibility problems before PDF export."
+license = "Apache-2.0"
 publish = false
 
 # Smaller build output (disk space). Our own crate keeps file and line numbers for

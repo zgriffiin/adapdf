@@ -7,7 +7,10 @@ It checks the Word document, fixes what it safely can, exports a tagged PDF
 through Word, checks the PDF with veraPDF, and writes a report that serves as
 evidence. A person then confirms the result in PAC and signs off the checklist.
 
-Status: the pipeline is built (stages 1 to 6 of the [pipeline spec](docs/specs/02-pipeline.md)).
+Status: version 0.1.0, a **pre-release** (see the [changelog](CHANGELOG.md) and the
+[release notes](docs/release-notes/v0.1.0.md) for what is tested and what is not yet
+confirmed: PAC has not run on real guides, and the installer was tried on one machine).
+The pipeline is built (stages 1 to 6 of the [pipeline spec](docs/specs/02-pipeline.md)).
 `adapdf check` runs the pre-check rules. `adapdf fix` applies the fixes (stage 2)
 after it asks about each one. `adapdf export` exports the PDF through Word (stage
 3), adds the missing PDF metadata (stage 4), runs veraPDF (stage 5) and writes
@@ -18,6 +21,13 @@ what is not, and for what the first runs with real Word and veraPDF found (a
 Word-made link has no description for assistive technology unless it has a
 ScreenTip, and a table of contents made of links cannot have one; the rules
 LNK-004 and LNK-005 and their fixes follow from this: see "S5-10 result").
+
+## Download
+
+The installer is on the [GitHub Releases page](https://github.com/zgriffiin/adapdf/releases).
+It is a per-user Windows installer (no admin rights). The
+[install guide](docs/install-guide.md) is for the staff who use it. The installer is not
+signed, so Windows SmartScreen may warn.
 
 ## Specs
 
@@ -40,7 +50,8 @@ src/              Application code (Rust). src/word drives Word through COM,
                   src/export is stage 3, src/pdfmeta stage 4, src/verapdf stage 5,
                   src/report stage 6, src/pipeline the `export` command.
 scripts/          fetch-vendor.ps1 downloads veraPDF and Java into vendor/;
-                  build-installer.ps1 builds the per-user installer
+                  build-installer.ps1 builds the per-user installer;
+                  collect-licenses.mjs writes THIRD-PARTY-LICENSES.txt
 examples/         gen-fixtures: writes the files in tests/fixtures/
 tests/            Tests
 tests/fixtures/   Small .docx files, one passing and one failing for each rule
@@ -48,6 +59,12 @@ tests/fixtures/   Small .docx files, one passing and one failing for each rule
 docs/specs/       Specs
 docs/test-plan.md Test levels, how to run them, and a table of rules to tests
 docs/install-guide.md How staff install and use the app
+docs/release-notes/ Release notes
+CHANGELOG.md      What changed in each version
+LICENSE           Apache License 2.0
+THIRD-PARTY.md    Licences of the bundled software
+THIRD-PARTY-LICENSES.txt  Licence texts of the Rust crates and npm packages (made by
+                  scripts/collect-licenses.mjs; the installer carries it)
 template/         Word template, author guide, template test document
 samples/          Real guides for testing (git ignores this folder)
 vendor/           veraPDF and Java runtime for packaging (git ignores this folder)
@@ -152,7 +169,9 @@ are too long for NSIS) and runs `pnpm tauri build` with
 `target/release/bundle/nsis/Adapdf_0.1.0_x64-setup.exe` (about 40 MB). The first time,
 Tauri downloads its NSIS tools into `%LOCALAPPDATA%\tauri`: a build-time download. The
 installer and the app make no network calls. The installer is not signed, so Windows
-SmartScreen may warn. Delete `app/src-tauri/bundle-staging` after the build (about 160
+SmartScreen may warn. The script stops when `THIRD-PARTY-LICENSES.txt` is out of date
+with `Cargo.lock` and `app/pnpm-lock.yaml`; run `node scripts/collect-licenses.mjs` (it
+needs the crates downloaded and `pnpm install` done) and commit the result. Delete `app/src-tauri/bundle-staging` after the build (about 160
 MB). To try the installer, and for the checks that were run, see "How M5b builds the
 installer" in the [test plan](docs/test-plan.md).
 
@@ -183,3 +202,12 @@ Phase 0 in the [product spec](docs/specs/01-product.md#phases) (export 5 real
 guides from Word and check them with veraPDF and PAC) is postponed until real
 guides are in `samples/`. Until then, the code is built to the assumptions in
 the specs.
+
+## Licence
+
+Copyright 2026 the Adapdf contributors.
+
+Adapdf is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE). The
+installer also carries veraPDF, a Java runtime (Eclipse Temurin) and other software
+that keep their own licences: see [THIRD-PARTY.md](THIRD-PARTY.md). This is not legal
+advice.

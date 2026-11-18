@@ -14,7 +14,11 @@
        (the folders inside PDF_A and PDF_UA, and .github). The veraPDF command line
        does not read them, and their paths are over 200 characters long: NSIS
        cannot open a path of 260 characters or more.
-    3. Runs `pnpm tauri build` in app/ with those bundle settings. Tauri builds
+    3. Checks that THIRD-PARTY-LICENSES.txt (the licence texts of the Rust crates
+       and the npm packages, which the installer carries) is up to date with the
+       lock files: `node scripts/collect-licenses.mjs --check`. If it is not, run
+       `node scripts/collect-licenses.mjs`, look at the result, and commit it.
+    4. Runs `pnpm tauri build` in app/ with those bundle settings. Tauri builds
        the page and the program, and makes the NSIS installer.
 
   Tauri downloads its NSIS tools once, the first time it builds an installer
@@ -48,6 +52,14 @@ if (-not (Test-Path -LiteralPath (Join-Path $App 'node_modules\@ibm\plex-sans\LI
     throw 'The font licence is missing. Run `pnpm install --frozen-lockfile` in app/ first.'
 }
 
+# The licence texts that the installer carries. The file is committed; stop when it is
+# out of date (it needs the app's npm packages and the Rust crates in place).
+foreach ($file in @('LICENSE', 'THIRD-PARTY.md', 'THIRD-PARTY-LICENSES.txt')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $Root $file))) { throw "$file is missing in $Root." }
+}
+& node (Join-Path $PSScriptRoot 'collect-licenses.mjs') --check
+if ($LASTEXITCODE -ne 0) { throw 'THIRD-PARTY-LICENSES.txt is out of date. Run: node scripts/collect-licenses.mjs' }
+
 # Leave out what the tools do not read (see above). The merged profile files, for
 # example PDF_UA\PDFUA-1.xml and PDF_UA\WCAG-2-2-Machine.xml, stay. robocopy gets
 # the folders by full path, so that no long path is made in the staging folder
@@ -62,15 +74,24 @@ Write-Host "Copying $Vendor to $Staging"
 $empty = Join-Path ([IO.Path]::GetTempPath()) ('adapdf-empty-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $empty | Out-Null
 try {
-    & robocopy $empty $Staging /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
-    if ($LASTEXITCODE -ge 8) { throw "robocopy failed (exit code $LASTEXITCODE)." }
+    $log = & robocopy $empty $Staging /MIR /NFL /NDL /NJH /NJS /NP
+    if ($LASTEXITCODE -ge 8) { throw ("robocopy failed (exit code $LASTEXITCODE)." + [Environment]::NewLine + ($log -join [Environment]::NewLine)) }
 }
 finally { Remove-Item -LiteralPath $empty -Force }
-& robocopy $Vendor $Staging /MIR /XD @skip /NFL /NDL /NJH /NJS /NP | Out-Null
-if ($LASTEXITCODE -ge 8) { throw "robocopy failed (exit code $LASTEXITCODE)." }
+$log = & robocopy $Vendor $Staging /MIR /XD @skip /NFL /NDL /NJH /NJS /NP
+if ($LASTEXITCODE -ge 8) { throw ("robocopy failed (exit code $LASTEXITCODE)." + [Environment]::NewLine + ($log -join [Environment]::NewLine)) }
 
-# The installer must be able to write every path (MAX_PATH is 260). The install
-# folder is about 40 characters long for a user, so this leaves 100 for it.
+# The veraPDF command line reads these two merged profile files (PDF/UA-1 and the WCAG
+# machine profile). The folders that were left out must not have taken them along.
+foreach ($profile in @('PDF_UA\PDFUA-1.xml', 'PDF_UA\WCAG-2-2-Machine.xml')) {
+    if (-not (Test-Path -Path (Join-Path $Staging "verapdf\profiles\*\$profile") -PathType Leaf)) {
+        throw "The staging copy has no $profile in the veraPDF profiles."
+    }
+}
+
+# The installer must be able to write every path (MAX_PATH is 260). A path inside
+# vendor/ may be 150 characters long at most, which leaves 110 (260 - 150) for the
+# install folder up to vendor\: %LOCALAPPDATA%\Adapdf is about 40 to 60 characters.
 $tooLong = Get-ChildItem -LiteralPath $Staging -Recurse -File -Force |
     Where-Object { $_.FullName.Length - $Staging.Length -gt 150 }
 if ($tooLong) {

@@ -10,13 +10,16 @@ can. It then makes a tagged PDF through your own Word, checks the PDF, and write
 a report. The report is your evidence for the file. A person still has to check
 the PDF in PAC and sign off.
 
-Everything stays on your computer. Adapdf sends nothing over the network.
+Adapdf does not send your documents anywhere. It does its work on your computer
+and does not need a network connection for it. (The tests on one computer found
+no connection from Adapdf to another address. Word, and Windows, can still use the
+network for their own reasons.)
 
 ## What you need
 
 - Windows 11.
 - Microsoft 365 Word, installed on your computer.
-- About 200 MB of free disk space.
+- About 250 MB of free disk space (Adapdf and the data that its window keeps).
 - The file `Adapdf_0.1.0_x64-setup.exe`. Your team lead gives you this file.
 
 You do not need to install Java or any other program. Adapdf has what it needs.
@@ -81,14 +84,21 @@ it and write down the result.
 
 1. Open the PDF in PAC, and run the check. Save the PAC report file next to the
    PDF.
-2. Open the Adapdf report (`Guide.accessibility.html`).
+2. Open the Adapdf report (`Guide.accessibility.html`) in your browser.
 3. Find the section **PAC**. Write the name of the PAC report file, the PAC
    version, and the result: **Pass** or **Fail**. The report page cannot save
    what you type in the PAC section yet. Keep the PAC report file next to the
    PDF, and print the page if you need a copy of these notes.
-4. Do the checklist in the report. Look at the PDF for each item and tick it.
-5. Open the report in the app (**Open an earlier report**), type your name and
-   the date, and click **Save sign-off**.
+4. Look at the PDF for each item of the checklist.
+5. Record the sign-off in the Adapdf app, not in the browser page. In the app,
+   on the result screen (or after **Open an earlier report**), find **Checklist
+   and sign-off**. Tick each item that you checked. Type your name and pick the
+   date. Click **Save sign-off**.
+
+**Ticks that you make in the report page in your browser are not saved.** Only the
+ticks, the name and the date that you save in the app are written into the
+report. If you tick items in the browser page only, the report still shows them as
+not checked.
 
 If PAC finds errors, fix the cause in the Word guide, not in the PDF. Then
 export again. Exporting again makes a new, unsigned report.
@@ -97,6 +107,10 @@ export again. Exporting again makes a new, unsigned report.
 
 1. Open **Settings**, then **Apps**, then **Installed apps**.
 2. Find **Adapdf**, click the three dots, and click **Uninstall**.
+3. To also remove Adapdf's settings and the data that its window keeps (about
+   50 MB), tick **Delete the application data** on the uninstall screen before
+   you continue. If you do not tick it, that data stays on your computer. It is
+   harmless, and a later install uses it again.
 
 This removes the program, the Start menu entry and the folder
 `%LOCALAPPDATA%\Adapdf`. It does not remove your guides, your PDFs, your reports

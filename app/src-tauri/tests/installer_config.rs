@@ -60,9 +60,29 @@ fn installer_skips_webview2_download() {
 #[test]
 fn installer_places_vendor_next_to_the_exe() {
     let bundle = read("tauri.bundle.conf.json");
+    // The build merges this file over `tauri.conf.json`, so any other key here could
+    // override the per-user install mode, the targets, the WebView2 mode and so on.
+    let mut top: Vec<&String> = bundle.as_object().unwrap().keys().collect();
+    top.sort();
+    assert_eq!(
+        top,
+        ["$schema", "bundle"],
+        "tauri.bundle.conf.json has another top-level key"
+    );
+    let keys: Vec<&String> = bundle["bundle"].as_object().unwrap().keys().collect();
+    assert_eq!(
+        keys,
+        ["resources"],
+        "tauri.bundle.conf.json must only add resources"
+    );
     let resources = &bundle["bundle"]["resources"];
     assert_eq!(resources["bundle-staging/vendor/"], "vendor/");
     assert_eq!(resources["../../THIRD-PARTY.md"], "THIRD-PARTY.md");
+    assert_eq!(
+        resources["../../THIRD-PARTY-LICENSES.txt"],
+        "licenses/THIRD-PARTY-LICENSES.txt"
+    );
+    assert_eq!(resources["../../LICENSE"], "licenses/Adapdf-LICENSE.txt");
     assert!(
         resources
             .as_object()

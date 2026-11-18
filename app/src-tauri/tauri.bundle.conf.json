@@ -4,6 +4,8 @@
     "resources": {
       "bundle-staging/vendor/": "vendor/",
       "../../THIRD-PARTY.md": "THIRD-PARTY.md",
+      "../../THIRD-PARTY-LICENSES.txt": "licenses/THIRD-PARTY-LICENSES.txt",
+      "../../LICENSE": "licenses/Adapdf-LICENSE.txt",
       "../node_modules/@ibm/plex-sans/LICENSE.txt": "licenses/IBM-Plex-OFL-1.1.txt"
     }
   }
