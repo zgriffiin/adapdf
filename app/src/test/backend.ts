@@ -270,7 +270,7 @@ export function reportOf(
   const precheck = options.precheck ?? [];
   const failedRules = options.failedRules ?? (pass ? 0 : 1);
   return {
-    schema_version: 2,
+    schema_version: 3,
     summary: {
       verdict: pass ? "pass" : "fail",
       errors: pass ? 0 : Math.max(failedRules, precheck.filter((f) => f.severity === "error").length),
@@ -288,7 +288,7 @@ export function reportOf(
     precheck,
     fixes: { original: null, applied: [] },
     pac: { report_file: null, pac_version: null, result: null },
-    pdf_metadata: { status: "done", changes: [], issues: [] },
+    pdf_metadata: { status: "done", changes: [], table_scopes: [], unscoped_headers: [], issues: [] },
     verapdf: {
       status: "ran",
       verapdf_version: "1.28.2",

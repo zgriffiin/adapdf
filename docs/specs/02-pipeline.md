@@ -143,10 +143,11 @@ Rules for COM:
 
 ## Stage 4 — PDF metadata fixes
 
-Only document-level metadata. The tool never changes the content or the tags.
-Uses `lopdf`, and writes the change as an incremental update (new bytes at the
-end of the file; the existing bytes are not rewritten). Each change is listed
-in the report.
+Document-level metadata, and the scope of table header cells. The tool never
+changes the text, the tag types or the reading order. Uses `lopdf`, and writes
+all changes in one incremental update (new bytes at the end of the file; the
+existing bytes are not rewritten, and the metadata and the scopes are in the
+same appended section). Each change is listed in the report.
 
 | Check | Fix if missing |
 |---|---|
@@ -155,9 +156,46 @@ in the report.
 | `/ViewerPreferences /DisplayDocTitle true` | Set it. |
 | Catalog `/Lang` | Copy from the .docx default language. |
 | `/MarkInfo /Marked true` and a `/StructTreeRoot` | **Do not fix.** If missing, the export failed. Report an error. |
+| A table header cell (`TH`) with no `/Scope` | Add `/Scope`, by the place of the cell in the table. See "Table scopes" below. |
 
 Phase 0 will show which of these Word already writes. Keep only the fixes that
-are needed.
+are needed. Phase 0 (the Word 16.0.20527 test, S4-11 and S5-14) showed that Word
+writes the title, the language, `DisplayDocTitle` and the tags, and does not write
+`pdfuaid:part` or any `/Scope`.
+
+### Table scopes
+
+Word writes a `TH` for the first row and the first column of a table, from
+`w:tblLook` (First Row and First Column; no `w:tblLook` means both on), and writes
+no `/Scope` for it. veraPDF PDF/UA-1 rule 7.5-1 fails for such a table, and no Word
+setting changes this (test plan S5-14). So stage 4 adds the scope. It reads the
+structure tree (`/RoleMap` is followed: a custom tag that maps to `Table`, `THead`,
+`TBody`, `TFoot`, `TR`, `TH` or `TD` is that element). The rows of a table are
+counted in this order: the rows of `THead`, then the rows of `TBody` and the rows
+that are directly in the `Table`, then the rows of `TFoot`. The cells of a row are
+its `TH` and `TD`, from 1. For each `TH` that has no `/Scope` in its attributes:
+
+1. in a `THead`, or in the first row of the table when that row has no `TD`: the
+   scope is `Column`;
+2. otherwise, if it is the first cell of its row: the scope is `Row`. (This includes
+   the first cell of a first row that also has a `TD`: it is a label, as in a table
+   that has only a First Column. A column heading would be wrong there.)
+3. otherwise the tool does not guess. It leaves the cell as it is and lists it in
+   the report: "header cell not given a scope (table N, row R, cell C)". veraPDF may
+   then still fail rule 7.5-1 for the table (see the table of veraPDF rules).
+
+A `TH` that already has a `/Scope` is not changed. The scope is written as the
+table attributes `/A << /O /Table /Scope /Column >>` (or `/Row`). When the `TH`
+already has `/A`, the old attributes are kept and the new dictionary is added
+after them (`/A` becomes an array). Only the `TH` objects change, and nothing in
+them but `/A`. A `TH` that is not an object of its own (a dictionary inside its
+parent's array) is not changed and is listed as in rule 3. A `TH` in a compressed
+object stream is written as a new object with the same number in the appended
+section.
+
+The report lists the cells that got a scope for each table, not one line for each
+cell: "Table 1: 2 header cells given Column, 3 given Row". Running stage 4 on its
+own output changes nothing.
 
 ## Stage 5 — veraPDF
 
@@ -170,7 +208,8 @@ are needed.
   a table that links common veraPDF rule IDs to the likely cause in Word and
   the fix (for example, "Figure without alt text → IMG-001", and "link without
   a description → LNK-004": Word writes a link's description only from its
-  ScreenTip).
+  ScreenTip; "table cell with no header → TBL-003": veraPDF 7.5-1 means a table
+  that stage 4 could not give scopes to, because it is not regular).
 - Any failure means the PDF does not pass.
 
 ## Stage 6 — Report
@@ -209,8 +248,8 @@ checked yet", "Not checked yet" or "Checked" for each item, "Not signed yet" or
    - Tables are data tables, not layout.
 7. Technical details: how Word made the PDF (the Word build, the fields that
    were updated, the export time and the parameters of `ExportAsFixedFormat`), and
-   the changes made to the PDF metadata (stage 4), as a subsection "PDF metadata
-   changes".
+   the changes made to the PDF after the export (stage 4: the metadata and the table
+   scopes), as a subsection "Changes to the PDF after export".
 
 The report is the evidence that the document passed. It is saved in the folder
 of the guide, next to the PDF.

@@ -51,9 +51,10 @@ UA-1. Look at UA-2 again later.
 - **No admin rights to install.** The app runs from a user folder.
 - **Uses the Word install the users already have.** Word does the PDF export.
 - **Fix the source, not the PDF.** We have no PDF tag editor. Every error must
-  be fixed in the .docx, then the PDF is exported again. The only change made
-  to the PDF after export is document-level metadata (see
-  [02-pipeline](02-pipeline.md)).
+  be fixed in the .docx, then the PDF is exported again. After export, the tool
+  changes only document-level metadata and adds a scope to table header cells
+  that Word wrote without one (see [02-pipeline](02-pipeline.md)). It never
+  changes text, tag types or the reading order.
 
 ## Scope
 
@@ -108,7 +109,7 @@ Details are in [02-pipeline](02-pipeline.md). Pre-check rules are in
 | .docx reading | `zip` and `roxmltree` on the OOXML parts | Works without Word, so tests run fast and on any machine. `roxmltree` is read-only and gives the byte range of every XML node. |
 | .docx fixes | Byte-range splices on the original XML text | A fix changes only the bytes it must change. Every other part and byte stays the same. |
 | PDF export | Word through COM (the `windows` crate), `Document.ExportAsFixedFormat` | Most accurate tags for Word content. Already installed. |
-| PDF metadata fixes | `lopdf`, written as an incremental update | Free. Adds the metadata change at the end of the file and leaves the content and tags as they are. |
+| PDF metadata fixes and table scopes | `lopdf`, written as an incremental update | Free. Adds the metadata changes and the scope of table header cells at the end of the file and leaves the text, the tag types and the reading order as they are. |
 | Automated check | veraPDF command line, with a bundled Java runtime (Eclipse Temurin) | Free. No separate Java install for users. |
 | UI | Tauri 2 with IBM Carbon (`@carbon/react`), in WebView2 | The Rust pipeline runs behind a web UI. Carbon components are built for WCAG AA. Fonts (IBM Plex) and styles are bundled, so the app makes no network calls. WebView2 is part of Windows 11. |
 | Packaging | Tauri NSIS installer, per user (`installMode: currentUser`) | Installs to `%LOCALAPPDATA%` with no admin rights. Adds a Start menu entry and an uninstaller. The installer does not download WebView2; Windows 11 already has it. |

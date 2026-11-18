@@ -2,7 +2,7 @@
   "exit_code": 1,
   "view": {
     "report": {
-      "schema_version": 2,
+      "schema_version": 3,
       "summary": {
         "verdict": "fail",
         "errors": 1,

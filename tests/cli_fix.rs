@@ -291,6 +291,30 @@ fn cli_fix_confirms_each_fix() {
     assert_eq!(out.status.code(), Some(0));
 }
 
+/// The sentence that TBL-001 shows before it asks (decided 2026-11-18): a label
+/// and value table is not one that has a header row.
+const HEADER_ROW_WORDS: &str = "Only mark the first row as a header row if it holds column headings (for example \"Step | What to do\"). A label/value table (\"Training Topic: | ...\") is not one; leave it as it is.";
+
+#[test]
+fn cli_fix_says_when_a_first_row_is_a_header_row_before_it_asks() {
+    let original = fixture(RuleId::Tbl001, true);
+    let dir = TempDir::new("cli-tbl001");
+    let path = path_of(&dir, &original);
+    let out = fix(
+        &path, "n
+",
+    );
+    let text = stderr(&out);
+    assert!(text.contains(&format!("Fix: {HEADER_ROW_WORDS}")), "{text}");
+    assert!(text.contains("Apply this fix? [y/n]"), "{text}");
+    // The answer is no: nothing was changed.
+    assert!(!copy_of(&dir).exists());
+    assert_eq!(
+        adapdf::fix::describe(adapdf::findings::FixId::MarkHeaderRow, &Default::default()),
+        HEADER_ROW_WORDS
+    );
+}
+
 #[test]
 fn cli_fix_applies_nothing_when_every_answer_is_no_or_the_input_ends() {
     let original = fixture(RuleId::Txt002, true);

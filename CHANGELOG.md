@@ -22,7 +22,7 @@ reader. See [the release notes](docs/release-notes/v0.2.0.md) and the
 - When the copy of a guide exists, the app asks **Continue with the accessible copy**
   or **Start over from the original** (this replaces the copy, with a confirm). The
   command line stops unless `--continue` or `--start-over` is given.
-- The report (schema version 2) shows the Word document pre-check and the PDF check
+- The report (schema version 3) shows the Word document pre-check and the PDF check
   (veraPDF) apart, lists every fix that was made in the document (not only the fixes of
   one run) and names the original, and puts the technical details last. The HTML report
   has no form control: the PAC result, the checklist and the sign-off are shown as text and
@@ -35,6 +35,20 @@ reader. See [the release notes](docs/release-notes/v0.2.0.md) and the
   capitals and the spacing of the document. The "how to fix" texts of the manual rules
   say where to click in Word.
 - The title is no longer suggested as the text of the first heading.
+- **Table header cells get a scope after the export.** Word writes the first row and
+  the first column of a table as header cells (`TH`), from the table's First Row and
+  First Column settings, and never writes a scope for them. veraPDF fails such a table
+  (PDF/UA-1 7.5-1), and no Word setting fixes this. Adapdf now adds the scope in the
+  PDF metadata step (`Column` for a heading row, `Row` for a heading in the first
+  column) and lists it in the report ("Changes to the PDF after export"). It changes no
+  text, tag type or reading order. A heading that it cannot place (in the middle of a
+  table) is left as it is and listed. A veraPDF failure 7.5-1 now means an irregular
+  table: simplify it (no merged or split cells).
+- **TBL-003 (merged or split cells) is now an error.** Word's PDF of such a table fails
+  PDF/UA-1 7.2-42 (Word does not record which cells were merged), so the export is
+  blocked until the cells are split or the table is made text.
+- The fix for TBL-001 now says to mark the first row as a header row only if it holds
+  column headings. A label and value table ("Training Topic: | ...") has none.
 
 ### Added
 

@@ -340,6 +340,12 @@ struct TableCell {
     raw: Option<String>,
 }
 
+/// `w:tblBorders` with a single line on every side and between cells.
+const WORD_BORDERS: &str = r#"<w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders>"#;
+
+/// Word's default `w:tblLook`: the first row and the first column, no bands.
+const WORD_LOOK: &str = r#"<w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/>"#;
+
 #[derive(Debug, Clone)]
 struct TableRow {
     header: bool,
@@ -402,6 +408,16 @@ impl Table {
     /// `<w:tblLook w:val="04A0" w:firstRow="1" w:noVBand="1"/>`.
     pub fn look(mut self, xml: &str) -> Table {
         self.look = Some(xml.to_string());
+        self
+    }
+
+    /// Borders and `w:tblLook` as Word writes them for a table that it exports as a
+    /// real table: all borders on (Word's "Table Grid"), and the look `04A0` (first
+    /// row and first column, no column bands). Word writes a `Table` in a tagged
+    /// PDF only when the table has borders or shading (test plan S5-14), so a
+    /// fixture that a Word export must see as a table has to have them.
+    pub fn as_word_writes_it(mut self) -> Table {
+        self.look = Some(format!("{WORD_BORDERS}{WORD_LOOK}"));
         self
     }
 
@@ -562,7 +578,13 @@ impl DocxBuilder {
 
 /// A table that no table rule reports.
 fn good_table() -> Table {
-    Table::new(&[&["Setting", "Value"], &["Paper", "A4"], &["Colour", "Mono"]])
+    word_table(&[&["Setting", "Value"], &["Paper", "A4"], &["Colour", "Mono"]])
+}
+
+/// A table of the fixtures, with the borders and the look that Word writes, so
+/// that a Word export makes a real `Table` of it.
+fn word_table(rows: &[&[&str]]) -> Table {
+    Table::new(rows).as_word_writes_it()
 }
 
 /// An alt text of exactly `chars` characters that no rule objects to except
@@ -680,18 +702,18 @@ pub(super) fn pairs() -> Vec<(RuleId, DocxBuilder, DocxBuilder)> {
             RuleId::Tbl003,
             clean().table(good_table()),
             clean().table(
-                Table::new(&[&["Settings"], &["Paper", "A4"], &["Colour", "Mono"]]).span(0, 0, 2),
+                word_table(&[&["Settings"], &["Paper", "A4"], &["Colour", "Mono"]]).span(0, 0, 2),
             ),
         ),
         (
             RuleId::Tbl004,
             clean().table(good_table()),
-            clean().table(Table::new(&[&["Setting", "Value"]])),
+            clean().table(word_table(&[&["Setting", "Value"]])),
         ),
         (
             RuleId::Tbl005,
             clean().table(good_table()),
-            clean().table(Table::new(&[
+            clean().table(word_table(&[
                 &["Setting", "Value"],
                 &["Paper", "A4"],
                 &["", ""],

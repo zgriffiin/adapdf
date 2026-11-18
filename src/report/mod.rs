@@ -34,8 +34,11 @@ use crate::verapdf::{Validation, WcagOutcome};
 /// meaning changes. Version 2 (Adapdf 0.2): the counts of the summary are split
 /// (pre-check and veraPDF), `fixes` lists every fix recorded in the document
 /// and names its original (no backup), a veraPDF failure has a `place` in
-/// words, and the sections are in the order of the page.
-pub const SCHEMA_VERSION: u32 = 2;
+/// words, and the sections are in the order of the page. Version 3 (Adapdf
+/// 0.2): `pdf_metadata` (the changes to the PDF after the export) also has
+/// `table_scopes` and `unscoped_headers`, the table header cells that stage 4
+/// gave a scope and those it could not.
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// The checklist of spec 02, stage 6, word for word.
 pub const CHECKLIST: [&str; 7] = [
@@ -127,7 +130,8 @@ pub struct FixesSection {
     pub applied: Vec<FixEntry>,
 }
 
-/// Section 4: stage 4, or why it did not run.
+/// Stage 4, or why it did not run: the metadata changes and the table scopes
+/// that were added to the PDF after the export.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "kebab-case")]
 pub enum MetadataSection {
@@ -175,7 +179,7 @@ pub struct HumanChecklist {
 
 /// The whole report. The field order is the section order: the summary, the
 /// pre-check, the fixes, veraPDF, PAC, the checklist, and then the technical
-/// details (how Word made the PDF, and the PDF metadata changes).
+/// details (how Word made the PDF, and the changes to the PDF after the export).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Report {
     pub schema_version: u32,

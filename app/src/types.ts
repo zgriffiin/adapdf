@@ -155,6 +155,10 @@ export type MetadataSection =
   | {
       status: "done";
       changes: { what: string; old: string | null; new: string }[];
+      /** Table header cells that were given a scope, for each table. */
+      table_scopes: { table: number; column: number; row: number }[];
+      /** Table header cells that could not be given a scope (numbers from 1). */
+      unscoped_headers: { table: number; row: number; cell: number }[];
       issues: { severity: Severity; message: string; how_to_fix: string }[];
     };
 

@@ -2,7 +2,7 @@
   "exit_code": 0,
   "view": {
     "report": {
-      "schema_version": 2,
+      "schema_version": 3,
       "summary": {
         "verdict": "pass",
         "errors": 0,
@@ -101,6 +101,20 @@
             "what": "title in the document information (Title)",
             "old": null,
             "new": "Guide"
+          }
+        ],
+        "table_scopes": [
+          {
+            "table": 1,
+            "column": 2,
+            "row": 3
+          }
+        ],
+        "unscoped_headers": [
+          {
+            "table": 2,
+            "row": 3,
+            "cell": 2
           }
         ],
         "issues": []

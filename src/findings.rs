@@ -241,9 +241,9 @@ impl RuleId {
             | Lnk004 | Lnk005 | Clr001 => Severity::Error,
             Doc003 | Doc004 | Hdg003 | Hdg006 | Lst002 | Lnk001 | Lnk002 | Clr002 | Txt001
             | Txt002 | Txt003 | Txt004 => Severity::Warning,
-            Img001 | Img007 | Txb001 | Tbl001 | Tbl002 => Severity::Error,
-            Img002 | Img003 | Img004 | Img005 | Img006 | Txb002 | Txb003 | Txb004 | Tbl003
-            | Tbl004 | Tbl005 | Tbl006 => Severity::Warning,
+            Img001 | Img007 | Txb001 | Tbl001 | Tbl002 | Tbl003 => Severity::Error,
+            Img002 | Img003 | Img004 | Img005 | Img006 | Txb002 | Txb003 | Txb004 | Tbl004
+            | Tbl005 | Tbl006 => Severity::Warning,
         }
     }
 
@@ -592,7 +592,7 @@ mod tests {
             ),
             (Tbl001, Severity::Error, FixKind::Auto(MarkHeaderRow)),
             (Tbl002, Severity::Error, FixKind::Manual),
-            (Tbl003, Severity::Warning, FixKind::Manual),
+            (Tbl003, Severity::Error, FixKind::Manual),
             (Tbl004, Severity::Warning, FixKind::Manual),
             (Tbl005, Severity::Warning, FixKind::Auto(DeleteEmptyRow)),
             (Tbl006, Severity::Warning, FixKind::Auto(DisallowRowBreak)),

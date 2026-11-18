@@ -6,8 +6,9 @@ pick one.
 
 ## Rules that are easy to break
 
-- **Fix the source, not the PDF.** The only change to a PDF after export is
-  document-level metadata (spec 02, stage 4). Never edit tags or content.
+- **Fix the source, not the PDF.** After export, Adapdf changes only
+  document-level metadata and adds a `/Scope` to table header cells that Word left
+  without one (spec 02, stage 4). Never edit text, tag types or the reading order.
 - **Never change the user's original .docx.** Fixes go into
   `<name> (accessible).docx`, in the folder `<name> - Adapdf` next to the original.
   The copy is written atomically, and never while Word has it open. Everything
@@ -26,7 +27,7 @@ pick one.
 ## Stack
 
 Rust (stable, edition 2024). `zip` and `roxmltree` read the .docx; fixes are
-byte-range splices on the original XML. `lopdf` writes PDF metadata as an
+byte-range splices on the original XML. `lopdf` writes the PDF metadata and the table scopes as an
 incremental update. Word runs through COM with the `windows` crate. veraPDF
 ships with a bundled Temurin Java runtime. The UI is Tauri 2 with IBM Carbon (`@carbon/react`; front-end packages with
 pnpm). Tauri builds a per-user NSIS installer (no admin rights). Tests that

@@ -233,7 +233,8 @@ fn verapdf_zero_failures_on_the_picture_pass_fixtures() {
 
 // S5-11: information only. The failing fixtures of the warning rules, exported
 // by Word and checked: which veraPDF rules fail? No pass condition, except that
-// the tool does not fail.
+// the tool does not fail. TBL-003 is an error since 2026-11-18 (its fixture fails
+// 7.2-42), so stage 1 blocks it and it is not in this list.
 #[test]
 fn verapdf_on_warning_fixtures_is_recorded() {
     let _lock = exclusive();
@@ -297,6 +298,16 @@ fn pdfmeta_on_a_real_word_export() {
                 .language("es-US")
                 .build(),
         ),
+        // A table: Word writes `TH` for the first row and the first column and no
+        // `/Scope`, and stage 4 adds the scopes (S5-14).
+        (
+            "TBL-001-pass.docx",
+            catalogue()
+                .into_iter()
+                .find(|f| f.rule == RuleId::Tbl001 && !f.fails)
+                .unwrap()
+                .bytes,
+        ),
     ];
     for (name, bytes) in documents {
         let docx = dir.write(name, &bytes);
@@ -319,6 +330,19 @@ fn pdfmeta_on_a_real_word_export() {
         );
         assert_eq!(fields, [Field::XmpPdfUaPart], "{name}");
         assert!(outcome.report.issues.is_empty(), "{name}");
+        // A table gets its scopes: 2 column headings and the 2 row headings below.
+        let scopes: Vec<(usize, usize, usize)> = outcome
+            .report
+            .table_scopes
+            .iter()
+            .map(|t| (t.table, t.column, t.row))
+            .collect();
+        if name.starts_with("TBL") {
+            assert_eq!(scopes, [(1, 2, 2)], "{name}");
+        } else {
+            assert!(scopes.is_empty(), "{name}");
+        }
+        assert!(outcome.report.unscoped_headers.is_empty(), "{name}");
         // The prefix property: Word's bytes are not rewritten.
         let fixed = outcome.apply(&original);
         assert!(
@@ -338,15 +362,9 @@ fn pdfmeta_on_a_real_word_export() {
                 .map(|f| (&f.clause, f.test_number))
                 .collect::<Vec<_>>()
         );
-        assert_eq!(
-            pdfmeta::check_bytes(&fixed, &SourceMetadata::from_document(&model))
-                .unwrap()
-                .report
-                .changes
-                .len(),
-            0,
-            "{name}: stage 4 is stable"
-        );
+        let again = pdfmeta::check_bytes(&fixed, &SourceMetadata::from_document(&model)).unwrap();
+        assert_eq!(again.report.changes.len(), 0, "{name}: stage 4 is stable");
+        assert!(again.appended.is_empty(), "{name}: stage 4 is stable");
     }
     assert_eq!(wait_for_word_pids(&before), before);
 }
@@ -426,13 +444,23 @@ fn verapdf_zero_failures_after_the_link_fixes() {
     assert_eq!(fixed.status.code(), Some(0), "{stdout}");
     assert!(stdout.contains("Fixes applied (4):"), "{stdout}");
 
-    // After: Word makes the PDF and veraPDF passes it.
-    let run = run_real(&docx);
+    // After: Word makes the PDF from the accessible copy (the original is not
+    // changed since v0.2) and veraPDF passes it.
+    assert_eq!(
+        fs::read(&docx).unwrap(),
+        original,
+        "the original is not changed"
+    );
+    let copy = dir
+        .path()
+        .join("Guide - Adapdf")
+        .join("Guide (accessible).docx");
+    let run = run_real(&copy);
     let failed = failed_rules(&run);
     eprintln!("S5-12: exit {} failed rules {failed:?}", run.exit.code());
     assert_eq!(run.exit, Exit::Pass, "{failed:?} {}", run.stderr);
     assert!(failed.is_empty(), "{failed:?}");
-    let pdf = fs::read(output_paths(&docx).0).unwrap();
+    let pdf = fs::read(output_paths(&copy).0).unwrap();
     assert_eq!(
         count(&pdf, b"/Subtype/Link"),
         3,

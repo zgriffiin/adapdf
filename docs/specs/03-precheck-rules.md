@@ -95,12 +95,16 @@ Notes on the image rules:
 
 | ID | Check | Severity | Fix | WCAG / UA |
 |---|---|---|---|---|
-| TBL-001 | No header row is marked ("Repeat as header row at the top of each page"). | error | auto (mark the first row, after the user confirms it is the header) | 1.3.1, UA |
+| TBL-001 | No header row is marked ("Repeat as header row at the top of each page"). | error | auto (mark the first row, after the user confirms that it holds column headings; a label and value table has none) | 1.3.1, UA |
 | TBL-002 | A table is inside another table. | error | manual | 1.3.1 |
-| TBL-003 | The table has merged or split cells. | warning | manual (simplify it, or check the headers in PAC) | 1.3.1 |
+| TBL-003 | The table has merged or split cells. | error | manual (split the merged cells back (Layout > Split Cells) so every row has the same cells, or make the information text instead of a table. A table with merged cells cannot be made accessible from Word: Word does not record which cells were merged). After the export Adapdf gives the header cells a scope only in a regular table (spec 02, stage 4) | 1.3.1, UA |
 | TBL-004 | Probable layout table: one row, or one column, or no text in most cells. | warning | manual | 1.3.1 |
 | TBL-005 | The table has a completely empty row. | warning | auto (delete the row) | 1.3.1 |
 | TBL-006 | A row can break across pages. | warning | auto (set "Do not allow row to break across pages") | — |
+
+Notes on the table rules:
+
+- TBL-003 was raised from warning to error on 2026-11-18: with merged cells, Word's PDF fails PDF/UA-1 7.2-42 (S5-11).
 
 ## Links
 

@@ -915,13 +915,13 @@ fn a_file_that_is_not_a_report_of_this_tool_is_refused() {
     assert!(save_signoff(&wrong_name, &five_of_seven("A. Reviewer", "2026-03-06")).is_err());
     // A later layout of the report is not changed by an older tool.
     let mut json: Value = serde_json::from_str(&saved.report.to_json()).unwrap();
-    json["schema_version"] = Value::from(3);
+    json["schema_version"] = Value::from(4);
     let later = saved
         .dir
         .write("Later.accessibility.json", json.to_string().as_bytes());
     let before = fs::read(&later).unwrap();
     let error = save_signoff(&later, &five_of_seven("A. Reviewer", "2026-03-06")).unwrap_err();
-    assert!(error.message.contains("layout version 3"), "{error}");
+    assert!(error.message.contains("layout version 4"), "{error}");
     assert_eq!(fs::read(&later).unwrap(), before);
     assert!(!saved.dir.path().join("Later.accessibility.html").exists());
 }

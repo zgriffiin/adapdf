@@ -1,11 +1,12 @@
 //! Stage 4 of the pipeline (spec 02): PDF metadata fixes.
 //!
-//! Only document-level metadata is checked and fixed. The content, the tags and
-//! the fonts are never read for a change and never written. A fix is an
-//! incremental update: the original bytes stay as they are, and a new part
-//! (changed objects, a cross-reference section and a trailer) is appended.
-//! [`Outcome::appended`] holds only the appended part, so the original file is
-//! a prefix of the output by construction.
+//! Document-level metadata is checked and fixed, and the header cells of tables
+//! get a `/Scope` ([`table_scope`]). The text, the tag types, the reading order
+//! and the fonts are never changed. A fix is an incremental update: the original
+//! bytes stay as they are, and a new part (changed objects, a cross-reference
+//! section and a trailer) is appended. [`Outcome::appended`] holds only the
+//! appended part, so the original file is a prefix of the output by
+//! construction. The metadata and the scopes are written in the same update.
 //!
 //! | Check | Fix if missing |
 //! |---|---|
@@ -14,7 +15,9 @@
 //! | `/ViewerPreferences /DisplayDocTitle true` | Set it. |
 //! | Catalog `/Lang` | Copy from the .docx default language. |
 //! | `/MarkInfo /Marked true` and a `/StructTreeRoot` | Not fixed. An error finding. |
+//! | A table header cell (`TH`) with no `/Scope` | Add `/Column` or `/Row`, by its place in the table. |
 
+mod table_scope;
 mod update;
 mod xmp;
 
@@ -28,6 +31,7 @@ use serde::{Deserialize, Serialize};
 use crate::findings::Severity;
 use crate::model::Document as DocxDocument;
 
+pub use table_scope::{TableScopeChange, UnscopedHeader};
 use update::Update;
 
 /// Stage 4 could not run. These are tool failures (exit code 2).
@@ -152,10 +156,17 @@ impl Issue {
 }
 
 /// The result of stage 4 for one PDF.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Report {
-    /// The changes that were made, in a fixed order.
+    /// The metadata changes that were made, in a fixed order.
     pub changes: Vec<Change>,
+    /// The table header cells that were given a scope, for each table (a table
+    /// that needed nothing is not listed).
+    #[serde(default)]
+    pub table_scopes: Vec<TableScopeChange>,
+    /// The table header cells that could not be given a scope.
+    #[serde(default)]
+    pub unscoped_headers: Vec<UnscopedHeader>,
     /// Problems that were not fixed.
     pub issues: Vec<Issue>,
 }
@@ -208,10 +219,7 @@ pub fn check_bytes(pdf: &[u8], source: &SourceMetadata) -> Result<Outcome> {
         .map_err(|_| PdfMetaError::Unreadable("its document catalog is missing".to_string()))?
         .clone();
 
-    let mut report = Report {
-        changes: Vec::new(),
-        issues: Vec::new(),
-    };
+    let mut report = Report::default();
 
     // The export failed if the PDF has no tags. Nothing is fixed then.
     if !is_marked(&document, &catalog) {
@@ -410,6 +418,15 @@ pub fn check_bytes(pdf: &[u8], source: &SourceMetadata) -> Result<Outcome> {
         }
     }
 
+    // The scope of the table header cells. The new versions of the `TH` objects
+    // are written in the same update.
+    let scopes = table_scope::plan(&document);
+    for (id, dict) in &scopes.edits {
+        update.replace(*id, Object::Dictionary(dict.clone()));
+    }
+    report.table_scopes = scopes.tables;
+    report.unscoped_headers = scopes.unscoped;
+
     // The metadata stream and the Info dictionary are written last, because
     // they may need new object numbers.
     if add_part || add_xmp_title.is_some() {
@@ -469,6 +486,11 @@ pub fn check_bytes(pdf: &[u8], source: &SourceMetadata) -> Result<Outcome> {
     {
         return Err(PdfMetaError::Write(
             "the new cross-reference section is not read as an update of the old one".to_string(),
+        ));
+    }
+    if !table_scope::plan(&reread).edits.is_empty() {
+        return Err(PdfMetaError::Write(
+            "a table header cell has no scope when the new file is read again".to_string(),
         ));
     }
     Ok(outcome)

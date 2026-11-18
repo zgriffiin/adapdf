@@ -158,6 +158,20 @@ const metadataSection = tagged<MetadataSection, "status">("status", {
         new: string,
       }),
     ),
+    table_scopes: array(
+      object<Extract<MetadataSection, { status: "done" }>["table_scopes"][number]>({
+        table: number,
+        column: number,
+        row: number,
+      }),
+    ),
+    unscoped_headers: array(
+      object<Extract<MetadataSection, { status: "done" }>["unscoped_headers"][number]>({
+        table: number,
+        row: number,
+        cell: number,
+      }),
+    ),
     issues: array(
       object<Extract<MetadataSection, { status: "done" }>["issues"][number]>({
         severity,

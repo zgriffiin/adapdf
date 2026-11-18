@@ -3,7 +3,7 @@
 //! They are made up for the tests. No real document is used.
 #![allow(dead_code)] // each test file uses a different part of this module
 
-use lopdf::{Dictionary, Document, IncrementalDocument, Object, Stream, dictionary};
+use lopdf::{Dictionary, Document, IncrementalDocument, Object, ObjectId, Stream, dictionary};
 
 pub const TITLE: &str = "Adapdf test guide";
 
@@ -36,6 +36,112 @@ pub struct Pdf {
     /// A tagged `Figure` on the page. `Some(true)` has alternative text,
     /// `Some(false)` has none (veraPDF PDF/UA-1 rule 7.3-1 fails).
     pub figure: Option<bool>,
+    /// Tables in the structure tree, after the figure, in this order.
+    pub tables: Vec<TableSpec>,
+    /// `/RoleMap` of the structure tree: a custom tag and the tag it stands for.
+    pub role_map: Vec<(String, String)>,
+}
+
+/// A table of the structure tree: `Table`, and in it `THead`, `TBody` and
+/// `TFoot` with `TR` rows, and `TR` rows that are directly in the table. The rows
+/// are lists of cells, written as text (see [`TableSpec::cells`]).
+#[derive(Clone)]
+pub struct TableSpec {
+    pub table_tag: String,
+    pub row_tag: String,
+    pub head: Vec<Vec<Cell>>,
+    pub body: Vec<Vec<Cell>>,
+    pub foot: Vec<Vec<Cell>>,
+    /// Rows that are in no group.
+    pub rows: Vec<Vec<Cell>>,
+}
+
+/// How the `/A` of a cell is written.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Attributes {
+    /// No `/A`.
+    None,
+    /// `/A << /O /Table /RowSpan 1 >>`, a dictionary with no `/Scope`.
+    Dict,
+    /// `/A [ << /O /Table /RowSpan 1 >> ]`.
+    Array,
+    /// `/A 9 0 R`, an indirect dictionary with no `/Scope`.
+    Indirect,
+}
+
+#[derive(Clone)]
+pub struct Cell {
+    pub tag: String,
+    pub attributes: Attributes,
+    /// A `/Scope` in the attributes (`Row`, `Column` or `Both`).
+    pub scope: Option<String>,
+}
+
+impl TableSpec {
+    pub fn new() -> TableSpec {
+        TableSpec {
+            table_tag: "Table".to_string(),
+            row_tag: "TR".to_string(),
+            head: Vec::new(),
+            body: Vec::new(),
+            foot: Vec::new(),
+            rows: Vec::new(),
+        }
+    }
+
+    /// A row of cells. Each is its tag, then `+` (a `/A` dictionary without a
+    /// scope), `++` (the same in an array) or `&` (the same, indirect), then `:`
+    /// and a scope. For example `TH`, `TD`, `TH+`, `TH:Row`, `Heading`.
+    pub fn cells(row: &str) -> Vec<Cell> {
+        row.split_whitespace()
+            .map(|word| {
+                let (word, scope) = match word.split_once(':') {
+                    Some((word, scope)) => (word, Some(scope.to_string())),
+                    None => (word, None),
+                };
+                let (tag, attributes) = if let Some(tag) = word.strip_suffix("++") {
+                    (tag, Attributes::Array)
+                } else if let Some(tag) = word.strip_suffix('+') {
+                    (tag, Attributes::Dict)
+                } else if let Some(tag) = word.strip_suffix('&') {
+                    (tag, Attributes::Indirect)
+                } else {
+                    (word, Attributes::None)
+                };
+                Cell {
+                    tag: tag.to_string(),
+                    attributes,
+                    scope,
+                }
+            })
+            .collect()
+    }
+
+    pub fn head(mut self, rows: &[&str]) -> TableSpec {
+        self.head = rows.iter().map(|r| TableSpec::cells(r)).collect();
+        self
+    }
+
+    pub fn body(mut self, rows: &[&str]) -> TableSpec {
+        self.body = rows.iter().map(|r| TableSpec::cells(r)).collect();
+        self
+    }
+
+    pub fn foot(mut self, rows: &[&str]) -> TableSpec {
+        self.foot = rows.iter().map(|r| TableSpec::cells(r)).collect();
+        self
+    }
+
+    pub fn rows(mut self, rows: &[&str]) -> TableSpec {
+        self.rows = rows.iter().map(|r| TableSpec::cells(r)).collect();
+        self
+    }
+}
+
+impl Default for TableSpec {
+    fn default() -> TableSpec {
+        TableSpec::new()
+    }
 }
 
 impl Default for Pdf {
@@ -53,6 +159,8 @@ impl Default for Pdf {
             modern: false,
             unembedded_text: false,
             figure: None,
+            tables: Vec::new(),
+            role_map: Vec::new(),
         }
     }
 }
@@ -175,6 +283,9 @@ impl Pdf {
                     },
                 );
             }
+            for table in &self.tables {
+                kids.push(add_table(&mut doc, table, element_id).into());
+            }
             doc.set_object(
                 element_id,
                 dictionary! {
@@ -184,6 +295,13 @@ impl Pdf {
                     "K" => kids,
                 },
             );
+            if !self.role_map.is_empty() {
+                let mut map = Dictionary::new();
+                for (custom, standard) in &self.role_map {
+                    map.set(custom.as_str(), Object::Name(standard.as_bytes().to_vec()));
+                }
+                tree.set("RoleMap", map);
+            }
             doc.set_object(tree_id, tree);
             catalog.set("StructTreeRoot", tree_id);
         }
@@ -238,6 +356,126 @@ impl Pdf {
         }
         bytes
     }
+}
+
+/// One structure element, as an object with a number.
+fn add_element(doc: &mut Document, tag: &str, parent: ObjectId) -> ObjectId {
+    doc.add_object(dictionary! {
+        "Type" => "StructElem",
+        "S" => Object::Name(tag.as_bytes().to_vec()),
+        "P" => parent,
+    })
+}
+
+fn set_kids(doc: &mut Document, id: ObjectId, kids: Vec<Object>) {
+    if let Ok(Object::Dictionary(element)) = doc.get_object_mut(id) {
+        element.set("K", kids);
+    }
+}
+
+fn add_cell(doc: &mut Document, cell: &Cell, parent: ObjectId) -> ObjectId {
+    let id = add_element(doc, &cell.tag, parent);
+    if cell.attributes == Attributes::None && cell.scope.is_none() {
+        return id;
+    }
+    let mut attributes = dictionary! { "O" => "Table" };
+    if cell.attributes != Attributes::None {
+        attributes.set("RowSpan", 1);
+    }
+    if let Some(scope) = &cell.scope {
+        attributes.set("Scope", Object::Name(scope.as_bytes().to_vec()));
+    }
+    let value = match cell.attributes {
+        Attributes::Array => Object::Array(vec![attributes.into()]),
+        Attributes::Indirect => Object::Reference(doc.add_object(attributes)),
+        Attributes::None | Attributes::Dict => Object::Dictionary(attributes),
+    };
+    if let Ok(Object::Dictionary(element)) = doc.get_object_mut(id) {
+        element.set("A", value);
+    }
+    id
+}
+
+fn add_rows(
+    doc: &mut Document,
+    rows: &[Vec<Cell>],
+    row_tag: &str,
+    parent: ObjectId,
+) -> Vec<Object> {
+    rows.iter()
+        .map(|cells| {
+            let row = add_element(doc, row_tag, parent);
+            let kids: Vec<Object> = cells
+                .iter()
+                .map(|cell| add_cell(doc, cell, row).into())
+                .collect();
+            set_kids(doc, row, kids);
+            row.into()
+        })
+        .collect()
+}
+
+/// A table of the structure tree. The elements get their numbers in document
+/// order.
+fn add_table(doc: &mut Document, spec: &TableSpec, parent: ObjectId) -> ObjectId {
+    let table = add_element(doc, &spec.table_tag, parent);
+    let mut kids: Vec<Object> = Vec::new();
+    for (tag, rows) in [
+        ("THead", &spec.head),
+        ("TBody", &spec.body),
+        ("TFoot", &spec.foot),
+    ] {
+        if rows.is_empty() {
+            continue;
+        }
+        let group = add_element(doc, tag, table);
+        let group_rows = add_rows(doc, rows, &spec.row_tag, group);
+        set_kids(doc, group, group_rows);
+        kids.push(group.into());
+    }
+    kids.extend(add_rows(doc, &spec.rows, &spec.row_tag, table));
+    set_kids(doc, table, kids);
+    table
+}
+
+/// The structure elements with this tag, in the order of their object numbers
+/// (the order that the builder made them in, which is the document order).
+pub fn elements(pdf: &[u8], tag: &str) -> Vec<(ObjectId, Dictionary)> {
+    let doc = Document::load_mem(pdf).expect("the PDF opens");
+    doc.objects
+        .iter()
+        .filter_map(|(id, object)| Some((*id, object.as_dict().ok()?)))
+        .filter(|(_, dict)| {
+            dict.get(b"S")
+                .and_then(Object::as_name)
+                .is_ok_and(|name| name == tag.as_bytes())
+        })
+        .map(|(id, dict)| (id, dict.clone()))
+        .collect()
+}
+
+/// The `/Scope` of each element with this tag, found in its `/A` (a dictionary,
+/// an array of dictionaries, or a reference to either).
+pub fn scopes(pdf: &[u8], tag: &str) -> Vec<Option<String>> {
+    let doc = Document::load_mem(pdf).expect("the PDF opens");
+    elements(pdf, tag)
+        .iter()
+        .map(|(_, dict)| {
+            let mut stack = vec![dict.get(b"A").ok()?];
+            while let Some(object) = stack.pop() {
+                match doc.dereference(object).ok()?.1 {
+                    Object::Array(items) => stack.extend(items),
+                    Object::Dictionary(attributes) => {
+                        if let Ok(scope) = attributes.get(b"Scope").and_then(Object::as_name) {
+                            return Some(String::from_utf8_lossy(scope).into_owned());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            None
+        })
+        .collect()
 }
 
 /// The same PDF after another program changed its Info dictionary in an

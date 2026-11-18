@@ -21,7 +21,7 @@ use std::collections::BTreeMap;
 use std::env;
 
 use adapdf::fixtures::{Para, clean};
-use adapdf::pdfmeta::{self, Change, Field};
+use adapdf::pdfmeta::{self, Change, Field, TableScopeChange, UnscopedHeader};
 use adapdf::report::{ExportInfo, Parameter};
 use adapdf::verapdf::{Profile, Validation, WcagOutcome, parse};
 use serde::Serialize;
@@ -255,6 +255,16 @@ fn exports(samples: &mut Samples) {
             what: Field::InfoTitle.describe().to_string(),
             old: None,
             new: "Guide".to_string(),
+        }],
+        table_scopes: vec![TableScopeChange {
+            table: 1,
+            column: 2,
+            row: 3,
+        }],
+        unscoped_headers: vec![UnscopedHeader {
+            table: 2,
+            row: 3,
+            cell: 2,
         }],
         issues,
     };

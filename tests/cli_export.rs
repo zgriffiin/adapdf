@@ -87,7 +87,7 @@ fn cli_export_exit_1_on_errors() {
     )
     .unwrap();
     assert_eq!(json["summary"]["verdict"], "fail");
-    assert_eq!(json["schema_version"], 2);
+    assert_eq!(json["schema_version"], 3);
     assert_eq!(json["precheck"][0]["rule_id"], "HDG-002");
 }
 

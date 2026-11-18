@@ -14,7 +14,7 @@ The pipeline is built (stages 1 to 6 of the [pipeline spec](docs/specs/02-pipeli
 `adapdf check` runs the pre-check rules. `adapdf fix` applies the fixes (stage 2)
 after it asks about each one. It never changes your original: the fixes go into an
 accessible copy, `<name> - Adapdf\<name> (accessible).docx`. `adapdf export` exports the PDF through Word (stage
-3), adds the missing PDF metadata (stage 4), runs veraPDF (stage 5) and writes
+3), adds the missing PDF metadata and the scope of table header cells (stage 4), runs veraPDF (stage 5) and writes
 the accessibility report as HTML and JSON (stage 6). The desktop app (Tauri and
 IBM Carbon, in `app/`) is built: see "The app". A per-user Windows installer is built (see "Build the installer"; the
 [install guide](docs/install-guide.md) is for staff). See the [test plan](docs/test-plan.md) for what is tested and

@@ -265,3 +265,69 @@ fn the_pdf_path_may_have_spaces_and_other_letters() {
     let path = dir.write("Guía de usuario – año 2026.pdf", &Pdf::complete().build());
     assert!(verapdf::validate(&tool, &path).unwrap().passed());
 }
+
+// S4-21
+#[test]
+fn verapdf_accepts_the_scopes_that_stage_4_adds() {
+    // Tables made by test code, with the cells as Word writes them (no `/Scope`).
+    // veraPDF 7.5-1 fails for a table that mixes `TH` and `TD`; after stage 4 it
+    // passes, in the classic and in the modern layout, with an existing `/A`
+    // (a dictionary, an array, an indirect dictionary) kept as it is. An
+    // irregular table (a heading in the middle) is still reported.
+    use pdf_support::TableSpec;
+    let tool = tool();
+    let dir = TempDir::new("real-scope");
+    let regular = [
+        TableSpec::new()
+            .head(&["TH TH TH"])
+            .body(&["TH TD TD", "TH TD TD"]),
+        TableSpec::new().body(&["TH TD", "TH TD", "TH TD"]),
+        TableSpec::new().head(&["TH TH"]).body(&["TD TD", "TD TD"]),
+        TableSpec::new()
+            .head(&["TH+ TH++ TH&"])
+            .body(&["TD TD TD", "TD TD TD"]),
+    ];
+    for modern in [false, true] {
+        for (i, table) in regular.iter().enumerate() {
+            let name = format!("table-{i}-modern-{modern}");
+            let original = Pdf {
+                modern,
+                tables: vec![table.clone()],
+                ..Pdf::complete()
+            }
+            .build();
+            let path = dir.write(&format!("{name}.pdf"), &original);
+            let before = verapdf::validate(&tool, &path).unwrap();
+            assert_eq!(rule_ids(&before), ids(&["7.5-1"]), "{name}: before");
+
+            let report = pdfmeta::fix_file(&path, &source()).unwrap();
+            assert!(!report.table_scopes.is_empty(), "{name}");
+            assert!(report.unscoped_headers.is_empty(), "{name}");
+            let after = verapdf::validate(&tool, &path).unwrap();
+            assert!(after.passed(), "{name}: {:#?}", after.ua1.findings);
+        }
+    }
+
+    // A heading in the middle: not guessed, so veraPDF still fails the table, and
+    // the report names the cell.
+    let irregular = TableSpec::new().body(&["TD TH TD", "TD TD TD"]);
+    let original = Pdf {
+        tables: vec![irregular],
+        ..Pdf::complete()
+    }
+    .build();
+    let path = dir.write("irregular.pdf", &original);
+    let report = pdfmeta::fix_file(&path, &source()).unwrap();
+    assert_eq!(report.unscoped_headers.len(), 1);
+    assert_eq!(
+        report.unscoped_headers[0].describe(),
+        "header cell not given a scope (table 1, row 1, cell 2)"
+    );
+    let after = verapdf::validate(&tool, &path).unwrap();
+    assert_eq!(
+        rule_ids(&after),
+        ids(&["7.5-1"]),
+        "{:#?}",
+        after.ua1.findings
+    );
+}

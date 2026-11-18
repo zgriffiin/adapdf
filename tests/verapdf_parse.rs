@@ -290,6 +290,36 @@ fn figure_without_alt_text_is_img_001() {
     );
 }
 
+// S5-15
+#[test]
+fn a_table_that_could_not_get_scopes_is_linked_to_tbl_003() {
+    // Stage 4 adds the scope of the header cells (S4-13 to S4-20). Rule 7.5-1 is
+    // reported for a table where it could not: an irregular table.
+    for test_number in [1, 2] {
+        let result = parse(&with_rule("7.5", test_number, "Scope"), Profile::Ua1).unwrap();
+        let finding = &result.findings[0];
+        assert!(finding.mapped, "7.5-{test_number}");
+        assert_eq!(finding.pre_check, Some(RuleId::Tbl003), "7.5-{test_number}");
+        assert!(
+            finding.how_to_fix.contains("Simplify the table"),
+            "{}",
+            finding.how_to_fix
+        );
+        assert!(finding.how_to_fix.contains("TBL-003"));
+        assert!(
+            finding.how_to_fix.contains("merged or split"),
+            "{}",
+            finding.how_to_fix
+        );
+        // Word's "Repeat as header row" does not change the tags: it is not the fix.
+        assert!(!finding.how_to_fix.contains("Repeat as header row"));
+        assert!(!finding.message.contains("Repeat as header row"));
+    }
+    let first = rules::lookup("7.5", 1).unwrap();
+    assert!(first.message.contains("not regular"), "{}", first.message);
+    assert!(first.message.contains("scope"), "{}", first.message);
+}
+
 // S5-04
 #[test]
 fn verapdf_unmapped_rule_keeps_the_original_text() {

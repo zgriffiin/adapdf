@@ -26,8 +26,8 @@ use super::{ExportInfo, FixesSection, MetadataSection, Report, VeraPdfSection, V
 use crate::findings::{Finding, Severity};
 use crate::verapdf::{ProfileResult, VeraFinding, WcagOutcome};
 
-/// The seven sections of spec 02, stage 6, in order. The PDF metadata changes
-/// are inside "Technical details".
+/// The seven sections of spec 02, stage 6, in order. The changes to the PDF after
+/// the export are inside "Technical details".
 pub const SECTIONS: [&str; 7] = [
     "Summary",
     "Pre-check findings",
@@ -286,7 +286,7 @@ fn export_details(out: &mut String, export: &ExportInfo) {
     );
 }
 
-/// Section 7: how Word made the PDF, and the changes to the PDF metadata.
+/// Section 7: how Word made the PDF, and the changes to the PDF after the export.
 fn technical(out: &mut String, report: &Report) {
     match &report.export {
         Some(export) => export_details(out, export),
@@ -295,7 +295,7 @@ fn technical(out: &mut String, report: &Report) {
             "Word did not make a PDF, so there is nothing to show about the export.",
         ),
     }
-    out.push_str("<h3>PDF metadata changes</h3>\n");
+    out.push_str("<h3>Changes to the PDF after export</h3>\n");
     metadata(out, &report.pdf_metadata);
 }
 
@@ -388,12 +388,17 @@ fn metadata(out: &mut String, section: &MetadataSection) {
     match section {
         MetadataSection::NotRun { reason } => paragraph(out, reason),
         MetadataSection::Done(report) => {
-            if report.changes.is_empty() {
+            paragraph(
+                out,
+                "After the export Adapdf changes only the metadata of the whole document, and adds a scope to table header cells that Word wrote without one. It never changes the text, the tag types or the reading order.",
+            );
+            if report.changes.is_empty() && report.table_scopes.is_empty() {
                 paragraph(
                     out,
-                    "None. The PDF already had all the metadata that the tool checks.",
+                    "None. The PDF already had all the metadata that the tool checks, and no table header cell needed a scope.",
                 );
-            } else {
+            }
+            if !report.changes.is_empty() {
                 let rows: Vec<Vec<Cell>> = report
                     .changes
                     .iter()
@@ -409,6 +414,41 @@ fn metadata(out: &mut String, section: &MetadataSection) {
                     out,
                     "Changes made to the PDF metadata",
                     &["What", "Before", "After"],
+                    &rows,
+                );
+            }
+            if !report.table_scopes.is_empty() {
+                let rows: Vec<Vec<Cell>> = report
+                    .table_scopes
+                    .iter()
+                    .map(|t| {
+                        vec![
+                            header_cell(&format!("Table {}", t.table)),
+                            cell(&t.summary()),
+                        ]
+                    })
+                    .collect();
+                table(
+                    out,
+                    "Scopes added to table header cells",
+                    &["Table", "What was added"],
+                    &rows,
+                );
+            }
+            if !report.unscoped_headers.is_empty() {
+                paragraph(
+                    out,
+                    "Adapdf does not guess a scope for a heading in the middle of a table. Simplify these tables in Word: no merged or split cells, and headings only in the first row and the first column (pre-check rule TBL-003). Then export again.",
+                );
+                let rows: Vec<Vec<Cell>> = report
+                    .unscoped_headers
+                    .iter()
+                    .map(|u| vec![cell(&u.describe())])
+                    .collect();
+                table(
+                    out,
+                    "Table header cells that were not given a scope",
+                    &["What happened"],
                     &rows,
                 );
             }

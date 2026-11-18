@@ -9,7 +9,8 @@
 //!    temporary file next to `Guide.pdf`. An existing `Guide.pdf` that another
 //!    program has locked is found first (before Word starts).
 //! 4. Stage 4: [`crate::pdfmeta::fix_file`] adds the document metadata that is
-//!    missing to the temporary file, with the title and language of the .docx.
+//!    missing to the temporary file, with the title and language of the .docx, and
+//!    the scope of the table header cells that Word wrote without one.
 //! 5. Stage 5: veraPDF checks the temporary file.
 //! 6. Stage 6: when stages 4 and 5 have both finished (their result is a pass or
 //!    a fail, so there is a verdict), the report is rendered and the HTML and

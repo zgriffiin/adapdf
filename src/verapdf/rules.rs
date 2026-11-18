@@ -22,6 +22,8 @@ pub struct Entry {
 const EXPORT_AGAIN: &str =
     "Export the PDF again from Word with \"Document structure tags for accessibility\" turned on.";
 
+const TABLE_FIX: &str = "Simplify the table: no merged or split cells, and headings only in the first row and/or the first column (the pre-check rule TBL-003 finds merged and split cells). Adapdf adds the scope of the header cells itself after the export, but only for a table like that. Then export again.";
+
 const FONT_FIX: &str = "Use a font that Word can embed (a TrueType or OpenType font that allows embedding), \
      or change the font of that text. Then export again.";
 
@@ -177,19 +179,24 @@ pub const TABLE: &[Entry] = &[
         how_to_fix: "Use heading styles in order (Heading 1, then Heading 2, and so on) without skipping a level. Then export again.",
         pre_check: Some(RuleId::Hdg002),
     },
+    // Word writes a `TH` for the first row and the first column of a table, from
+    // `w:tblLook`, and never writes a `/Scope` for it (S5-14). The tool adds the
+    // scope after the export (stage 4). This rule is still reported for a table
+    // where it could not: a table that is not regular, with a merged or split
+    // cell or a heading in the middle.
     Entry {
         clause: "7.5",
         test_number: 1,
-        message: "A table header cell has no scope, so a screen reader cannot tell if it heads a row or a column.",
-        how_to_fix: "Mark the first row of the table as a header row (Table Properties, Row, \"Repeat as header row at the top of each page\"). Then export again.",
-        pre_check: Some(RuleId::Tbl001),
+        message: "A table cell has no header that a screen reader can find. The table is not regular (merged or split cells, or a heading in the middle of the table), so Adapdf could not give its header cells a scope.",
+        how_to_fix: TABLE_FIX,
+        pre_check: Some(RuleId::Tbl003),
     },
     Entry {
         clause: "7.5",
         test_number: 2,
-        message: "A table header cell has no scope, so a screen reader cannot tell if it heads a row or a column.",
-        how_to_fix: "Mark the first row of the table as a header row (Table Properties, Row, \"Repeat as header row at the top of each page\"). Then export again.",
-        pre_check: Some(RuleId::Tbl001),
+        message: "A table cell names header cells (Headers) that are not in the PDF, so a screen reader cannot tell which headings belong to it.",
+        how_to_fix: TABLE_FIX,
+        pre_check: Some(RuleId::Tbl003),
     },
     // Word writes the ScreenTip of a link (`w:tooltip`) as the `/Contents` of the
     // link annotation, and writes no `/Contents` for a link without one. A

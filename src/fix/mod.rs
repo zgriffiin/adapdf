@@ -251,7 +251,7 @@ pub fn describe(fix: FixId, options: &FixOptions) -> String {
         FixId::DeleteEmptyParagraphs => {
             "Delete the extra empty paragraphs (one stays).".to_string()
         }
-        FixId::MarkHeaderRow => "Mark the first row as the header row.".to_string(),
+        FixId::MarkHeaderRow => "Only mark the first row as a header row if it holds column headings (for example \"Step | What to do\"). A label/value table (\"Training Topic: | ...\") is not one; leave it as it is.".to_string(),
         FixId::DeleteEmptyRow => "Delete the empty rows.".to_string(),
         FixId::DisallowRowBreak => "Do not allow rows to break across pages.".to_string(),
         FixId::AlignLeft => "Align this paragraph to the left.".to_string(),

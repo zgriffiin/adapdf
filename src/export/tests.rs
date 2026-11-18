@@ -424,7 +424,7 @@ fn export_writes_no_pdf_when_stage_1_has_errors() {
         assert!(!pdf.exists());
         refused.push(fixture.rule);
     }
-    assert_eq!(refused.len(), 17, "{refused:?}");
+    assert_eq!(refused.len(), 18, "{refused:?}");
     assert!(dir.names().iter().all(|n| !n.ends_with(".pdf")));
 }
 

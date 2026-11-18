@@ -118,7 +118,7 @@ fn tbl_002_reports_each_nested_table_and_not_the_outer_one() {
 #[test]
 fn tbl_003_fails_on_merged_cells() {
     let f = the_failing_finding(RuleId::Tbl003);
-    assert_eq!(f.severity, Severity::Warning);
+    assert_eq!(f.severity, Severity::Error);
     assert_eq!(f.fix, FixKind::Manual);
     assert_location(
         &f,

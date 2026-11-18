@@ -95,3 +95,145 @@ pub fn page_text(pdf: &[u8]) -> String {
         .extract_text(&pages)
         .expect("the text of the pages")
 }
+
+/// A cell of a `Table` structure element in a PDF.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PdfCell {
+    /// `TH` or `TD`.
+    pub tag: String,
+    /// The `/Scope` of its table attributes (`Row`, `Column` or `Both`).
+    pub scope: Option<String>,
+    /// The cell has a `/Headers` array.
+    pub headers: bool,
+}
+
+impl PdfCell {
+    /// `TD`, `TH` or `TH(Row)`.
+    pub fn short(&self) -> String {
+        match &self.scope {
+            Some(scope) => format!("{}({scope})", self.tag),
+            None if self.headers => format!("{}(headers)", self.tag),
+            None => self.tag.clone(),
+        }
+    }
+}
+
+fn resolve<'a>(
+    document: &'a lopdf::Document,
+    object: &'a lopdf::Object,
+) -> Option<&'a lopdf::Object> {
+    match object {
+        lopdf::Object::Reference(id) => document.get_object(*id).ok(),
+        other => Some(other),
+    }
+}
+
+/// The structure elements below `object`, in document order, with the elements
+/// of `stop` not entered.
+fn walk_elements<'a>(
+    document: &'a lopdf::Document,
+    object: &'a lopdf::Object,
+    out: &mut Vec<&'a lopdf::Dictionary>,
+    depth: usize,
+) {
+    if depth > 100 {
+        return;
+    }
+    match resolve(document, object) {
+        Some(lopdf::Object::Array(items)) => {
+            for item in items {
+                walk_elements(document, item, out, depth + 1);
+            }
+        }
+        Some(lopdf::Object::Dictionary(dict)) => {
+            if dict.get(b"S").is_ok() {
+                out.push(dict);
+            }
+            if let Ok(kids) = dict.get(b"K") {
+                walk_elements(document, kids, out, depth + 1);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn tag_of(dict: &lopdf::Dictionary) -> String {
+    dict.get(b"S")
+        .and_then(lopdf::Object::as_name)
+        .map(|n| String::from_utf8_lossy(n).into_owned())
+        .unwrap_or_default()
+}
+
+/// The `/Scope` in the table attributes (`/A`) of a structure element.
+fn scope_of(document: &lopdf::Document, dict: &lopdf::Dictionary) -> Option<String> {
+    let attributes = dict.get(b"A").ok()?;
+    let mut found = Vec::new();
+    let mut stack = vec![attributes];
+    while let Some(object) = stack.pop() {
+        match resolve(document, object) {
+            Some(lopdf::Object::Array(items)) => stack.extend(items),
+            Some(lopdf::Object::Dictionary(d)) => found.push(d),
+            _ => {}
+        }
+    }
+    found.into_iter().find_map(|d| {
+        d.get(b"Scope")
+            .and_then(lopdf::Object::as_name)
+            .ok()
+            .map(|n| String::from_utf8_lossy(n).into_owned())
+    })
+}
+
+/// The tables of a PDF (in document order), as rows of cells: what Word wrote for
+/// each `TH` and `TD`, read with `lopdf`.
+pub fn pdf_tables(pdf: &[u8]) -> Vec<Vec<Vec<PdfCell>>> {
+    let document = lopdf::Document::load_mem(pdf).expect("a PDF that lopdf can read");
+    let root = document
+        .catalog()
+        .and_then(|c| c.get(b"StructTreeRoot"))
+        .expect("a structure tree");
+    let mut elements = Vec::new();
+    walk_elements(&document, root, &mut elements, 0);
+    let mut tables = Vec::new();
+    let mut i = 0;
+    while i < elements.len() {
+        if tag_of(elements[i]) == "Table" {
+            // The elements of this table are the ones that follow, up to the next
+            // `Table` (a nested table is not looked for here).
+            let mut rows: Vec<Vec<PdfCell>> = Vec::new();
+            let mut j = i + 1;
+            while j < elements.len() && tag_of(elements[j]) != "Table" {
+                match tag_of(elements[j]).as_str() {
+                    "TR" => rows.push(Vec::new()),
+                    tag @ ("TH" | "TD") => {
+                        if let Some(row) = rows.last_mut() {
+                            row.push(PdfCell {
+                                tag: tag.to_string(),
+                                scope: scope_of(&document, elements[j]),
+                                headers: elements[j].get(b"Headers").is_ok()
+                                    || elements[j]
+                                        .get(b"A")
+                                        .is_ok_and(|a| format!("{a:?}").contains("Headers")),
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+                j += 1;
+            }
+            tables.push(rows);
+        }
+        i += 1;
+    }
+    tables
+}
+
+/// A table as a short text: cells of a row are separated by a space, rows by
+/// ` / `.
+pub fn table_summary(table: &[Vec<PdfCell>]) -> String {
+    table
+        .iter()
+        .map(|row| row.iter().map(PdfCell::short).collect::<Vec<_>>().join(" "))
+        .collect::<Vec<_>>()
+        .join(" / ")
+}

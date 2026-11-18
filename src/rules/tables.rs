@@ -73,7 +73,7 @@ pub fn tbl_003(doc: &Document) -> Vec<Finding> {
     each_table(
         doc,
         RuleId::Tbl003,
-        "Select the merged cells and choose Table Layout > Split Cells, so that every row has the same number of cells. If you keep them, check the headers in PAC.",
+        "Split the merged cells back (Layout > Split Cells) so every row has the same cells, or make the information text instead of a table. A table with merged cells cannot be made accessible from Word: Word does not record which cells were merged.",
         |t| {
             let merged = t
                 .rows

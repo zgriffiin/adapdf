@@ -8,7 +8,9 @@ use super::*;
 use crate::findings::{Finding, FixId, Location, RuleId};
 use crate::model::colour::contrast_ratio;
 use crate::model::theme::Rgb;
-use crate::pdfmeta::{Change, Field, Issue, IssueKind, Report as MetadataReport};
+use crate::pdfmeta::{
+    Change, Field, Issue, IssueKind, Report as MetadataReport, TableScopeChange, UnscopedHeader,
+};
 use crate::verapdf::{Profile, Validation, WcagOutcome, parse};
 
 const DATE: &str = "2026-03-05 10:15:30";
@@ -76,6 +78,23 @@ fn metadata_changes() -> MetadataReport {
                 new: "en-US".to_string(),
             },
         ],
+        table_scopes: vec![
+            TableScopeChange {
+                table: 1,
+                column: 2,
+                row: 3,
+            },
+            TableScopeChange {
+                table: 3,
+                column: 1,
+                row: 0,
+            },
+        ],
+        unscoped_headers: vec![UnscopedHeader {
+            table: 2,
+            row: 3,
+            cell: 2,
+        }],
         issues: Vec::new(),
     }
 }
@@ -103,10 +122,7 @@ fn input() -> Input {
         original: None,
         pdf: Some("Guide.pdf".to_string()),
         export: Some(export_info()),
-        metadata: Some(MetadataReport {
-            changes: Vec::new(),
-            issues: Vec::new(),
-        }),
+        metadata: Some(MetadataReport::default()),
         verapdf: Some(validation(UA1_PASS, WcagOutcome::NotAvailable)),
     }
 }
@@ -213,10 +229,17 @@ fn report_has_the_seven_sections_in_order() {
     assert!(section_text(&doc, 2).contains("None."));
     assert!(section_text(&doc, 3).contains("No fixes were made by Adapdf."));
     assert!(section_text(&doc, 4).contains("No PDF/UA-1 rule failed."));
-    // The technical details come last, and the PDF metadata changes are in them.
+    // The technical details come last, and the changes to the PDF are in them.
     let technical = section_text(&doc, 7);
     assert!(technical.contains("How Word made the PDF"), "{technical}");
-    assert!(technical.contains("PDF metadata changes"), "{technical}");
+    assert!(
+        technical.contains("Changes to the PDF after export"),
+        "{technical}"
+    );
+    assert!(
+        technical.contains("no table header cell needed a scope"),
+        "{technical}"
+    );
 }
 
 #[test]
@@ -674,6 +697,17 @@ fn report_json_matches_html() {
         assert!(page.contains(change["new"].as_str().unwrap()));
     }
 
+    // Table scopes: the cells that were given one and those that were not.
+    let scopes = json["pdf_metadata"]["table_scopes"].as_array().unwrap();
+    assert_eq!(scopes.len(), 2);
+    assert!(page.contains("Table 1"));
+    assert!(page.contains("2 header cells given Column, 3 given Row"));
+    assert!(page.contains("Table 3"));
+    assert!(page.contains("1 header cell given Column"));
+    let unscoped = json["pdf_metadata"]["unscoped_headers"].as_array().unwrap();
+    assert_eq!(unscoped.len(), 1);
+    assert!(page.contains("header cell not given a scope (table 2, row 3, cell 2)"));
+
     // veraPDF: failed rules and warnings.
     assert_eq!(json["verapdf"]["status"], "ran");
     assert_eq!(json["verapdf"]["verapdf_version"], "1.28.2");
@@ -754,13 +788,13 @@ fn a_report_is_pass_only_when_every_stage_ran_and_nothing_failed() {
     // A stage 4 error is a fail.
     let mut untagged = input();
     untagged.metadata = Some(MetadataReport {
-        changes: Vec::new(),
         issues: vec![Issue {
             kind: IssueKind::NoStructTreeRoot,
             severity: Severity::Error,
             message: "The PDF has no tags.".to_string(),
             how_to_fix: "Export again.".to_string(),
         }],
+        ..MetadataReport::default()
     });
     let report = build(untagged);
     assert_eq!(report.summary.verdict, Verdict::Fail);
@@ -829,7 +863,7 @@ fn the_json_has_the_sections_in_order_and_a_schema_version() {
     keys.sort_unstable();
     expected.sort_unstable();
     assert_eq!(keys, expected);
-    assert_eq!(json["schema_version"], 2);
+    assert_eq!(json["schema_version"], 3);
     assert_eq!(json["pac"]["result"], Value::Null);
 }
 
