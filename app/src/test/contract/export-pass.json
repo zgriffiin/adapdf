@@ -120,14 +120,14 @@
         "issues": []
       }
     },
-    "report_json": "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.json",
-    "report_html": "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.html",
+    "report_json": "C:\\Docs\\Guide - Adapdf\\report.json",
+    "report_html": "C:\\Docs\\Guide - Adapdf\\report.html",
     "pdf": "C:\\Docs\\Guide - Adapdf\\Guide.pdf"
   },
   "console": "Guide.docx: result\n",
   "files": [
     "C:\\Docs\\Guide - Adapdf\\Guide.pdf",
-    "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.html",
-    "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.json"
+    "C:\\Docs\\Guide - Adapdf\\report.html",
+    "C:\\Docs\\Guide - Adapdf\\report.json"
   ]
 }

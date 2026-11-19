@@ -135,7 +135,7 @@ pub fn fix_offers(
     let bytes = read_bytes(path, env)?;
     let offers = fix::offers(&bytes, options, env.fonts).map_err(|e| failure(path, e))?;
     let suggestions = adapdf::model::Document::from_bytes(&bytes)
-        .map(|doc| fix::title_suggestions(&doc, &name_of(path)))
+        .map(|doc| fix::title_suggestions(&doc, &name_of(&fix::original_path(path))))
         .unwrap_or_default();
     Ok(offers
         .into_iter()
@@ -183,8 +183,8 @@ fn read_offers(
 pub struct WorkingInfo {
     /// The file that the person chose.
     pub chosen: String,
-    /// The Word document that Adapdf never changes. For a copy that was moved out
-    /// of its folder, the file of that name next to it (it may not exist).
+    /// The Word document that Adapdf never changes: for the copy, the file of the
+    /// guide's name next to the folder (it may not exist).
     pub original: String,
     /// The accessible copy: the file the fixes go into and Word edits.
     pub copy: String,
@@ -231,23 +231,22 @@ pub fn create_copy(path: &Path, start_over: bool, env: &Environment) -> CommandR
     Ok(working_info(&copy, env))
 }
 
-/// Checks that a path may be opened in Word: the accessible copy of a guide, as
-/// a .docx file with an absolute path that is not a network path
-/// (`\\server\share`), that exists. The page cannot ask the app to open any other
-/// file, and the original is never opened by the app: the person edits the copy.
+/// Checks that a path may be opened in Word: the accessible copy of a guide
+/// (`accessible.docx` in the folder `<name> - Adapdf`), with a full path that
+/// Word can open (not over [`fix::WORD_PATH_LIMIT`] characters), an absolute path
+/// that is not a network path (`\\server\share`), that exists. The page cannot
+/// ask the app to open any other file, and the original is never opened by the
+/// app: the person edits the copy.
 pub fn check_open_in_word(path: &Path) -> CommandResult<PathBuf> {
     let name = name_of(path);
     if !fix::is_accessible_copy(path) {
         return Err(CommandError::new(format!(
-            "{name} is not an accessible copy. The app opens only the copy that it made (a file whose name ends with {}.docx), so that your original is not changed.",
-            fix::COPY_SUFFIX
+            "{name} is not an accessible copy. The app opens only the copy that it made ({} in the folder <name>{}), so that your original is not changed.",
+            fix::COPY_NAME,
+            fix::FOLDER_SUFFIX
         )));
     }
-    if !is_docx_name(&name) {
-        return Err(CommandError::new(format!(
-            "{name} is not a Word document (.docx)."
-        )));
-    }
+    fix::check_word_path(path).map_err(|e| CommandError::new(e.to_string()))?;
     check_local_file(path, &name, "Make the copy again.")
 }
 
@@ -272,9 +271,12 @@ fn is_docx_name(name: &str) -> bool {
 }
 
 fn is_report_name(name: &str) -> bool {
-    [JSON_SUFFIX, HTML_SUFFIX]
-        .iter()
-        .any(|suffix| name.ends_with(suffix) && name.len() > suffix.len())
+    is_named(name, fix::REPORT_JSON) || is_named(name, fix::REPORT_HTML)
+}
+
+/// True when the file name is `expected`. Windows ignores the case of a name.
+fn is_named(name: &str, expected: &str) -> bool {
+    name.eq_ignore_ascii_case(expected)
 }
 
 fn check_local_file(path: &Path, name: &str, advice: &str) -> CommandResult<PathBuf> {
@@ -456,21 +458,20 @@ impl ReportView {
     }
 }
 
-const JSON_SUFFIX: &str = ".accessibility.json";
-const HTML_SUFFIX: &str = ".accessibility.html";
-
 /// The JSON and the HTML of a report, from the path of the JSON. Only a file
 /// that `adapdf export` could have written has a path that is accepted.
 pub fn report_paths(report_json: &Path) -> CommandResult<(PathBuf, PathBuf)> {
     let name = name_of(report_json);
-    match name.strip_suffix(JSON_SUFFIX) {
-        Some(stem) if !stem.is_empty() => Ok((
+    if is_named(&name, fix::REPORT_JSON) {
+        Ok((
             report_json.to_path_buf(),
-            report_json.with_file_name(format!("{stem}{HTML_SUFFIX}")),
-        )),
-        _ => Err(CommandError::new(format!(
-            "{name} is not an accessibility report. Choose a file whose name ends with {JSON_SUFFIX}."
-        ))),
+            report_json.with_file_name(fix::REPORT_HTML),
+        ))
+    } else {
+        Err(CommandError::new(format!(
+            "{name} is not an accessibility report. Choose a file named {}.",
+            fix::REPORT_JSON
+        )))
     }
 }
 
@@ -525,9 +526,10 @@ pub fn read_report(report_json: &Path) -> CommandResult<ReportView> {
 /// of M5a in the test plan).
 pub fn check_report_html(path: &Path) -> CommandResult<PathBuf> {
     let name = name_of(path);
-    if !name.ends_with(HTML_SUFFIX) || name.len() == HTML_SUFFIX.len() {
+    if !is_named(&name, fix::REPORT_HTML) {
         return Err(CommandError::new(format!(
-            "{name} is not an accessibility report. Only a file whose name ends with {HTML_SUFFIX} can be opened."
+            "{name} is not an accessibility report. Only a file named {} can be opened.",
+            fix::REPORT_HTML
         )));
     }
     if !path.is_absolute() || path.to_string_lossy().starts_with(r"\\") {

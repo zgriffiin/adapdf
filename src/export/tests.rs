@@ -22,7 +22,8 @@ const PDF_BYTES: &[u8] = b"%PDF-1.7\nfake";
 enum Call {
     Start,
     Build,
-    Open(PathBuf),
+    /// The path that Word opens, and the bytes of the file at that moment.
+    Open(PathBuf, Vec<u8>),
     UpdateFields,
     Export(PathBuf, ExportParameters),
     Close,
@@ -96,7 +97,10 @@ impl WordApp for FakeApp {
     }
 
     fn open_read_only(&self, path: &Path) -> crate::word::Result<Box<dyn WordDoc + '_>> {
-        record(&self.calls, Call::Open(path.to_path_buf()));
+        record(
+            &self.calls,
+            Call::Open(path.to_path_buf(), fs::read(path).unwrap_or_default()),
+        );
         Ok(Box::new(FakeDoc {
             calls: Arc::clone(&self.calls),
             behavior: self.behavior.clone(),
@@ -285,11 +289,107 @@ fn export_passes_the_spec_parameters() {
         }
     );
     assert_eq!(result.parameters, *parameters);
-    // Word writes next to the PDF, to a temporary name, never to the PDF itself.
-    assert_eq!(output.parent(), dir.pdf().parent());
+    // Word never gets the real paths: it opens a copy of the document in a short
+    // temporary folder and writes the PDF there. The tool then moves the PDF.
+    let opened = opened_path(&calls);
+    assert_ne!(opened, docx);
+    assert_eq!(output.parent(), opened.parent());
     assert_ne!(output, &dir.pdf());
-    // The document is opened read-only (the only open the engine offers).
-    assert!(calls.contains(&Call::Open(docx)));
+    assert_eq!(fs::read(dir.pdf()).unwrap(), PDF_BYTES);
+}
+
+/// The path that Word opened, from the recorded calls.
+fn opened_path(calls: &[Call]) -> PathBuf {
+    calls
+        .iter()
+        .find_map(|call| match call {
+            Call::Open(path, _) => Some(path.clone()),
+            _ => None,
+        })
+        .expect("Word opened a document")
+}
+
+// Spec 02, stage 3: a guide in a deep folder (a full path over 260 characters,
+// which Word cannot open) is exported through a short temporary copy. The PDF
+// lands in the long folder, the .docx is not written, and nothing is left.
+#[test]
+fn word_opens_a_short_copy_of_a_document_with_a_long_path() {
+    let dir = TempDir::new();
+    let mut folder = dir.0.clone();
+    while folder.as_os_str().len() < 300 {
+        folder.push("a".repeat(60));
+    }
+    fs::create_dir_all(&folder).unwrap();
+    let docx = folder.join("accessible.docx");
+    fs::write(&docx, clean().build()).unwrap();
+    let pdf = folder.join("Guide.pdf");
+    let (result, calls, _) = export(&docx, &pdf, &Behavior::default(), &options());
+    result.unwrap();
+
+    let opened = opened_path(&calls);
+    assert!(docx.as_os_str().len() > 300);
+    assert!(
+        opened.as_os_str().len() < 100,
+        "Word opens a short path: {}",
+        opened.display()
+    );
+    assert!(opened.starts_with(std::env::temp_dir()));
+    assert_eq!(opened.file_name().unwrap(), "guide.docx");
+    // Word opened a copy with the bytes of the document, and nothing is written back.
+    assert!(calls.contains(&Call::Open(opened.clone(), clean().build())));
+    assert_eq!(fs::read(&docx).unwrap(), clean().build());
+    // The PDF is in the long folder, and no temporary file is left there or in the
+    // short folder.
+    assert_eq!(fs::read(&pdf).unwrap(), PDF_BYTES);
+    let names: Vec<String> = fs::read_dir(&folder)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names.len(), 2, "{names:?}");
+    assert!(
+        !opened.parent().unwrap().exists(),
+        "the short folder is removed"
+    );
+}
+
+// The short temporary folder is removed after a success, after an error of Word
+// and after a timeout.
+#[test]
+fn the_short_temporary_folder_is_removed_in_every_case() {
+    let dir = TempDir::new();
+    let docx = clean_docx(&dir);
+    let timeout = ExportOptions {
+        timeout: Duration::from_millis(100),
+        ..options()
+    };
+    let cases = [
+        ("success", Behavior::default(), options()),
+        (
+            "error",
+            Behavior {
+                export_error: true,
+                ..Behavior::default()
+            },
+            options(),
+        ),
+        (
+            "timeout",
+            Behavior {
+                export_delay: Duration::from_secs(1),
+                ..Behavior::default()
+            },
+            timeout,
+        ),
+    ];
+    for (what, behavior, options) in cases {
+        let (result, calls, _) = export(&docx, &dir.pdf(), &behavior, &options);
+        assert_eq!(result.is_ok(), what == "success", "{what}: {result:?}");
+        let work = opened_path(&calls);
+        assert!(
+            !work.parent().unwrap().exists(),
+            "{what}: the folder is removed"
+        );
+    }
 }
 
 /// The parameter values in the code are the values in the table of spec 02.
@@ -331,7 +431,7 @@ fn export_updates_fields_before_exporting() {
         .map(|call| match call {
             Call::Start => "start",
             Call::Build => "build",
-            Call::Open(_) => "open",
+            Call::Open(..) => "open",
             Call::UpdateFields => "update_fields",
             Call::Export(..) => "export",
             Call::Close => "close",

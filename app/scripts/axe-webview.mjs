@@ -529,7 +529,7 @@ try {
   await axeScreen(page, "start over: the confirm question");
   await clickButton(page, "No, keep the accessible copy");
   await clickButton(page, "Continue with the accessible copy");
-  await page.until("the copy", hasHeading("LST-002-fail (accessible).docx: "));
+  await page.until("the copy", hasHeading("accessible.docx: "));
   await axeScreen(page, "findings of the accessible copy");
 
   // 3. The fix flow with text fields (the suggestion is the helper text).

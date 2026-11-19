@@ -2,8 +2,10 @@
 //!
 //! The user's original is never written. Everything the tool makes goes into
 //! one folder next to it, `Guide - Adapdf`. Fixes go into the accessible copy
-//! `Guide - Adapdf\Guide (accessible).docx`:
+//! `Guide - Adapdfccessible.docx`:
 //!
+//! 0. refuse when the full path of the copy is too long for Word to open
+//!    ([`WORD_PATH_LIMIT`]),
 //! 1. refuse when Word has the file that will be written open (the `~$` owner
 //!    file, then an exclusive open of the file),
 //! 2. write the new file to a temporary file in the same folder, then move it
@@ -225,38 +227,55 @@ pub fn open_for_fixing(fs: &dyn FileSystem, path: &Path) -> Result<Opened, FixEr
     })
 }
 
-/// The ending that the name of an accessible copy has before `.docx`.
-pub const COPY_SUFFIX: &str = " (accessible)";
+/// The file name of the working copy. It is short on purpose: Word cannot open
+/// a file whose full path is longer than [`WORD_PATH_LIMIT`], and the guide's
+/// name is already in the name of the folder.
+pub const COPY_NAME: &str = "accessible.docx";
+
+/// The ending of the folder that holds everything made for a guide.
+pub const FOLDER_SUFFIX: &str = " - Adapdf";
+
+/// The name of the HTML report in the folder of a guide.
+pub const REPORT_HTML: &str = "report.html";
+
+/// The name of the JSON report in the folder of a guide.
+pub const REPORT_JSON: &str = "report.json";
+
+/// The longest full path, in characters, that Word opens: 259. Measured on
+/// 2026-11-18 with the tool's own hidden Word (Microsoft 365, build 16.0.20527),
+/// on documents opened read-only and for editing, in a folder with a long name:
+/// a file at every length from 240 to 259 characters opens, and a file at 260,
+/// 261 or 262 does not ("Word could not open ..."). This is the Windows limit
+/// `MAX_PATH` (260), which counts the end of the string. The test
+/// `word_opens_the_longest_path_and_no_more` (`tests/word_path_limit.rs`) checks
+/// it again.
+pub const WORD_PATH_LIMIT: usize = 259;
 
 fn stem_of(path: &Path) -> Option<String> {
     Some(path.file_stem()?.to_string_lossy().into_owned())
 }
 
-fn is_docx(path: &Path) -> bool {
-    path.extension()
-        .is_some_and(|e| e.to_string_lossy().eq_ignore_ascii_case("docx"))
-}
-
-/// The name of a copy without [`COPY_SUFFIX`], when `path` names a copy
-/// (`Guide (accessible).docx` gives `Guide`). The check ignores case, as
-/// Windows does.
+/// The name of the guide (`Guide`) when `path` is a working copy: a file named
+/// [`COPY_NAME`] inside a folder named `Guide - Adapdf`. The check ignores
+/// case, as Windows does.
 pub fn original_stem(path: &Path) -> Option<String> {
-    if !is_docx(path) {
+    if !path
+        .file_name()?
+        .to_string_lossy()
+        .eq_ignore_ascii_case(COPY_NAME)
+    {
         return None;
     }
-    let stem = stem_of(path)?;
-    let cut = stem.len().checked_sub(COPY_SUFFIX.len())?;
-    let (start, end) = (stem.get(..cut)?, stem.get(cut..)?);
-    (end.eq_ignore_ascii_case(COPY_SUFFIX) && !start.trim().is_empty()).then(|| start.to_string())
+    let folder = path.parent()?.file_name()?.to_string_lossy().into_owned();
+    let cut = folder.len().checked_sub(FOLDER_SUFFIX.len())?;
+    let (start, end) = (folder.get(..cut)?, folder.get(cut..)?);
+    (end.eq_ignore_ascii_case(FOLDER_SUFFIX) && !start.trim().is_empty()).then(|| start.to_string())
 }
 
-/// True when the file name is `<name> (accessible).docx`: the working copy.
+/// True when the file is the working copy: `accessible.docx` in `<name> - Adapdf`.
 pub fn is_accessible_copy(path: &Path) -> bool {
     original_stem(path).is_some()
 }
-
-/// The ending of the folder that holds everything made for a guide.
-pub const FOLDER_SUFFIX: &str = " - Adapdf";
 
 /// The folder for the original `Guide.docx`: `Guide - Adapdf`, next to it.
 pub fn adapdf_folder(original: &Path) -> PathBuf {
@@ -264,34 +283,23 @@ pub fn adapdf_folder(original: &Path) -> PathBuf {
     original.with_file_name(format!("{stem}{FOLDER_SUFFIX}"))
 }
 
-/// The accessible copy that fixes go into: `Guide (accessible).docx` in the
-/// folder `Guide - Adapdf` next to `Guide.docx`. For a file that is already a
-/// copy, the file itself.
+/// The accessible copy that fixes go into: `accessible.docx` in the folder
+/// `Guide - Adapdf` next to `Guide.docx`. For a file that is already a copy,
+/// the file itself.
 pub fn accessible_copy_path(path: &Path) -> PathBuf {
     if is_accessible_copy(path) {
         return path.to_path_buf();
     }
-    let stem = stem_of(path).unwrap_or_else(|| "document".to_string());
-    adapdf_folder(path).join(format!("{stem}{COPY_SUFFIX}.docx"))
+    adapdf_folder(path).join(COPY_NAME)
 }
 
-/// The original of a copy: `Guide.docx` for `Guide - Adapdf\Guide
-/// (accessible).docx`. A copy that is not in a folder of that name (it was moved)
-/// has its original named in its own folder. For a file that is not a copy, the
-/// file itself.
+/// The original of a copy: `Guide.docx` for `Guide - Adapdfccessible.docx`,
+/// next to the folder. For a file that is not a copy, the file itself.
 pub fn original_path(path: &Path) -> PathBuf {
-    let Some(stem) = original_stem(path) else {
+    let (Some(stem), Some(folder)) = (original_stem(path), path.parent()) else {
         return path.to_path_buf();
     };
-    let folder = path.parent();
-    let in_its_folder = folder.and_then(|f| f.file_name()).is_some_and(|name| {
-        name.to_string_lossy()
-            .eq_ignore_ascii_case(&format!("{stem}{FOLDER_SUFFIX}"))
-    });
-    match folder {
-        Some(folder) if in_its_folder => folder.with_file_name(format!("{stem}.docx")),
-        _ => path.with_file_name(format!("{stem}.docx")),
-    }
+    folder.with_file_name(format!("{stem}.docx"))
 }
 
 /// The folder where the PDF and the reports of `docx` go: the folder of the
@@ -307,12 +315,32 @@ pub fn output_folder(docx: &Path) -> PathBuf {
     }
 }
 
-/// The name that the PDF and the reports have, without the extension: the
-/// name of the original, so `Guide` for `Guide (accessible).docx`.
+/// The name that the PDF has, without the extension: the name of the original,
+/// so `Guide` for `Guide - Adapdfccessible.docx`.
 pub fn output_stem(docx: &Path) -> String {
     original_stem(docx)
         .or_else(|| stem_of(docx))
         .unwrap_or_else(|| "document".to_string())
+}
+
+/// The length of the full path, as Word counts it: UTF-16 code units of the
+/// absolute path.
+pub fn word_path_length(path: &Path) -> usize {
+    let full = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    full.to_string_lossy().encode_utf16().count()
+}
+
+/// Stops when Word cannot open the copy at `copy` because its full path is too
+/// long ([`WORD_PATH_LIMIT`]). Nothing is written.
+pub fn check_word_path(copy: &Path) -> Result<(), FixError> {
+    let length = word_path_length(copy);
+    if length > WORD_PATH_LIMIT {
+        return Err(FixError::PathTooLong {
+            length,
+            limit: WORD_PATH_LIMIT,
+        });
+    }
+    Ok(())
 }
 
 /// What to do when the accessible copy of an original already exists.
@@ -348,6 +376,7 @@ pub fn prepare(
     existing: ExistingCopy,
 ) -> Result<Prepared, FixError> {
     let copy = accessible_copy_path(path);
+    check_word_path(&copy)?;
     if is_accessible_copy(path) {
         let opened = open_for_fixing(fs, path)?;
         return Ok(Prepared {
@@ -476,7 +505,7 @@ mod tests {
     #[test]
     fn copy_names() {
         let original = Path::new("C:/guides/Guide.docx");
-        let copy = Path::new("C:/guides/Guide - Adapdf/Guide (accessible).docx");
+        let copy = Path::new("C:/guides/Guide - Adapdf/accessible.docx");
         assert_eq!(
             adapdf_folder(original),
             Path::new("C:/guides/Guide - Adapdf")
@@ -484,7 +513,7 @@ mod tests {
         assert_eq!(accessible_copy_path(original), copy);
         assert!(!is_accessible_copy(original));
         assert!(is_accessible_copy(copy));
-        // A copy is its own copy: no `(accessible) (accessible)`.
+        // A copy is its own copy.
         assert_eq!(accessible_copy_path(copy), copy);
         assert_eq!(original_path(copy), original);
         assert_eq!(original_path(original), original);
@@ -496,33 +525,66 @@ mod tests {
         assert_eq!(output_folder(copy), Path::new("C:/guides/Guide - Adapdf"));
         assert_eq!(output_stem(original), "Guide");
         assert_eq!(output_stem(copy), "Guide");
-        // A copy that is somewhere else: its original is named next to it, and
-        // the outputs are next to it.
-        let elsewhere = Path::new("D:/other/Guide (accessible).docx");
-        assert!(is_accessible_copy(elsewhere));
-        assert_eq!(original_path(elsewhere), Path::new("D:/other/Guide.docx"));
-        assert_eq!(output_folder(elsewhere), Path::new("D:/other"));
-        // The ending is found whatever its case, as Windows sees the name.
-        assert!(is_accessible_copy(Path::new("a/Guide (ACCESSIBLE).DOCX")));
-        // Not a copy: another ending, another extension, or no name before it.
+        // The name and the folder are found whatever their case, as Windows
+        // sees them.
+        assert!(is_accessible_copy(Path::new(
+            "a/Guide - ADAPDF/Accessible.DOCX"
+        )));
+        // Not a copy: another name, a folder without the ending, no name before
+        // the ending, or no folder.
         for other in [
-            "Guide (accessible).doc",
-            "Guide (accessible) 2.docx",
-            "Guide(accessible).docx",
-            " (accessible).docx",
-            "Guide.docx",
+            "Guide - Adapdf/accessible.doc",
+            "Guide - Adapdf/accessible 2.docx",
+            "Guide - Adapdf/Guide (accessible).docx",
+            "Guide - Adapdf/Guide.docx",
+            "Guide/accessible.docx",
+            "Guide -Adapdf/accessible.docx",
+            " - Adapdf/accessible.docx",
+            "accessible.docx",
+            "D:/accessible.docx",
         ] {
             assert!(!is_accessible_copy(Path::new(other)), "{other}");
         }
         // The copy of a name that holds dots, spaces and non-ASCII letters.
+        let odd = Path::new("x/2026.11.18 - Guía v2.1 - Adapdf/accessible.docx");
         assert_eq!(
             accessible_copy_path(Path::new("x/2026.11.18 - Guía v2.1.docx")),
-            Path::new("x/2026.11.18 - Guía v2.1 - Adapdf/2026.11.18 - Guía v2.1 (accessible).docx")
+            odd
+        );
+        assert_eq!(output_stem(odd), "2026.11.18 - Guía v2.1");
+        assert_eq!(
+            original_path(odd),
+            Path::new("x/2026.11.18 - Guía v2.1.docx")
         );
         // A relative name.
         assert_eq!(
             accessible_copy_path(Path::new("Guide.docx")),
-            Path::new("Guide - Adapdf/Guide (accessible).docx")
+            Path::new("Guide - Adapdf/accessible.docx")
         );
+        assert_eq!(
+            original_path(Path::new("Guide - Adapdf/accessible.docx")),
+            Path::new("Guide.docx")
+        );
+    }
+
+    #[test]
+    fn the_path_limit_is_checked_on_the_full_path() {
+        // A path of exactly `n` characters.
+        let of_length = |n: usize| {
+            let head = "C:/g/";
+            PathBuf::from(format!("{head}{}", "a".repeat(n - head.len())))
+        };
+        assert_eq!(word_path_length(&of_length(100)), 100);
+        assert!(check_word_path(&of_length(WORD_PATH_LIMIT - 1)).is_ok());
+        assert!(check_word_path(&of_length(WORD_PATH_LIMIT)).is_ok());
+        let error = check_word_path(&of_length(WORD_PATH_LIMIT + 1)).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "The path of the Word copy would be 260 characters, and Word cannot open files with paths over 259 characters. Move the guide to a folder with a shorter path (for example a folder nearer the top of OneDrive), then try again."
+        );
+        // The count is in UTF-16 units, as Windows counts.
+        let wide = PathBuf::from(format!("C:/g/{}", "\u{1F600}".repeat(130)));
+        assert_eq!(word_path_length(&wide), 5 + 260);
+        assert!(check_word_path(&wide).is_err());
     }
 }

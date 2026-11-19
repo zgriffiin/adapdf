@@ -13,23 +13,33 @@ writes nothing else next to it.
 
 | File in `Guide - Adapdf` | Content |
 |---|---|
-| `Guide (accessible).docx` | The accessible copy: the original with the fixes in it. The tool and Word work on this file from the first fix. It holds the fix log (stage 2). |
-| `Guide.pdf` | The tagged PDF. Written only when stage 1 finds no errors. |
-| `Guide.accessibility.html` | The report, for people to read. |
-| `Guide.accessibility.json` | The same results as data, for later tooling. |
+| `accessible.docx` | The accessible copy: the original with the fixes in it. The tool and Word work on this file from the first fix. It holds the fix log (stage 2). Its name is short on purpose: Word cannot open a file whose full path is longer than 259 characters (see "The path that Word opens"), and the name of the guide is already in the name of the folder. |
+| `Guide.pdf` | The tagged PDF, named after the original. Written only when stage 1 finds no errors. |
+| `report.html` | The report, for people to read. |
+| `report.json` | The same results as data, for later tooling. |
 
 - **The original is never changed.** There are no backup files: the original is the
   backup. The tool never writes a file that has the name of the original.
-- The PDF and the reports are named after the original (`Guide.pdf`), not after
-  the copy, and they are in the folder of the copy.
-- A file whose name ends with ` (accessible).docx` is a working copy. In its
-  folder `<name> - Adapdf` it is the copy of `<name>.docx` next to that folder. A
-  copy that is anywhere else is worked on in place, and the PDF and the reports
-  are written next to it (`<name>.pdf`, ...).
+- The PDF is named after the original (`Guide.pdf`), not after the copy. The
+  reports always have the names `report.html` and `report.json`. All three are in
+  the folder of the copy.
+- A file named `accessible.docx` inside a folder whose name ends with
+  ` - Adapdf` is the working copy. Its guide is the name of the folder without
+  ` - Adapdf`, and the original is `<name>.docx` next to that folder. A file with
+  that name anywhere else is an original like any other.
 - `adapdf export Guide.docx` on an original exports the original as it is (no
   fixes) and writes the PDF and the reports into `Guide - Adapdf`. On the copy, it
   exports the copy.
 
+- **The path that Word opens.** Word cannot open a file whose full path is longer
+  than 259 characters (measured with Word 16.0, build 16.0.20527: a file at 259
+  characters opens, a file at 260 does not, read-only or for editing). Before a
+  fix creates or rewrites the copy, and before the app opens the copy in Word, the
+  tool counts the characters of the full path of the copy. If the path is longer
+  than 259, it stops, writes nothing, and says: "The path of the Word copy would
+  be N characters, and Word cannot open files with paths over 259 characters. Move
+  the guide to a folder with a shorter path (for example a folder nearer the top of
+  OneDrive), then try again." The app and the command line do the same.
 - An existing `Guide.pdf` is replaced. If another program has it locked, the
   tool stops with exit code 2 and says which file is locked.
 - The new `Guide.pdf` replaces the old one only after it has been checked. If
@@ -69,7 +79,7 @@ writes nothing else next to it.
 
 - Shows the auto-fixable findings. The user picks which to apply.
 - **The original is never changed.** The fixes go into the accessible copy
-  `Guide - Adapdf\Guide (accessible).docx`:
+  `Guide - Adapdf\accessible.docx`:
   - the first time, the copy is made from the original plus the fixes: a
     temporary file in the folder, then a move into place (atomic). The folder is
     made when it is not there;
@@ -99,8 +109,8 @@ writes nothing else next to it.
 - Fixes that need human input (for example, alt text or a title) ask for
   the text in the UI. The tool never invents content. For the title only, the UI
   may offer up to three one-click texts that are taken from the document itself:
-  the file name (without ` (accessible)`, with underscores and extra spaces
-  cleaned, and a leading `yyyy.mm.dd -` date kept as it is), the first paragraph
+  the file name (of the original, so for the copy the name of the guide and not
+  `accessible`; with underscores and extra spaces cleaned, and a leading `yyyy.mm.dd -` date kept as it is), the first paragraph
   in the Title style, and the first Heading 1. Identical or empty texts are left
   out. Nothing is filled in until the user chooses one, and the user can change
   the text. Alt text has no suggestion (a caption next to the picture would make
@@ -108,7 +118,15 @@ writes nothing else next to it.
 
 ## Stage 3 — Word export
 
-Uses Word through COM, hidden, with the document opened read-only:
+Uses Word through COM, hidden, with the document opened read-only.
+
+Word never gets the real path of the document. The tool copies the .docx to a
+short temporary folder (`%TEMP%\adapdf-<process>-<n>\guide.docx`), Word opens that
+copy read-only and writes the PDF into the same folder, and the tool moves the
+PDF into the folder of the guide. The temporary folder is removed after a
+success, an error and a timeout. Nothing is written back to the .docx. So the
+folder of the guide can have any path length that the file system allows, and
+the PDF and the reports are written there.
 
 Call `Document.ExportAsFixedFormat` with these parameters:
 
@@ -230,7 +248,8 @@ checked yet", "Not checked yet" or "Checked" for each item, "Not signed yet" or
 3. Fixes applied: every fix in the fix log of the document, not only the fixes of
    one run, with the date, the rule, the place, what was done and the text that
    was typed or chosen. The section says: "The original <name>.docx was not
-   changed. Adapdf made its fixes in <name> (accessible).docx." For a log with no
+   changed. Adapdf made its fixes in accessible.docx in the folder <name> - Adapdf."
+   For a log with no
    entry it says: "No fixes were made by Adapdf. The Word document is <name>."
 4. veraPDF result. The first place of each failure is given in words (for
    example "Table 1, body row 1, cell 2") worked out from the structure tree of the
@@ -264,12 +283,12 @@ adapdf fix    Guide.docx            # stages 1–2, confirms each fix
 adapdf export Guide.docx            # stages 1, 3, 4, 5, 6
 ```
 
-`adapdf fix` never changes `Guide.docx`. The fixes go into `Guide - Adapdf\Guide
-(accessible).docx`. When that copy exists, `adapdf fix Guide.docx` stops with
+`adapdf fix` never changes `Guide.docx`. The fixes go into
+`Guide - Adapdf\accessible.docx`. When that copy exists, `adapdf fix Guide.docx` stops with
 exit code 2 and says why, unless a flag is given: `--continue` works in the
 copy (its fixes stay and the new fixes go in), and `--start-over` replaces the
 copy with a new one made from the original. The two flags exclude each other.
-`adapdf fix "Guide - Adapdf\Guide (accessible).docx"` works in that copy
+`adapdf fix "Guide - Adapdf\accessible.docx"` works in that copy
 directly; `--start-over` is refused for a copy (give the original).
 
 Exit codes: 0 = pass, 1 = errors found, 2 = tool failure.
@@ -279,9 +298,9 @@ grouped by severity, apply fixes, export, open the report, and sign off the
 human checklist.
 
 - Every screen that has a document shows the **working file**: its full name and
-  its folder (for example "Working on: Guide (accessible).docx in C:\...\Guide -
+  its folder (for example "Working on: accessible.docx in C:\...\Guide -
   Adapdf"), and an **Open folder** button that opens that folder.
-- After fixes, the app says: "Saved your fixes to Guide (accessible).docx. Your
+- After fixes, the app says: "Saved your fixes to accessible.docx. Your
   original Guide.docx was not changed." The app then works on the copy.
 - When the user opens an original whose copy exists, the app asks **Continue with
   the accessible copy** or **Start over from the original** (with the warning that

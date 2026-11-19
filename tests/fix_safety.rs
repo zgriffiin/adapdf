@@ -1,5 +1,5 @@
 //! Stage 2 safety (spec 02; AGENTS.md): the original is never written; the fixes
-//! go into the accessible copy `Guide - Adapdf\Guide (accessible).docx`, after the
+//! go into the accessible copy `Guide - Adapdf\accessible.docx`, after the
 //! lock file and the exclusive open, and the copy is written atomically. Test plan
 //! rows S2-01, S2-03, S2-05, S2-06, S2-07, S2-14, S2-34 to S2-36 and the local time
 //! of the fix log (S2-07b).
@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 
 use adapdf::findings::RuleId;
 use adapdf::fix::{
-    ExistingCopy, FileSystem, FixError, FixRequest, RealFs, accessible_copy_path, fixlog,
-    lock_file_names,
+    COPY_NAME, ExistingCopy, FOLDER_SUFFIX, FileSystem, FixError, FixRequest, RealFs,
+    WORD_PATH_LIMIT, accessible_copy_path, fixlog, lock_file_names, word_path_length,
 };
 use adapdf::fixtures::clean;
 use fix_support::*;
@@ -36,7 +36,7 @@ fn guide_folder(dir: &TempDir) -> PathBuf {
 fn write_copy(dir: &TempDir, bytes: &[u8]) -> PathBuf {
     let folder = guide_folder(dir);
     fs::create_dir_all(&folder).unwrap();
-    let path = folder.join("Guide (accessible).docx");
+    let path = folder.join("accessible.docx");
     fs::write(&path, bytes).unwrap();
     path
 }
@@ -60,9 +60,9 @@ fn modified(path: &Path) -> std::time::SystemTime {
 fn fix_refuses_when_a_lock_file_exists() {
     let (bytes, requests) = doc_002();
     // The lock file is next to the accessible copy, which is the file that is
-    // written. File names of 5, 8, 9 and 20 characters (before the extension) and
-    // one with spaces; the copy name has 13 more characters, so Word cuts the
-    // start of every name in the same way (see `lock_file_names`, test S2-02).
+    // written. The copy is always `accessible.docx`, so the lock file is always
+    // `~$cessible.docx` (see `lock_file_names`, test S2-02). The names of the
+    // folders are of 5, 8, 9 and 19 characters and one with spaces.
     for base in [
         "Guide",
         "Guide123",
@@ -73,7 +73,7 @@ fn fix_refuses_when_a_lock_file_exists() {
         let dir = TempDir::new("lock");
         let folder = dir.path().join(format!("{base} - Adapdf"));
         fs::create_dir_all(&folder).unwrap();
-        let copy_name = format!("{base} (accessible).docx");
+        let copy_name = "accessible.docx".to_string();
         let copy = folder.join(&copy_name);
         fs::write(&copy, &bytes).unwrap();
         let lock = &lock_file_names(&copy_name)[0];
@@ -157,10 +157,7 @@ fn fix_refuses_when_the_file_cannot_be_opened_for_writing() {
         .unwrap();
     let error = fix_file(&copy, &requests).expect_err("a held file stops the fix");
     assert!(matches!(error, FixError::CannotWrite { .. }), "{error}");
-    assert!(
-        error.to_string().contains("Guide (accessible).docx"),
-        "{error}"
-    );
+    assert!(error.to_string().contains("accessible.docx"), "{error}");
     assert!(
         error
             .to_string()
@@ -169,7 +166,7 @@ fn fix_refuses_when_the_file_cannot_be_opened_for_writing() {
     );
     drop(holder);
     assert_eq!(fs::read(&copy).unwrap(), bytes);
-    assert_eq!(names_in(&guide_folder(&dir)), ["Guide (accessible).docx"]);
+    assert_eq!(names_in(&guide_folder(&dir)), ["accessible.docx"]);
 
     read_only_copy(&bytes, &requests);
 }
@@ -190,7 +187,7 @@ fn read_only_copy(bytes: &[u8], requests: &[FixRequest]) {
     let error = fix_file(&copy, requests).expect_err("a read-only file stops the fix");
     assert!(matches!(error, FixError::CannotWrite { .. }), "{error}");
     assert_eq!(fs::read(&copy).unwrap(), bytes);
-    assert_eq!(names_in(&guide_folder(&dir)), ["Guide (accessible).docx"]);
+    assert_eq!(names_in(&guide_folder(&dir)), ["accessible.docx"]);
 }
 
 // -------------------------------------------------- the calls, and the order
@@ -256,12 +253,12 @@ fn fix_creates_the_copy_atomically_and_only_reads_the_original() {
         [
             "read Guide.docx".to_string(),
             "create_dir_all Guide - Adapdf".to_string(),
-            "write_new Guide (accessible).docx.adapdf-0.tmp".to_string(),
-            "rename Guide (accessible).docx.adapdf-0.tmp to Guide (accessible).docx".to_string(),
+            "write_new accessible.docx.adapdf-0.tmp".to_string(),
+            "rename accessible.docx.adapdf-0.tmp to accessible.docx".to_string(),
         ],
         "the original is read and never opened for writing or moved"
     );
-    assert_eq!(names_in(&guide_folder(&dir)), ["Guide (accessible).docx"]);
+    assert_eq!(names_in(&guide_folder(&dir)), ["accessible.docx"]);
     assert_eq!(fs::read(&original).unwrap(), bytes);
 }
 
@@ -290,9 +287,9 @@ fn a_second_fix_goes_into_the_copy_with_one_move() {
     assert_eq!(
         recording.calls.borrow().clone(),
         [
-            "open_exclusive Guide (accessible).docx".to_string(),
-            "write_new Guide (accessible).docx.adapdf-0.tmp".to_string(),
-            "rename Guide (accessible).docx.adapdf-0.tmp to Guide (accessible).docx".to_string(),
+            "open_exclusive accessible.docx".to_string(),
+            "write_new accessible.docx.adapdf-0.tmp".to_string(),
+            "rename accessible.docx.adapdf-0.tmp to accessible.docx".to_string(),
         ]
     );
     // Both fixes are in the copy and in its log, and the original has neither.
@@ -305,7 +302,7 @@ fn a_second_fix_goes_into_the_copy_with_one_move() {
     );
     assert_eq!(log[1].text.as_deref(), Some("Parks Training Guide"));
     assert_eq!(fs::read(&original).unwrap(), bytes);
-    assert_eq!(names_in(&guide_folder(&dir)), ["Guide (accessible).docx"]);
+    assert_eq!(names_in(&guide_folder(&dir)), ["accessible.docx"]);
 }
 
 fn log_of(bytes: &[u8]) -> Vec<fixlog::FixLogEntry> {
@@ -419,7 +416,7 @@ fn a_failed_rewrite_leaves_the_copy_as_it_was() {
         assert_eq!(fs::read(&copy).unwrap(), bytes, "the copy is intact");
         assert_eq!(
             names_in(&guide_folder(&dir)),
-            ["Guide (accessible).docx"],
+            ["accessible.docx"],
             "the temporary file is removed"
         );
     }
@@ -460,7 +457,7 @@ fn the_copy_is_the_original_with_the_fix_and_the_log() {
     let copy_bytes = fs::read(outcome.copy.as_ref().unwrap()).unwrap();
     assert_eq!(
         outcome.copy.as_deref(),
-        Some(guide_folder(&dir).join("Guide (accessible).docx").as_path())
+        Some(guide_folder(&dir).join("accessible.docx").as_path())
     );
     let old = parts(&bytes);
     let new = parts(&copy_bytes);
@@ -502,16 +499,13 @@ fn an_existing_copy_is_refused_unless_it_is_to_be_replaced() {
     let copy = write_copy(&dir, b"the copy that a person edited in Word");
     let error = fix_file(&original, &requests).expect_err("no choice, no write");
     assert!(matches!(error, FixError::CopyExists { .. }), "{error}");
-    assert!(
-        error.to_string().contains("Guide (accessible).docx"),
-        "{error}"
-    );
+    assert!(error.to_string().contains("accessible.docx"), "{error}");
     assert_eq!(
         fs::read(&copy).unwrap(),
         b"the copy that a person edited in Word"
     );
     assert_eq!(fs::read(&original).unwrap(), bytes);
-    assert_eq!(names_in(&guide_folder(&dir)), ["Guide (accessible).docx"]);
+    assert_eq!(names_in(&guide_folder(&dir)), ["accessible.docx"]);
 
     // Start over: the copy is a new one, made from the original with the fix.
     let outcome =
@@ -554,19 +548,36 @@ fn working_in_the_copy_keeps_what_is_in_it() {
     assert_eq!(fs::read(&original).unwrap(), bytes);
 }
 
-/// S2-36: a file that is already named `<name> (accessible).docx` is the working
-/// copy, wherever it is: the fixes go into it, and no `(accessible) (accessible)`
-/// file and no folder is made.
+/// S2-36: a file named `accessible.docx` in a folder `<name> - Adapdf` is the
+/// working copy: the fixes go into it, and no other file and no folder is made.
 #[test]
-fn a_file_named_accessible_is_fixed_in_place() {
+fn a_file_named_accessible_in_the_guide_folder_is_fixed_in_place() {
     let (bytes, requests) = doc_002();
     let dir = TempDir::new("in-place");
-    let path = dir.write("Guide (accessible).docx", &bytes);
+    let path = write_copy(&dir, &bytes);
     let outcome = fix_file(&path, &requests).expect("the fix runs");
     assert_eq!(outcome.copy.as_deref(), Some(path.as_path()));
     assert_ne!(fs::read(&path).unwrap(), bytes);
-    assert_eq!(dir.names(), ["Guide (accessible).docx"]);
+    assert_eq!(dir.names(), ["Guide - Adapdf"]);
+    assert_eq!(names_in(&guide_folder(&dir)), ["accessible.docx"]);
     assert_eq!(log_of(&fs::read(&path).unwrap()).len(), 1);
+}
+
+/// S2-36: a file with that name anywhere else is an original. It is not written,
+/// and its copy is made in the folder `accessible - Adapdf`.
+#[test]
+fn a_file_named_accessible_elsewhere_is_an_original() {
+    let (bytes, requests) = doc_002();
+    let dir = TempDir::new("loose-accessible");
+    let path = dir.write("accessible.docx", &bytes);
+    let outcome = fix_file(&path, &requests).expect("the fix runs");
+    assert_eq!(fs::read(&path).unwrap(), bytes);
+    let copy = dir
+        .path()
+        .join("accessible - Adapdf")
+        .join("accessible.docx");
+    assert_eq!(outcome.copy.as_deref(), Some(copy.as_path()));
+    assert_eq!(dir.names(), ["accessible - Adapdf", "accessible.docx"]);
 }
 
 #[test]
@@ -657,4 +668,89 @@ fn the_production_clock_is_local_time() {
         Timestamp::from_unix_seconds(wall_clock_seconds(&now).try_into().unwrap()),
         now
     );
+}
+
+// ------------------------------------------------- the path that Word can open
+
+/// An original whose accessible copy would have a full path of exactly `length`
+/// characters (the longest that Word opens is `WORD_PATH_LIMIT`).
+fn original_with_copy_path_of(dir: &TempDir, length: usize, bytes: &[u8]) -> PathBuf {
+    // `<dir>\<stem> - Adapdf\accessible.docx`
+    let fixed = word_path_length(dir.path()) + 1 + FOLDER_SUFFIX.len() + 1 + COPY_NAME.len();
+    let stem = "G".repeat(length - fixed);
+    let original = dir.write(&format!("{stem}.docx"), bytes);
+    assert_eq!(word_path_length(&accessible_copy_path(&original)), length);
+    original
+}
+
+const TOO_LONG: &str = "The path of the Word copy would be 260 characters, and Word cannot open files with paths over 259 characters. Move the guide to a folder with a shorter path (for example a folder nearer the top of OneDrive), then try again.";
+
+#[test]
+fn a_copy_path_up_to_the_limit_is_written() {
+    let (bytes, requests) = doc_002();
+    for length in [WORD_PATH_LIMIT - 1, WORD_PATH_LIMIT] {
+        let dir = TempDir::new("path-limit-ok");
+        let original = original_with_copy_path_of(&dir, length, &bytes);
+        let outcome = fix_file(&original, &requests).expect("the path is not too long");
+        let copy = outcome.copy.expect("the copy was written");
+        assert_eq!(word_path_length(&copy), length);
+        assert!(copy.is_file());
+        assert_eq!(fs::read(&original).unwrap(), bytes);
+    }
+}
+
+#[test]
+fn a_copy_path_over_the_limit_stops_the_fix_and_writes_nothing() {
+    let (bytes, requests) = doc_002();
+    let dir = TempDir::new("path-limit-over");
+    let original = original_with_copy_path_of(&dir, WORD_PATH_LIMIT + 1, &bytes);
+    let only_the_original = dir.names();
+    assert_eq!(only_the_original.len(), 1);
+
+    let error = fix_file(&original, &requests).expect_err("the path is too long");
+    assert!(
+        matches!(
+            error,
+            FixError::PathTooLong {
+                length: 260,
+                limit: 259
+            }
+        ),
+        "{error}"
+    );
+    assert_eq!(error.to_string(), TOO_LONG);
+    // The check of a run, the copy with no fix, and the replace of a copy.
+    let env = adapdf::fix::Environment {
+        fs: &RealFs,
+        now: fixed_clock(),
+        fonts: &adapdf::fixtures::FixtureFonts,
+    };
+    assert_eq!(
+        adapdf::fix::preflight(&RealFs, &original)
+            .unwrap_err()
+            .to_string(),
+        TOO_LONG
+    );
+    assert_eq!(
+        adapdf::fix::make_copy(&original, &env, ExistingCopy::Replace)
+            .unwrap_err()
+            .to_string(),
+        TOO_LONG
+    );
+    assert_eq!(dir.names(), only_the_original, "no folder and no file");
+    assert_eq!(fs::read(&original).unwrap(), bytes);
+}
+
+#[test]
+fn a_copy_that_is_already_over_the_limit_is_not_rewritten() {
+    let (bytes, requests) = doc_002();
+    let dir = TempDir::new("path-limit-copy");
+    let original = original_with_copy_path_of(&dir, WORD_PATH_LIMIT + 1, &bytes);
+    let copy = accessible_copy_path(&original);
+    fs::create_dir_all(copy.parent().unwrap()).unwrap();
+    fs::write(&copy, &bytes).unwrap();
+    let error = fix_file(&copy, &requests).expect_err("the path is too long");
+    assert_eq!(error.to_string(), TOO_LONG);
+    assert_eq!(fs::read(&copy).unwrap(), bytes);
+    assert_eq!(names_in(copy.parent().unwrap()), ["accessible.docx"]);
 }

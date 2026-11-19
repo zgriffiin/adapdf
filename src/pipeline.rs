@@ -5,8 +5,8 @@
 //!    code is 1.
 //! 2. The tools are checked (veraPDF and its Java), so that a missing tool is
 //!    found before Word starts.
-//! 3. Stage 3: Word exports the PDF ([`crate::export::export_pdf`]) to a
-//!    temporary file next to `Guide.pdf`. An existing `Guide.pdf` that another
+//! 3. Stage 3: Word exports the PDF ([`crate::export::export_pdf`]), which
+//!    Word opens from a copy in a short temporary folder, to a temporary file next to `Guide.pdf`. An existing `Guide.pdf` that another
 //!    program has locked is found first (before Word starts).
 //! 4. Stage 4: [`crate::pdfmeta::fix_file`] adds the document metadata that is
 //!    missing to the temporary file, with the title and language of the .docx, and
@@ -20,10 +20,10 @@
 //!
 //! Everything the command writes goes into one folder, `Guide - Adapdf`, next to
 //! the original `Guide.docx` (the folder is made when it is not there). When the
-//! file is the accessible copy `Guide - Adapdf\Guide (accessible).docx`, the
-//! files go into its folder; a copy that is somewhere else gets them next to it.
-//! The PDF and the reports are named after the original (`Guide.pdf`), not after
-//! the copy. No other file is written next to the original.
+//! file is the accessible copy `Guide - Adapdfccessible.docx`, the files go
+//! into its folder. The PDF is named after the original (`Guide.pdf`); the
+//! reports are `report.html` and `report.json`. No other file is written next
+//! to the original.
 //!
 //! The new `Guide.pdf` replaces the old one only after it has been checked. A
 //! tool failure after the export (exit 2) removes the temporary file and leaves
@@ -54,7 +54,9 @@ use crate::export::{
     ExportError, ExportOptions, ExportResult, TempPdf, ensure_not_locked, export_pdf,
 };
 use crate::findings::Severity;
-use crate::fix::{Timestamp, fixlog, is_accessible_copy, output_folder, output_stem};
+use crate::fix::{
+    REPORT_HTML, REPORT_JSON, Timestamp, fixlog, is_accessible_copy, output_folder, output_stem,
+};
 use crate::fonts::FontLookup;
 use crate::model::Document;
 use crate::pdfmeta::{self, SourceMetadata};
@@ -140,14 +142,15 @@ impl Run {
 
 /// The path of the PDF, the HTML report and the JSON report for a .docx: in the
 /// folder `Guide - Adapdf` of an original, or in the folder of an accessible
-/// copy, named after the original (`Guide.pdf`).
+/// copy. The PDF is named after the original (`Guide.pdf`); the reports are
+/// `report.html` and `report.json`.
 pub fn output_paths(docx: &Path) -> (PathBuf, PathBuf, PathBuf) {
     let folder = output_folder(docx);
     let stem = output_stem(docx);
     (
         folder.join(format!("{stem}.pdf")),
-        folder.join(format!("{stem}.accessibility.html")),
-        folder.join(format!("{stem}.accessibility.json")),
+        folder.join(REPORT_HTML),
+        folder.join(REPORT_JSON),
     )
 }
 

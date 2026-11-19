@@ -1,7 +1,7 @@
 //! The `adapdf fix` command: questions, answers, exit codes and output. Test
 //! plan rows C-01 to C-04 and C-12 to C-14. The questions go to stderr and the
 //! answers come from stdin; the result goes to stdout. The original is never
-//! changed: the fixes go into `Guide - Adapdf\Guide (accessible).docx`.
+//! changed: the fixes go into `Guide - Adapdf\accessible.docx`.
 
 mod fix_support;
 
@@ -55,9 +55,7 @@ fn stderr(output: &Output) -> String {
 
 /// The accessible copy of `Guide.docx` in the test folder.
 fn copy_of(dir: &TempDir) -> PathBuf {
-    dir.path()
-        .join("Guide - Adapdf")
-        .join("Guide (accessible).docx")
+    dir.path().join("Guide - Adapdf").join("accessible.docx")
 }
 
 /// The fix log of a .docx.
@@ -94,7 +92,7 @@ fn cli_fix_exit_0_when_no_error_remains() {
     let text = stdout(&out);
     assert!(
         text.contains(
-            "Saved your fixes to Guide (accessible).docx. Your original Guide.docx was not changed."
+            "Saved your fixes to accessible.docx. Your original Guide.docx was not changed."
         ),
         "{text}"
     );
@@ -168,7 +166,7 @@ fn cli_fix_exit_2_on_tool_failure() {
     // A locked file: Word has the accessible copy open (its lock file is next to
     // it). Working in the copy, given as the original with --continue and given
     // as the copy itself, and starting over (which replaces the copy).
-    let lock = &adapdf::fix::lock_file_names("Guide (accessible).docx")[0];
+    let lock = &adapdf::fix::lock_file_names("accessible.docx")[0];
     for (given, flags) in [
         ("original", vec!["--continue"]),
         ("original", vec!["--start-over"]),
@@ -190,13 +188,13 @@ fn cli_fix_exit_2_on_tool_failure() {
             "{}",
             stderr(&out)
         );
-        assert!(stderr(&out).contains("Guide (accessible).docx"));
+        assert!(stderr(&out).contains("accessible.docx"));
         assert!(stdout(&out).is_empty(), "{}", stdout(&out));
         assert_eq!(fs::read(&path).unwrap(), original);
         assert_eq!(fs::read(&copy).unwrap(), original);
         assert_eq!(
             names_in(&folder),
-            ["Guide (accessible).docx".to_string(), lock.clone()],
+            ["accessible.docx".to_string(), lock.clone()],
             "nothing was written"
         );
     }
@@ -564,7 +562,7 @@ fn cli_fix_refuses_an_existing_copy_unless_told_what_to_do() {
     assert!(stdout(&out).is_empty(), "{}", stdout(&out));
     let message = stderr(&out);
     for part in [
-        "Guide (accessible).docx already exists",
+        "accessible.docx already exists",
         "--continue",
         "--start-over",
         "also in Word",
@@ -607,7 +605,7 @@ fn cli_fix_continue_works_in_the_copy_and_keeps_what_is_in_it() {
         "{}",
         stderr(&out)
     );
-    assert!(stdout(&out).contains("Saved your fixes to Guide (accessible).docx."));
+    assert!(stdout(&out).contains("Saved your fixes to accessible.docx."));
     let new = fs::read(&copy).unwrap();
     assert!(part(&new, "word/document.xml").contains("Added in Word"));
     assert!(part(&new, "docProps/core.xml").contains("My title"));
@@ -616,7 +614,7 @@ fn cli_fix_continue_works_in_the_copy_and_keeps_what_is_in_it() {
     assert_eq!(fs::read(&path).unwrap(), original);
     assert_eq!(
         names_in(&dir.path().join("Guide - Adapdf")),
-        ["Guide (accessible).docx"]
+        ["accessible.docx"]
     );
 
     // `--continue` with no copy is a mistake that the message names.
@@ -704,11 +702,54 @@ fn cli_fix_works_on_the_copy_when_the_copy_is_given() {
         stderr(&out)
     );
 
-    // A copy that is somewhere else is fixed in place, and no folder is made.
+    // A file named `accessible.docx` that is not in a folder `<name> - Adapdf` is
+    // not a copy: it is an original, so its copy is made in its own folder.
     let dir = TempDir::new("cli-given-copy-elsewhere");
-    let path = dir.write("Guide (accessible).docx", &original);
+    let path = dir.write("accessible.docx", &original);
     let out = fix(&path, "y\n");
     assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
-    assert_eq!(dir.names(), ["Guide (accessible).docx"]);
-    assert_eq!(log_of(&path).len(), 1);
+    assert_eq!(dir.names(), ["accessible - Adapdf", "accessible.docx"]);
+    assert_eq!(fs::read(&path).unwrap(), original);
+    let copy = dir
+        .path()
+        .join("accessible - Adapdf")
+        .join("accessible.docx");
+    assert_eq!(log_of(&copy).len(), 1);
+}
+
+// The copy would be at a path that Word cannot open (over 259 characters): the
+// command stops before it asks anything, and writes nothing. At the limit it works.
+#[test]
+fn cli_fix_stops_when_word_could_not_open_the_copy() {
+    use adapdf::fix::{COPY_NAME, FOLDER_SUFFIX, WORD_PATH_LIMIT, word_path_length};
+    let original = fixture(RuleId::Doc002, true);
+    for (length, works) in [(WORD_PATH_LIMIT, true), (WORD_PATH_LIMIT + 1, false)] {
+        let dir = TempDir::new("cli-path-limit");
+        // `<dir>\<stem> - Adapdf\accessible.docx` has `length` characters.
+        let fixed = word_path_length(dir.path()) + 1 + FOLDER_SUFFIX.len() + 1 + COPY_NAME.len();
+        let stem = "G".repeat(length - fixed);
+        let path = dir.write(&format!("{stem}.docx"), &original);
+        let out = fix(&path, "y\n");
+        assert_eq!(fs::read(&path).unwrap(), original);
+        if works {
+            assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+            assert_eq!(dir.names().len(), 2, "the folder was made");
+            continue;
+        }
+        assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+        assert!(stdout(&out).is_empty(), "{}", stdout(&out));
+        assert!(
+            stderr(&out).contains(
+                "The path of the Word copy would be 260 characters, and Word cannot open files with paths over 259 characters. Move the guide to a folder with a shorter path (for example a folder nearer the top of OneDrive), then try again."
+            ),
+            "{}",
+            stderr(&out)
+        );
+        assert!(
+            !stderr(&out).contains("Checking"),
+            "nothing was asked: {}",
+            stderr(&out)
+        );
+        assert_eq!(dir.names().len(), 1, "nothing was written");
+    }
 }

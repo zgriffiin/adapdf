@@ -55,21 +55,39 @@ pub fn kill(pid: u32) {
 }
 
 /// A folder for files that a test makes, removed when the value is dropped.
-pub struct TempDir(PathBuf);
+/// `path` and `write` work in `folder`, which is the folder itself, or the
+/// guide folder `Guide - Adapdf` inside it ([`TempDir::guide`]).
+pub struct TempDir {
+    root: PathBuf,
+    folder: PathBuf,
+}
 
 impl TempDir {
     pub fn new(name: &str) -> TempDir {
         let dir = std::env::temp_dir().join(format!("adapdf-word-{name}-{}", std::process::id()));
         fs::create_dir_all(&dir).expect("make the temp folder");
-        TempDir(dir)
+        TempDir {
+            root: dir.clone(),
+            folder: dir,
+        }
+    }
+
+    /// A temp folder that holds the guide folder `Guide - Adapdf`, where the
+    /// accessible copy `accessible.docx` is. `path` and `write` are the guide
+    /// folder's.
+    pub fn guide(name: &str) -> TempDir {
+        let mut dir = TempDir::new(name);
+        dir.folder = dir.root.join("Guide - Adapdf");
+        fs::create_dir_all(&dir.folder).expect("make the guide folder");
+        dir
     }
 
     pub fn path(&self) -> &Path {
-        &self.0
+        &self.folder
     }
 
     pub fn write(&self, name: &str, bytes: &[u8]) -> PathBuf {
-        let path = self.0.join(name);
+        let path = self.folder.join(name);
         fs::write(&path, bytes).expect("write the test file");
         path
     }
@@ -77,7 +95,7 @@ impl TempDir {
 
 impl Drop for TempDir {
     fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
+        let _ = fs::remove_dir_all(&self.root);
     }
 }
 

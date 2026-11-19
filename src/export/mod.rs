@@ -10,10 +10,18 @@
 //! 3. The tool's own hidden Word opens the document **read-only**, updates the
 //!    fields (the table of contents, cross-references), calls
 //!    `ExportAsFixedFormat` with the values of spec 02 and closes the document
-//!    without saving. The .docx is never written.
-//! 4. The PDF is moved into place. Word writes it to a temporary file in the
+//!    without saving. The .docx is never written. Word never gets the real
+//!    path: it cannot open a file whose full path is longer than 259
+//!    characters ([`crate::fix::WORD_PATH_LIMIT`]), and the folder of a guide can
+//!    be that deep. The tool copies the document to a short temporary folder
+//!    (`%TEMP%dapdf-<process>-<n>\guide.docx`), Word opens that copy and
+//!    writes the PDF there, and the folder is removed after a success, an error
+//!    and a timeout. Nothing is written back to the .docx.
+//! 4. The PDF is moved into place. It is first copied to a temporary file in the
 //!    target folder, so a failed export never leaves a half PDF and never
-//!    deletes the old one. An existing `Guide.pdf` is replaced.
+//!    deletes the old one. An existing `Guide.pdf` is replaced. The target
+//!    folder can have a long path: the Rust file calls handle one over 260
+//!    characters.
 //!
 //! # Threads and the timeout
 //!
@@ -159,6 +167,11 @@ pub enum ExportError {
     #[error("The PDF \"{}\" cannot be written ({source}).", file.display())]
     WritePdf { file: PathBuf, source: io::Error },
 
+    #[error(
+        "The tool cannot make a temporary copy of the document for Word ({0}). No PDF was written."
+    )]
+    WorkCopy(io::Error),
+
     #[error("Word finished, but it did not write a PDF. No PDF was written.")]
     NoPdf,
 
@@ -248,10 +261,15 @@ fn run(
 
     ensure_not_locked(pdf)?;
     let temp = TempPdf::create(pdf)?;
+    let folder = WorkFolder::create(docx)?;
 
     let started = Instant::now();
-    let work = run_word(docx, &temp.path, options, start, ender)?;
-    temp.check_is_pdf()?;
+    let work = run_word(&folder.docx, &folder.pdf, options, start, ender)?;
+    check_is_pdf(&folder.pdf)?;
+    fs::copy(&folder.pdf, &temp.path).map_err(|source| ExportError::WritePdf {
+        file: pdf.to_path_buf(),
+        source,
+    })?;
     temp.move_over(pdf)?;
 
     Ok(ExportResult {
@@ -422,20 +440,6 @@ impl TempPdf {
         }
     }
 
-    /// Word wrote a PDF to the file.
-    fn check_is_pdf(&self) -> Result<(), ExportError> {
-        let mut head = [0_u8; 5];
-        let is_pdf = fs::File::open(&self.path)
-            .and_then(|mut file| io::Read::read_exact(&mut file, &mut head))
-            .is_ok()
-            && &head == b"%PDF-";
-        if is_pdf {
-            Ok(())
-        } else {
-            Err(ExportError::NoPdf)
-        }
-    }
-
     /// Replaces `pdf` with the file. If this fails, `pdf` is as it was.
     pub(crate) fn move_over(&self, pdf: &Path) -> Result<(), ExportError> {
         fs::rename(&self.path, pdf).map_err(|source| {
@@ -446,6 +450,73 @@ impl TempPdf {
                 ExportError::WritePdf { file, source }
             }
         })
+    }
+}
+
+/// Word wrote a PDF to the file.
+fn check_is_pdf(path: &Path) -> Result<(), ExportError> {
+    let mut head = [0_u8; 5];
+    let is_pdf = fs::File::open(path)
+        .and_then(|mut file| io::Read::read_exact(&mut file, &mut head))
+        .is_ok()
+        && &head == b"%PDF-";
+    if is_pdf {
+        Ok(())
+    } else {
+        Err(ExportError::NoPdf)
+    }
+}
+
+/// The short temporary folder that Word works in: a copy of the document, and
+/// the PDF that Word writes. The folder is removed when the value is dropped.
+struct WorkFolder {
+    path: PathBuf,
+    /// The copy of the document that Word opens.
+    docx: PathBuf,
+    /// Where Word writes the PDF.
+    pdf: PathBuf,
+}
+
+impl WorkFolder {
+    /// Makes the folder and copies `docx` into it. The copy is read through a
+    /// file handle that shares reads and writes, so a document that Word has open
+    /// for editing can be copied.
+    fn create(docx: &Path) -> Result<WorkFolder, ExportError> {
+        let base = std::env::temp_dir();
+        let path = loop {
+            let n = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+            let path = base.join(format!("adapdf-{}-{n}", std::process::id()));
+            match fs::create_dir(&path) {
+                Ok(()) => break path,
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(source) => return Err(ExportError::WorkCopy(source)),
+            }
+        };
+        // From here the value removes the folder, also after a failed copy.
+        let folder = WorkFolder {
+            docx: path.join("guide.docx"),
+            pdf: path.join("guide.pdf"),
+            path,
+        };
+        let copy = fs::File::open(docx).and_then(|mut from| {
+            let mut to = fs::File::create_new(&folder.docx)?;
+            io::copy(&mut from, &mut to)?;
+            to.sync_all()
+        });
+        copy.map_err(ExportError::WorkCopy)?;
+        Ok(folder)
+    }
+}
+
+impl Drop for WorkFolder {
+    /// Word's process can need a moment to let go of the files after it ended.
+    fn drop(&mut self) {
+        for _ in 0..20 {
+            if !self.path.exists() || fs::remove_dir_all(&self.path).is_ok() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
     }
 }
 

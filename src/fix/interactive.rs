@@ -8,7 +8,7 @@
 //! 2), nothing is written to the output stream.
 //!
 //! The original is never changed. The fixes go into the accessible copy
-//! `Guide - Adapdf\Guide (accessible).docx`. When that copy already exists, the
+//! `Guide - Adapdfccessible.docx`. When that copy already exists, the
 //! person says what to do with it ([`CopyChoice`]): keep working in it, or start
 //! over from the original and replace it. With no choice the command stops.
 //!
@@ -229,7 +229,7 @@ pub fn run(
         Err(e) => return fail(err, format!("{}: {e}", work.display())),
     };
     let title_hints = Document::from_bytes(&bytes)
-        .map(|doc| title_suggestions(&doc, &name_of(&work)))
+        .map(|doc| title_suggestions(&doc, &name_of(&original_path(&work))))
         .unwrap_or_default();
 
     let mut prompter = Prompter { input, ask: err };

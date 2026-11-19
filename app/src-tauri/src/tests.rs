@@ -337,9 +337,12 @@ fn apply_fixes_refuses_what_the_cli_refuses() {
 
     // Word has the accessible copy open: its lock file is next to it. The message
     // says what to do.
-    let copy = dir.write("Guide (accessible).docx", &before);
-    let lock = &adapdf::fix::lock_file_names("Guide (accessible).docx")[0];
-    fs::write(dir.path().join(lock), b"lock").unwrap();
+    let folder = dir.path().join("Guide - Adapdf");
+    fs::create_dir_all(&folder).unwrap();
+    let copy = folder.join("accessible.docx");
+    fs::write(&copy, &before).unwrap();
+    let lock = &adapdf::fix::lock_file_names("accessible.docx")[0];
+    fs::write(folder.join(lock), b"lock").unwrap();
     for error in [
         fix_offers(&copy, &env, &options).unwrap_err(),
         commands::apply_fixes(&copy, &[], false, &env, &options).unwrap_err(),
@@ -374,11 +377,11 @@ fn the_title_offer_carries_the_texts_from_the_document_and_no_input() {
             { "source": "first-heading1", "label": "Use the first Heading 1", "text": "Test guide" }
         ])
     );
-    // The name of the accessible copy gives the same title (no `(accessible)`).
-    let copy = dir.write(
-        "Parks_Guide (accessible).docx",
-        &fixture(RuleId::Doc001, true),
-    );
+    // The copy gives the same title: the name of the guide, not `accessible`.
+    let folder = dir.path().join("Parks_Guide - Adapdf");
+    fs::create_dir_all(&folder).unwrap();
+    let copy = folder.join("accessible.docx");
+    fs::write(&copy, fixture(RuleId::Doc001, true)).unwrap();
     let offers = fix_offers(&copy, &environment(), &FixOptions::default()).unwrap();
     assert_eq!(offers[0].suggestions[0].text, "Parks Guide");
     // Other fixes have no suggestion; alt text has none (IMG-005 would report a
@@ -448,10 +451,7 @@ mod export {
             names.sort();
             names
         };
-        assert_eq!(
-            folder(&a),
-            ["Guide.accessibility.html", "Guide.accessibility.json"]
-        );
+        assert_eq!(folder(&a), ["report.html", "report.json"]);
         assert_eq!(folder(&a), folder(&b));
         let (_, html_path, json_path) = output_paths(&app_path);
         assert_eq!(app.view.report_html, html_path.display().to_string());
@@ -511,11 +511,7 @@ mod export {
         // The exit code, the folder and the files that the run wrote.
         assert_eq!(cli.exit, Exit::Pass, "{}{}", cli.stdout, cli.stderr);
         assert_eq!(app.exit_code, cli.exit.code(), "{}", app.console);
-        let expected = [
-            "Guide.accessibility.html",
-            "Guide.accessibility.json",
-            "Guide.pdf",
-        ];
+        let expected = ["Guide.pdf", "report.html", "report.json"];
         let adapdf_folder = |dir: &TempDir| {
             let mut names: Vec<String> = fs::read_dir(dir.path().join("Guide - Adapdf"))
                 .unwrap()
@@ -577,10 +573,7 @@ mod export {
         );
 
         // The report that was written is the report that came back.
-        let json = a
-            .path()
-            .join("Guide - Adapdf")
-            .join("Guide.accessibility.json");
+        let json = a.path().join("Guide - Adapdf").join("report.json");
         assert_eq!(read_report(&json).unwrap(), app.view);
     }
 }
@@ -590,24 +583,24 @@ mod export {
 #[test]
 fn only_the_html_of_a_report_can_be_opened() {
     let dir = TempDir::new("a06-open");
-    let html = dir.write("Guide.accessibility.html", b"<html></html>");
+    let html = dir.write("report.html", b"<html></html>");
     assert_eq!(commands::check_report_html(&html).unwrap(), html);
     for bad in [
         "Guide.pdf",
         "Guide.docx",
         "Guide.html",
-        ".accessibility.html",
-        "Guide.accessibility.json",
+        "my.accessibility.html",
+        "report.json",
     ] {
         let path = dir.write(bad, b"x");
         assert!(commands::check_report_html(&path).is_err(), "{bad}");
     }
     // Not there, not absolute, a web address, and a network share.
-    assert!(commands::check_report_html(&dir.path().join("Other.accessibility.html")).is_err());
-    assert!(commands::check_report_html(Path::new("Guide.accessibility.html")).is_err());
+    assert!(commands::check_report_html(&dir.path().join("Other").join("report.html")).is_err());
+    assert!(commands::check_report_html(Path::new("report.html")).is_err());
     for address in [
-        "https://example.com/Guide.accessibility.html",
-        r"\\server\share\Guide.accessibility.html",
+        "https://example.com/report.html",
+        r"\\server\share\report.html",
     ] {
         assert!(
             commands::check_report_html(Path::new(address)).is_err(),
@@ -618,13 +611,13 @@ fn only_the_html_of_a_report_can_be_opened() {
 
 #[test]
 fn report_paths_need_the_name_of_a_report() {
-    let (json, html) = report_paths(Path::new("C:/g/Guide.accessibility.json")).unwrap();
-    assert_eq!(json, Path::new("C:/g/Guide.accessibility.json"));
-    assert_eq!(html, Path::new("C:/g/Guide.accessibility.html"));
+    let (json, html) = report_paths(Path::new("C:/g/report.json")).unwrap();
+    assert_eq!(json, Path::new("C:/g/report.json"));
+    assert_eq!(html, Path::new("C:/g/report.html"));
     for bad in [
         "C:/g/Guide.json",
-        "C:/g/.accessibility.json",
-        "C:/g/Guide.accessibility.html",
+        "C:/g/Guide.accessibility.json",
+        "C:/g/report.html",
     ] {
         assert!(report_paths(Path::new(bad)).is_err(), "{bad}");
     }
@@ -656,8 +649,8 @@ fn saved_report() -> Saved {
         metadata: None,
         verapdf: None,
     });
-    let json = dir.write("Guide.accessibility.json", report.to_json().as_bytes());
-    let html = dir.write("Guide.accessibility.html", html::render(&report).as_bytes());
+    let json = dir.write("report.json", report.to_json().as_bytes());
+    let html = dir.write("report.html", html::render(&report).as_bytes());
     let pdf = dir.write("Guide.pdf", b"%PDF-1.7 pretend bytes \x00\xff");
     Saved {
         dir,
@@ -777,11 +770,7 @@ fn the_signoff_never_touches_the_pdf_and_leaves_no_temporary_file() {
     );
     assert_eq!(
         saved.dir.names(),
-        [
-            "Guide.accessibility.html",
-            "Guide.accessibility.json",
-            "Guide.pdf"
-        ]
+        ["Guide.pdf", "report.html", "report.json"]
     );
 }
 
@@ -841,20 +830,13 @@ fn a_failed_move_leaves_the_old_report_and_no_temporary_file() {
     fs::set_permissions(&saved.json, read_only).unwrap();
     let error = save_signoff(&saved.json, &five_of_seven("A. Reviewer", "2026-03-06")).unwrap_err();
     fs::set_permissions(&saved.json, writable).unwrap();
-    assert!(
-        error.message.contains("Guide.accessibility.json"),
-        "{error}"
-    );
+    assert!(error.message.contains("report.json"), "{error}");
     assert!(error.message.contains("not saved"), "{error}");
     assert_eq!(fs::read(&saved.json).unwrap(), json_before);
     assert_eq!(fs::read(&saved.html).unwrap(), html_before);
     assert_eq!(
         saved.dir.names(),
-        [
-            "Guide.accessibility.html",
-            "Guide.accessibility.json",
-            "Guide.pdf"
-        ]
+        ["Guide.pdf", "report.html", "report.json"]
     );
 }
 
@@ -870,8 +852,8 @@ fn a_half_saved_signoff_says_what_was_saved() {
     let message = &error.message;
     assert!(
         message.contains("sign-off is saved in")
-            && message.contains("Guide.accessibility.json")
-            && message.contains("Guide.accessibility.html")
+            && message.contains("report.json")
+            && message.contains("report.html")
             && message.contains("does not show the sign-off yet")
             && message.contains("save the sign-off again"),
         "{error}"
@@ -883,11 +865,7 @@ fn a_half_saved_signoff_says_what_was_saved() {
     assert!(saved.html.is_dir(), "the page was not replaced");
     assert_eq!(
         saved.dir.names(),
-        [
-            "Guide.accessibility.html",
-            "Guide.accessibility.json",
-            "Guide.pdf"
-        ]
+        ["Guide.pdf", "report.html", "report.json"]
     );
     // The person closes what held the page and saves again: both files agree.
     fs::remove_dir(&saved.html).unwrap();
@@ -901,24 +879,20 @@ fn a_half_saved_signoff_says_what_was_saved() {
 #[test]
 fn a_file_that_is_not_a_report_of_this_tool_is_refused() {
     let saved = saved_report();
-    let not_ours = saved
-        .dir
-        .write("Other.accessibility.json", b"{\"hello\": 1}");
+    // In a folder of its own, so that the HTML of `saved` is not there.
+    let other = TempDir::new("a08-not-ours");
+    let not_ours = other.write("report.json", b"{\"hello\": 1}");
     let error = save_signoff(&not_ours, &five_of_seven("A. Reviewer", "2026-03-06")).unwrap_err();
     assert!(
         error.message.contains("not a report that this tool wrote"),
         "{error}"
     );
-    let wrong_name = saved
-        .dir
-        .write("Guide.json", saved.report.to_json().as_bytes());
+    let wrong_name = other.write("Guide.json", saved.report.to_json().as_bytes());
     assert!(save_signoff(&wrong_name, &five_of_seven("A. Reviewer", "2026-03-06")).is_err());
     // A later layout of the report is not changed by an older tool.
     let mut json: Value = serde_json::from_str(&saved.report.to_json()).unwrap();
     json["schema_version"] = Value::from(4);
-    let later = saved
-        .dir
-        .write("Later.accessibility.json", json.to_string().as_bytes());
+    let later = other.write("report.json", json.to_string().as_bytes());
     let before = fs::read(&later).unwrap();
     let error = save_signoff(&later, &five_of_seven("A. Reviewer", "2026-03-06")).unwrap_err();
     assert!(
@@ -926,7 +900,7 @@ fn a_file_that_is_not_a_report_of_this_tool_is_refused() {
         "{error}"
     );
     assert_eq!(fs::read(&later).unwrap(), before);
-    assert!(!saved.dir.path().join("Later.accessibility.html").exists());
+    assert!(!other.path().join("report.html").exists());
 }
 
 /// A report that version 0.1.0 wrote (layout 1, `test-data/report-v0.1.0-lst002-fail.json`,
@@ -935,8 +909,9 @@ fn a_file_that_is_not_a_report_of_this_tool_is_refused() {
 #[test]
 fn a_report_of_version_0_1_0_is_refused_with_a_plain_message() {
     let saved = saved_report();
+    let other = TempDir::new("a08-old");
     let old = include_bytes!("../test-data/report-v0.1.0-lst002-fail.json");
-    let path = saved.dir.write("Old.accessibility.json", old);
+    let path = other.write("report.json", old);
     let expected = "This report was made by an older version of Adapdf (layout 1). Export the document again to make a new report.";
     let error = read_report(&path).unwrap_err();
     assert!(error.message.contains(expected), "{error}");
@@ -944,7 +919,8 @@ fn a_report_of_version_0_1_0_is_refused_with_a_plain_message() {
     let error = save_signoff(&path, &five_of_seven("A. Reviewer", "2026-03-06")).unwrap_err();
     assert!(error.message.contains(expected), "{error}");
     assert_eq!(fs::read(&path).unwrap(), old);
-    assert!(!saved.dir.path().join("Old.accessibility.html").exists());
+    assert!(!other.path().join("report.html").exists());
+    drop(saved);
 }
 
 /// A report that came from a real run has a checklist of 7 items, and the
@@ -972,7 +948,7 @@ fn working_info_names_the_original_the_copy_and_the_folder() {
     let env = environment();
     let original = dir.write("Guide.docx", &fixture(RuleId::Doc002, true));
     let folder = dir.path().join("Guide - Adapdf");
-    let copy = folder.join("Guide (accessible).docx");
+    let copy = folder.join("accessible.docx");
 
     let info = commands::working_info(&original, &env);
     assert_eq!(info.chosen, original.display().to_string());
@@ -994,16 +970,16 @@ fn working_info_names_the_original_the_copy_and_the_folder() {
     assert_eq!(info.copy, copy.display().to_string());
     assert_eq!(info.chosen_folder, folder.display().to_string());
 
-    // A copy that is somewhere else: its original is named next to it, the files
-    // of the guide are next to it, and nothing is made.
-    let loose = dir.write("Other (accessible).docx", b"x");
+    // A file named `accessible.docx` that is not in a folder `<name> - Adapdf` is
+    // an original: its copy and its folder are named after it.
+    let loose = dir.write("accessible.docx", b"x");
     let info = commands::working_info(&loose, &env);
-    assert!(info.is_copy && info.copy_exists);
+    assert!(!info.is_copy && !info.copy_exists);
+    assert_eq!(info.original, loose.display().to_string());
     assert_eq!(
-        info.original,
-        dir.path().join("Other.docx").display().to_string()
+        info.folder,
+        dir.path().join("accessible - Adapdf").display().to_string()
     );
-    assert_eq!(info.folder, dir.path().display().to_string());
 }
 
 #[test]
@@ -1018,7 +994,7 @@ fn create_copy_makes_the_copy_with_no_fix_and_does_not_replace_one_unasked() {
         info.chosen,
         dir.path()
             .join("Guide - Adapdf")
-            .join("Guide (accessible).docx")
+            .join("accessible.docx")
             .display()
             .to_string()
     );
@@ -1087,32 +1063,106 @@ fn apply_fixes_refuses_an_existing_copy_unless_the_person_started_over() {
 #[test]
 fn only_the_accessible_copy_is_opened_in_word() {
     let dir = TempDir::new("w-open");
-    let copy = dir.write("Guide (accessible).docx", b"x");
+    let folder = dir.path().join("Guide - Adapdf");
+    fs::create_dir_all(&folder).unwrap();
+    let copy = folder.join("accessible.docx");
+    fs::write(&copy, b"x").unwrap();
     assert_eq!(commands::check_open_in_word(&copy).unwrap(), copy);
     let original = dir.write("Guide.docx", b"x");
     let error = commands::check_open_in_word(&original).unwrap_err();
     assert!(error.message.contains("not an accessible copy"), "{error}");
+    // A file named `accessible.docx` anywhere but in the folder of a guide is not
+    // the copy.
+    let loose = dir.write("accessible.docx", b"x");
+    assert!(commands::check_open_in_word(&loose).is_err());
     for bad in [
-        "Guide (accessible).doc",
-        "Guide (accessible).pdf",
-        "Guide (accessible).docx.exe",
-        "Guide.accessibility.html",
+        "accessible.doc",
+        "accessible.pdf",
+        "accessible.docx.exe",
+        "Guide (accessible).docx",
+        "report.html",
     ] {
-        let path = dir.write(bad, b"x");
+        let path = folder.join(bad);
+        fs::write(&path, b"x").unwrap();
         assert!(commands::check_open_in_word(&path).is_err(), "{bad}");
     }
     // Not there, not absolute, a web address, and a network share.
-    assert!(commands::check_open_in_word(&dir.path().join("Other (accessible).docx")).is_err());
-    assert!(commands::check_open_in_word(Path::new("Guide (accessible).docx")).is_err());
+    let missing = dir.path().join("Other - Adapdf").join("accessible.docx");
+    assert!(commands::check_open_in_word(&missing).is_err());
+    assert!(commands::check_open_in_word(Path::new("Guide - Adapdf/accessible.docx")).is_err());
     for address in [
-        "https://example.com/Guide (accessible).docx",
-        r"\\server\share\Guide (accessible).docx",
+        "https://example.com/Guide - Adapdf/accessible.docx",
+        r"\\server\share\Guide - Adapdf\accessible.docx",
     ] {
         assert!(
             commands::check_open_in_word(Path::new(address)).is_err(),
             "{address}"
         );
     }
+}
+
+// --------------------------------------- the path that Word can open
+
+const TOO_LONG: &str = "The path of the Word copy would be 260 characters, and Word cannot open files with paths over 259 characters. Move the guide to a folder with a shorter path (for example a folder nearer the top of OneDrive), then try again.";
+
+/// An original whose accessible copy has a full path of exactly `length` characters.
+fn original_with_copy_path_of(dir: &TempDir, length: usize, bytes: &[u8]) -> PathBuf {
+    use adapdf::fix::{COPY_NAME, FOLDER_SUFFIX, word_path_length};
+    let fixed = word_path_length(dir.path()) + 1 + FOLDER_SUFFIX.len() + 1 + COPY_NAME.len();
+    let original = dir.write(&format!("{}.docx", "G".repeat(length - fixed)), bytes);
+    assert_eq!(
+        word_path_length(&adapdf::fix::accessible_copy_path(&original)),
+        length
+    );
+    original
+}
+
+/// The same checks as the command line: over the limit, the app stops with the
+/// message and writes nothing; up to the limit it works. "Open in Word" is checked
+/// too.
+#[test]
+fn a_copy_path_over_the_word_limit_stops_the_app_and_writes_nothing() {
+    use adapdf::fix::WORD_PATH_LIMIT;
+    let env = environment();
+    let options = FixOptions::default();
+    let bytes = fixture(RuleId::Doc002, true);
+    let choices = [Choice {
+        rule_id: RuleId::Doc002,
+        position: 0,
+        input: Answer::Confirm,
+    }];
+
+    let dir = TempDir::new("w-limit-over");
+    let original = original_with_copy_path_of(&dir, WORD_PATH_LIMIT + 1, &bytes);
+    for error in [
+        fix_offers(&original, &env, &options).unwrap_err(),
+        commands::apply_fixes(&original, &choices, false, &env, &options).unwrap_err(),
+        commands::apply_fixes(&original, &choices, true, &env, &options).unwrap_err(),
+        commands::create_copy(&original, false, &env).unwrap_err(),
+        commands::create_copy(&original, true, &env).unwrap_err(),
+    ] {
+        assert!(error.message.contains(TOO_LONG), "{error}");
+    }
+    assert_eq!(dir.names().len(), 1, "no folder and no file");
+    assert_eq!(fs::read(&original).unwrap(), bytes);
+
+    // A copy that is there but at a path over the limit is not opened in Word,
+    // and not written.
+    let copy = adapdf::fix::accessible_copy_path(&original);
+    fs::create_dir_all(copy.parent().unwrap()).unwrap();
+    fs::write(&copy, &bytes).unwrap();
+    let error = commands::check_open_in_word(&copy).unwrap_err();
+    assert_eq!(error.message, TOO_LONG);
+    let error = commands::apply_fixes(&copy, &choices, false, &env, &options).unwrap_err();
+    assert_eq!(error.message, TOO_LONG);
+    assert_eq!(fs::read(&copy).unwrap(), bytes);
+
+    // At the limit everything works.
+    let dir = TempDir::new("w-limit-at");
+    let original = original_with_copy_path_of(&dir, WORD_PATH_LIMIT, &bytes);
+    let result = commands::apply_fixes(&original, &choices, false, &env, &options).unwrap();
+    let copy = PathBuf::from(result.copy.expect("the copy was written"));
+    assert_eq!(commands::check_open_in_word(&copy).unwrap(), copy);
 }
 
 #[test]
@@ -1124,12 +1174,17 @@ fn only_the_folder_of_a_docx_is_opened() {
         dir.path().to_path_buf()
     );
     // The folder of a report is opened too (the result screen has no .docx).
-    let report = dir.write("Guide.accessibility.json", b"{}");
+    let report = dir.write("report.json", b"{}");
     assert_eq!(
         commands::check_open_folder(&report).unwrap(),
         dir.path().to_path_buf()
     );
-    for bad in ["Guide.pdf", "Guide.exe", ".docx", ".accessibility.json"] {
+    for bad in [
+        "Guide.pdf",
+        "Guide.exe",
+        ".docx",
+        "Guide.accessibility.json",
+    ] {
         let path = dir.write(bad, b"x");
         assert!(commands::check_open_folder(&path).is_err(), "{bad}");
     }

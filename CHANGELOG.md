@@ -15,10 +15,21 @@ reader. See [the release notes](docs/release-notes/v0.2.0.md) and the
 ### Changed
 
 - **The original is never changed.** `adapdf fix` and the app write the fixes into
-  `<name> (accessible).docx` in a folder `<name> - Adapdf` next to the original, through a
+  `accessible.docx` in a folder `<name> - Adapdf` next to the original, through a
   temporary file that is moved into place. They work on that copy from then on. There
   are no backup files any more: the original is the backup. The PDF and the reports go
-  into the same folder, and they are named after the original (`Guide.pdf`).
+  into the same folder: the PDF is named after the original (`Guide.pdf`), and the
+  reports are `report.html` and `report.json`.
+- **Short file names, and a check for a path that Word cannot open.** A real guide in a
+  deep folder failed at the export, because Word cannot open a file whose full path is
+  longer than 259 characters (measured), and the first names of the copy repeated the
+  long name of the guide in the folder and in the file. The copy is now the short
+  `accessible.docx` (a file with that name in a folder `<name> - Adapdf` is the working
+  copy). `adapdf fix` and the app stop, and write nothing, when the path of the copy
+  would be over the limit, and say to move the guide to a folder with a shorter path.
+  **Open in Word** does the same. The export gives Word a copy of the guide in a short
+  temporary folder, never the real path, so the PDF and the reports can be in a folder
+  with a long path.
 - When the copy of a guide exists, the app asks **Continue with the accessible copy**
   or **Start over from the original** (this replaces the copy, with a confirm). The
   command line stops unless `--continue` or `--start-over` is given.

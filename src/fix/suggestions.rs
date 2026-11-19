@@ -12,8 +12,6 @@ use serde::Serialize;
 
 use crate::model::Document;
 
-use super::safety::original_stem;
-
 /// Where a suggestion comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -43,17 +41,15 @@ pub struct TitleSuggestion {
     pub text: String,
 }
 
-/// The title that the file name gives: the name without `.docx` and without
-/// ` (accessible)`, with each underscore and each run of spaces made into one
-/// space. A date at the start (`2026.11.18 - Guide`) stays as it is: no word is
+/// The title that the file name gives: the name without `.docx`, with each
+/// underscore and each run of spaces made into one space. The caller gives the
+/// name of the guide (the original), also when the file is the working copy. A date at the start (`2026.11.18 - Guide`) stays as it is: no word is
 /// added, taken out or moved.
 pub fn file_name_title(file_name: &str) -> String {
-    let path = Path::new(file_name);
-    let stem = original_stem(path).or_else(|| {
-        path.file_stem()
-            .map(|stem| stem.to_string_lossy().into_owned())
-    });
-    stem.unwrap_or_default()
+    Path::new(file_name)
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_default()
         .replace('_', " ")
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -121,7 +117,6 @@ mod tests {
     fn the_file_name_is_cleaned_and_nothing_else_changes() {
         for (name, title) in [
             ("Guide.docx", "Guide"),
-            ("Guide (accessible).docx", "Guide"),
             ("Parks_Training_Guide.docx", "Parks Training Guide"),
             (
                 "Parks   Training__Guide  v2.docx",
@@ -130,10 +125,6 @@ mod tests {
             // A date at the start stays as it is.
             (
                 "2026.11.18 - Parks_Training_Guide.docx",
-                "2026.11.18 - Parks Training Guide",
-            ),
-            (
-                "2026.11.18 - Parks_Training_Guide (accessible).docx",
                 "2026.11.18 - Parks Training Guide",
             ),
             // The case of the letters and the order of the words are not touched.

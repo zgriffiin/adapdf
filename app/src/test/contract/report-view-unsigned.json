@@ -105,7 +105,7 @@
       "reason": "Not run. No PDF was made, because the document has errors that must be fixed first (see the pre-check findings)."
     }
   },
-  "report_json": "C:\\Docs\\Guide.accessibility.json",
-  "report_html": "C:\\Docs\\Guide.accessibility.html",
+  "report_json": "C:\\Docs\\report.json",
+  "report_html": "C:\\Docs\\report.html",
   "pdf": "C:\\Docs\\Guide.pdf"
 }

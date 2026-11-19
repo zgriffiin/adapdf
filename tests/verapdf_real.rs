@@ -331,3 +331,20 @@ fn verapdf_accepts_the_scopes_that_stage_4_adds() {
         after.ua1.findings
     );
 }
+
+// The PDF of a guide in a deep folder: the full path is over 260 characters, and
+// the export gives the path to veraPDF as it is.
+#[test]
+fn the_pdf_path_may_be_over_260_characters() {
+    let tool = tool();
+    let dir = TempDir::new("real-long-path");
+    let mut folder = dir.path().to_path_buf();
+    while folder.as_os_str().len() < 300 {
+        folder.push("a".repeat(60));
+    }
+    std::fs::create_dir_all(&folder).unwrap();
+    let path = folder.join("Guide.pdf");
+    std::fs::write(&path, Pdf::complete().build()).unwrap();
+    assert!(path.as_os_str().len() > 300);
+    assert!(verapdf::validate(&tool, &path).unwrap().passed());
+}

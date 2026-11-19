@@ -209,7 +209,7 @@ describe("the fix flow, from what `fix_offers` and `apply_fixes` gave", () => {
     });
     // The findings are those that the command gave after the fix, and the page now
     // works on the file that the command named.
-    expect(heading()).toHaveTextContent("Guide (accessible).docx: No problems found.");
+    expect(heading()).toHaveTextContent("accessible.docx: No problems found.");
   });
 
   it("asks for the title, with no value, offers the texts that Rust found, and sends what the person types", async () => {
@@ -353,7 +353,7 @@ describe("the sign-off, from the reports that `read_report` and `save_signoff` g
 
   async function openEarlier(view: ReportView) {
     const backend = setupBackend({ read_report: () => view });
-    backend.chosen.push("C:\\Docs\\Guide.accessibility.json");
+    backend.chosen.push("C:\\Docs\\report.json");
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: "Open an earlier report" }));
@@ -406,7 +406,7 @@ describe("the files of a guide, from what `working_info` and `create_copy` gave"
     render(<App />);
     await user.click(screen.getByRole("button", { name: "Choose a Word document" }));
     await screen.findByRole("heading", { level: 2, name: "Guide.docx has an accessible copy" });
-    expect(screen.getByText(/Adapdf made Guide \(accessible\)\.docx from this document earlier/)).toBeInTheDocument();
+    expect(screen.getByText(/Adapdf made accessible\.docx from this document earlier/)).toBeInTheDocument();
     expect(await wcagViolations(document.body)).toEqual([]);
   });
 

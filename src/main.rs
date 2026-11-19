@@ -33,7 +33,7 @@ enum Command {
         json: bool,
     },
     /// Fix problems in a .docx file. Asks before each fix. The original is
-    /// never changed: the fixes go into "<name> - Adapdf\<name> (accessible).docx".
+    /// never changed: the fixes go into "<name> - Adapdfccessible.docx".
     Fix {
         /// The .docx file to fix (the original, or its accessible copy).
         file: PathBuf,

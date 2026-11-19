@@ -13,7 +13,7 @@ confirmed: PAC has not run on real guides, and the installer was tried on one ma
 The pipeline is built (stages 1 to 6 of the [pipeline spec](docs/specs/02-pipeline.md)).
 `adapdf check` runs the pre-check rules. `adapdf fix` applies the fixes (stage 2)
 after it asks about each one. It never changes your original: the fixes go into an
-accessible copy, `<name> - Adapdf\<name> (accessible).docx`. `adapdf export` exports the PDF through Word (stage
+accessible copy, `<name> - Adapdf\accessible.docx`. `adapdf export` exports the PDF through Word (stage
 3), adds the missing PDF metadata and the scope of table header cells (stage 4), runs veraPDF (stage 5) and writes
 the accessibility report as HTML and JSON (stage 6). The desktop app (Tauri and
 IBM Carbon, in `app/`) is built: see "The app". A per-user Windows installer is built (see "Build the installer"; the
@@ -76,7 +76,7 @@ vendor/           veraPDF and Java runtime for packaging (git ignores this folde
 ```
 cargo run -- check Guide.docx          # text report
 cargo run -- check Guide.docx --json   # the same results as JSON
-cargo run -- fix Guide.docx            # asks before each fix; the fixes go into "Guide - Adapdf\Guide (accessible).docx"
+cargo run -- fix Guide.docx            # asks before each fix; the fixes go into "Guide - Adapdf\accessible.docx"
 cargo run -- fix Guide.docx --continue    # the copy exists: keep working in it
 cargo run -- fix Guide.docx --start-over  # the copy exists: replace it with a new copy of the original
 cargo run -- export Guide.docx         # PDF and report, needs Word and vendor/
@@ -86,12 +86,18 @@ Exit codes: 0 = no errors (warnings are allowed), 1 = errors found,
 2 = the tool failed (for example, the file cannot be read).
 
 Everything that Adapdf makes goes into one folder next to your guide, `Guide - Adapdf`:
-the accessible copy `Guide (accessible).docx`, `Guide.pdf`,
-`Guide.accessibility.html` and `Guide.accessibility.json`. Your original `Guide.docx`
-is never changed, and nothing else is written next to it. There are no backup files:
-the original is the backup. A file whose name ends with ` (accessible).docx` is
-treated as a working copy: in its folder `<name> - Adapdf` the outputs stay there; a
-copy that is anywhere else gets them next to it.
+the accessible copy `accessible.docx`, `Guide.pdf`, `report.html` and `report.json`.
+Your original `Guide.docx` is never changed, and nothing else is written next to it.
+There are no backup files: the original is the backup. A file named `accessible.docx`
+inside a folder whose name ends with ` - Adapdf` is the working copy: its guide is the
+name of the folder, and the outputs stay in that folder.
+
+Word cannot open a file whose full path is longer than 259 characters. The copy has a
+short name for this reason. If the path of the copy would still be too long, `fix` and
+the app's **Open in Word** stop and say so, and write nothing: move the guide to a
+folder with a shorter path (for example a folder nearer the top of OneDrive), then try
+again. `export` is not limited: Word opens a copy of the guide in a short temporary
+folder, so the PDF and the reports can be in a folder with a long path.
 
 `export` starts its own hidden copy of Word and never uses a Word window that you have
 open. It exports the file that you give it: the original as it is, or the copy. For
@@ -118,7 +124,7 @@ open. It exports the file that you give it: the original as it is, or the copy. 
 `fix` asks its questions on stderr and reads the answers from stdin. It does not
 write while Word has the accessible copy open (the `~$` lock file, or a file that
 cannot be opened for writing). The original is only read, and the copy is written
-through a temporary file and moved into place. When `Guide (accessible).docx` already
+through a temporary file and moved into place. When `Guide - Adapdf\accessible.docx` already
 exists, `fix Guide.docx` stops (exit 2) and says why, unless you give `--continue`
 (work in the copy: its fixes stay and the new ones go in) or `--start-over`
 (replace the copy with a new copy of the original; this loses every change that was

@@ -244,7 +244,7 @@ fn exports(samples: &mut Samples) {
     samples.add("command-error-check", &error);
 
     // A Pass and a Fail with a PDF.
-    let json = Path::new(r"C:\Docs\Guide - Adapdf\Guide.accessibility.json");
+    let json = Path::new(r"C:\Docs\Guide - Adapdf\report.json");
     let validation = |text: &str| Validation {
         ua1: parse(text, Profile::Ua1).unwrap(),
         wcag: WcagOutcome::NotAvailable,
@@ -310,8 +310,8 @@ fn exports(samples: &mut Samples) {
             console: "Guide.docx: result\n".to_string(),
             files: vec![
                 r"C:\Docs\Guide - Adapdf\Guide.pdf".to_string(),
-                r"C:\Docs\Guide - Adapdf\Guide.accessibility.html".to_string(),
-                r"C:\Docs\Guide - Adapdf\Guide.accessibility.json".to_string(),
+                r"C:\Docs\Guide - Adapdf\report.html".to_string(),
+                r"C:\Docs\Guide - Adapdf\report.json".to_string(),
             ],
         };
         samples.add(name, &result);
@@ -402,7 +402,7 @@ fn the_samples_have_every_kind_of_value() {
         applied["working_file"]
             .as_str()
             .unwrap()
-            .ends_with("(accessible).docx")
+            .ends_with("accessible.docx")
     );
     assert!(
         applied["original"]

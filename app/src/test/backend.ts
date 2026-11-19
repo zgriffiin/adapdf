@@ -212,7 +212,7 @@ export function offerOf(
 }
 
 export const ORIGINAL = "C:\\Docs\\Guide.docx";
-export const COPY = "C:\\Docs\\Guide - Adapdf\\Guide (accessible).docx";
+export const COPY = "C:\\Docs\\Guide - Adapdf\\accessible.docx";
 export const GUIDE_FOLDER = "C:\\Docs\\Guide - Adapdf";
 
 /** The files of the guide `Guide.docx`, for the path that was chosen. */
@@ -328,8 +328,8 @@ export function reportOf(
 export function viewOf(report: Report = reportOf()): ReportView {
   return {
     report,
-    report_json: `${GUIDE_FOLDER}\\Guide.accessibility.json`,
-    report_html: `${GUIDE_FOLDER}\\Guide.accessibility.html`,
+    report_json: `${GUIDE_FOLDER}\\report.json`,
+    report_html: `${GUIDE_FOLDER}\\report.html`,
     pdf: report.summary.pdf === null ? null : `${GUIDE_FOLDER}\\Guide.pdf`,
   };
 }

@@ -10,7 +10,7 @@ pick one.
   document-level metadata and adds a `/Scope` to table header cells that Word left
   without one (spec 02, stage 4). Never edit text, tag types or the reading order.
 - **Never change the user's original .docx.** Fixes go into
-  `<name> (accessible).docx`, in the folder `<name> - Adapdf` next to the original.
+  `accessible.docx`, in the folder `<name> - Adapdf` next to the original.
   The copy is written atomically, and never while Word has it open. Everything
   else that Adapdf makes (the PDF and the reports) goes into the same folder.
 - **No network calls and no paid services.** Documents stay on the machine.
@@ -23,6 +23,10 @@ pick one.
   ignores. Test fixtures are small documents made for testing.
 - Word COM: start your own hidden instance, and always close it. Never touch
   the user's open Word windows.
+- **Word cannot open a path over 259 characters** (`fix::WORD_PATH_LIMIT`, measured).
+  The copy is always the short `accessible.docx`; a fix or "Open in Word" stops
+  with a plain message when its full path is too long; the export gives Word a
+  copy in a short temporary folder, never the real path.
 
 ## Stack
 

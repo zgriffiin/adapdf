@@ -52,8 +52,8 @@ Adapdf is now in your Start menu, under **Adapdf**. The files are in the folder
    pages)").
 4. Click **Fix problems** to let Adapdf fix what it can. It asks before each
    fix. **Adapdf never changes your original guide.** It saves the fixes in a
-   copy, `Guide (accessible).docx`, and tells you: "Saved your fixes to Guide
-   (accessible).docx. Your original Guide.docx was not changed." From then on
+   copy, `accessible.docx`, in the folder `Guide - Adapdf`, and tells you: "Saved your
+   fixes to accessible.docx. Your original Guide.docx was not changed." From then on
    Adapdf works on the copy. Adapdf never writes alt text or a title for you. For the
    title it shows buttons with texts from your guide (the file name, the Title
    paragraph, the first Heading 1). Nothing is filled in until you click one, and you can
@@ -77,10 +77,10 @@ you made to it in Word, so Adapdf asks you to confirm it.
 Adapdf saves everything in one folder next to your Word guide. For `Guide.docx`
 the folder is `Guide - Adapdf`. In it you get:
 
-- `Guide (accessible).docx`: the copy with the fixes in it. Edit this file in Word.
+- `accessible.docx`: the copy with the fixes in it. Edit this file in Word.
 - `Guide.pdf`: the PDF.
-- `Guide.accessibility.html`: the report. Open it in your browser.
-- `Guide.accessibility.json`: the same report for programs.
+- `report.html`: the report. Open it in your browser.
+- `report.json`: the same report for programs.
 
 Your original `Guide.docx` is never changed, and Adapdf writes nothing else next to
 it. There are no backup files: your original is the backup. Click **Open folder** in
@@ -89,6 +89,16 @@ Adapdf to open the folder.
 Adapdf writes every fix into the copy, as a note that you can read in Word (File,
 Info, Properties, Advanced Properties, Custom: **Adapdf fix log**). The report lists
 the fixes. The note stays when you edit and save the copy in Word.
+
+## If the path is too long
+
+Word cannot open a file whose full path is longer than 259 characters. If the
+folder of your guide is so deep that the path of `accessible.docx` would be longer,
+**Fix problems** and **Open in Word** stop and say: "The path of the Word copy would
+be N characters, and Word cannot open files with paths over 259 characters. Move the
+guide to a folder with a shorter path (for example a folder nearer the top of
+OneDrive), then try again." Nothing is written. Move the guide, then try again.
+**Export PDF** does not have this limit.
 
 ## If Word has the file open
 
@@ -109,7 +119,7 @@ it and write down the result.
 
 1. Open the PDF in PAC, and run the check. Save the PAC report file next to the
    PDF.
-2. Open the Adapdf report (`Guide.accessibility.html`) in your browser.
+2. Open the Adapdf report (`report.html`) in your browser.
 3. Look at the PDF for each item of the checklist.
 4. Record the PAC result and the sign-off in the Adapdf app. In the app, on the
    result screen (or after **Open an earlier report**), find **Checklist and

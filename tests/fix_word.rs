@@ -248,7 +248,7 @@ fn fix_never_writes_while_word_has_the_copy_open() {
     let other = dir.write("Other.docx", &bytes);
     let folder = dir.path().join("Guide - Adapdf");
     fs::create_dir_all(&folder).unwrap();
-    let copy = folder.join("Guide (accessible).docx");
+    let copy = folder.join("accessible.docx");
     fs::write(&copy, &bytes).unwrap();
     let (copy_in_thread, guide_in_thread, other_in_thread) =
         (copy.clone(), guide.clone(), other.clone());
@@ -296,7 +296,7 @@ fn fix_never_writes_while_word_has_the_copy_open() {
 
     // The owner file that Word writes for the copy: the name is cut at the start
     // for a long name (S2-02).
-    let lock = lock_file_names("Guide (accessible).docx").remove(0);
+    let lock = lock_file_names("accessible.docx").remove(0);
     // Open for reading and writing: the owner file is there, and the fix stops.
     assert!(
         matches!(open_for_editing.library, Err(FixError::LockFile { .. })),
@@ -317,10 +317,7 @@ fn fix_never_writes_while_word_has_the_copy_open() {
         "{:?}",
         blind_to_lock.library.as_ref().err()
     );
-    assert_eq!(
-        blind_to_lock.names,
-        ["Guide (accessible).docx", lock.as_str()]
-    );
+    assert_eq!(blind_to_lock.names, ["accessible.docx", lock.as_str()]);
     for (what, attempt) in [
         ("open for editing", &open_for_editing),
         ("open read-only", &open_read_only),
@@ -329,7 +326,7 @@ fn fix_never_writes_while_word_has_the_copy_open() {
         assert!(attempt.stdout_empty, "{what}");
         assert!(attempt.bytes_unchanged, "{what}: the bytes changed");
         assert!(
-            attempt.stderr.contains("Guide (accessible).docx"),
+            attempt.stderr.contains("accessible.docx"),
             "{what}: {}",
             attempt.stderr
         );
@@ -342,11 +339,8 @@ fn fix_never_writes_while_word_has_the_copy_open() {
         );
     }
     // No temporary file in either case.
-    assert_eq!(
-        open_for_editing.names,
-        ["Guide (accessible).docx", lock.as_str()]
-    );
-    assert_eq!(open_read_only.names, ["Guide (accessible).docx"]);
+    assert_eq!(open_for_editing.names, ["accessible.docx", lock.as_str()]);
+    assert_eq!(open_read_only.names, ["accessible.docx"]);
     assert!(
         blind_to_lock.bytes_unchanged,
         "the bytes changed (owner file hidden)"
@@ -769,7 +763,7 @@ fn fix_result_opens_in_word() {
     for (number, case) in cases().into_iter().enumerate() {
         assert!(!case.requests.is_empty(), "{}: no fix to apply", case.name);
         // The original, which stays as it was, and the accessible copy that the fix
-        // makes (`fixed-N - Adapdf/fixed-N (accessible).docx`).
+        // makes (`fixed-N - Adapdf/accessible.docx`).
         let original = dir.write(&format!("original-{number}.docx"), &case.original);
         let source = dir.write(&format!("fixed-{number}.docx"), &case.original);
         let outcome = fix_file(&source, &case.requests)

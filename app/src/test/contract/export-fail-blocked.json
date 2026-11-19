@@ -90,13 +90,13 @@
         "reason": "Not run. No PDF was made, because the document has errors that must be fixed first (see the pre-check findings)."
       }
     },
-    "report_json": "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.json",
-    "report_html": "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.html",
+    "report_json": "C:\\Docs\\Guide - Adapdf\\report.json",
+    "report_html": "C:\\Docs\\Guide - Adapdf\\report.html",
     "pdf": null
   },
-  "console": "Guide.docx: Fail (1 error, 0 warnings).\nThe report has 1 error found by the pre-check of the Word document.\n- [DOC-001] The document has no title in its properties. PDF viewers show this title in the window bar, and screen readers read it out.\nWrote C:\\Docs\\Guide - Adapdf\\Guide.accessibility.html\nWrote C:\\Docs\\Guide - Adapdf\\Guide.accessibility.json\n",
+  "console": "Guide.docx: Fail (1 error, 0 warnings).\nThe report has 1 error found by the pre-check of the Word document.\n- [DOC-001] The document has no title in its properties. PDF viewers show this title in the window bar, and screen readers read it out.\nWrote C:\\Docs\\Guide - Adapdf\\report.html\nWrote C:\\Docs\\Guide - Adapdf\\report.json\n",
   "files": [
-    "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.html",
-    "C:\\Docs\\Guide - Adapdf\\Guide.accessibility.json"
+    "C:\\Docs\\Guide - Adapdf\\report.html",
+    "C:\\Docs\\Guide - Adapdf\\report.json"
   ]
 }

@@ -113,11 +113,7 @@ fn cli_export_exit_0_on_a_pass() {
     assert_eq!(names(dir.path()), ["Guide - Adapdf", "Guide.docx"]);
     assert_eq!(
         names(&dir.path().join("Guide - Adapdf")),
-        [
-            "Guide.accessibility.html",
-            "Guide.accessibility.json",
-            "Guide.pdf"
-        ]
+        ["report.html", "report.json", "Guide.pdf"]
     );
     assert_eq!(
         fs::read(&docx).unwrap(),
@@ -451,10 +447,7 @@ fn verapdf_zero_failures_after_the_link_fixes() {
         original,
         "the original is not changed"
     );
-    let copy = dir
-        .path()
-        .join("Guide - Adapdf")
-        .join("Guide (accessible).docx");
+    let copy = dir.path().join("Guide - Adapdf").join("accessible.docx");
     let run = run_real(&copy);
     let failed = failed_rules(&run);
     eprintln!("S5-12: exit {} failed rules {failed:?}", run.exit.code());

@@ -156,7 +156,7 @@ export function App() {
       const lower = first.toLowerCase();
       if (lower.endsWith(".docx")) {
         void openChosen(first);
-      } else if (lower.endsWith(".accessibility.json")) {
+      } else if (/[\\/]report\.json$/.test(lower)) {
         void loadReport(first);
       } else {
         fail(

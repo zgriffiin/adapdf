@@ -7,7 +7,7 @@
 //! The pure part is [`apply`]: bytes of a .docx and a list of chosen fixes in,
 //! bytes of the fixed .docx out. [`fix_file`] adds the safety rules around it:
 //! the original is never written. The fixes go into the accessible copy
-//! `Guide - Adapdf\Guide (accessible).docx` (a new file, or the copy that an earlier
+//! `Guide - Adapdfccessible.docx` (a new file, or the copy that an earlier
 //! run made), after Word is found not to have that copy open. The new file is
 //! written to a temporary file and moved into place. [`offers`] lists what the
 //! tool can fix. [`interactive`] is the `adapdf fix` command.
@@ -54,9 +54,10 @@ pub mod xml;
 
 pub use fixlog::FixLogEntry;
 pub use safety::{
-    COPY_SUFFIX, ExistingCopy, FOLDER_SUFFIX, FileSystem, RealFs, Timestamp, accessible_copy_path,
-    adapdf_folder, find_lock_file, is_accessible_copy, lock_file_names, open_for_fixing,
-    original_path, output_folder, output_stem,
+    COPY_NAME, ExistingCopy, FOLDER_SUFFIX, FileSystem, REPORT_HTML, REPORT_JSON, RealFs,
+    Timestamp, WORD_PATH_LIMIT, accessible_copy_path, adapdf_folder, check_word_path,
+    find_lock_file, is_accessible_copy, lock_file_names, open_for_fixing, original_path,
+    output_folder, output_stem, word_path_length,
 };
 pub use suggestions::{TitleSource, TitleSuggestion, file_name_title, title_suggestions};
 pub use xml::Splice;
@@ -89,6 +90,11 @@ pub enum FixError {
         file: PathBuf,
         source: std::io::Error,
     },
+
+    #[error(
+        "The path of the Word copy would be {length} characters, and Word cannot open files with paths over {limit} characters. Move the guide to a folder with a shorter path (for example a folder nearer the top of OneDrive), then try again."
+    )]
+    PathTooLong { length: usize, limit: usize },
 
     #[error(
         "the accessible copy {} already exists next to {}, so it was not replaced.",
@@ -708,11 +714,13 @@ pub struct FixOutcome {
     pub findings: Vec<Finding>,
 }
 
-/// Checks that a run can write: the accessible copy of `path` is not open in
-/// Word and can be opened for writing, when it exists. Nothing is written.
-/// The original is never opened for writing.
+/// Checks that a run can write: the path of the accessible copy of `path` is
+/// not too long for Word, and the copy is not open in Word and can be opened for
+/// writing, when it exists. Nothing is written. The original is never opened
+/// for writing.
 pub fn preflight(fs: &dyn FileSystem, path: &Path) -> Result<(), FixError> {
     let copy = accessible_copy_path(path);
+    check_word_path(&copy)?;
     if fs.exists(&copy) {
         open_for_fixing(fs, &copy).map(drop)
     } else {
@@ -723,7 +731,7 @@ pub fn preflight(fs: &dyn FileSystem, path: &Path) -> Result<(), FixError> {
 /// Fixes a .docx file on disk. The original is never written.
 ///
 /// `path` is the file the fixes start from: an original, or an accessible copy
-/// (`Guide (accessible).docx`). The steps, in this order: when the copy exists,
+/// (`Guide - Adapdfccessible.docx`). The steps, in this order: when the copy exists,
 /// look for its `~$` lock file and open it for exclusive writing; read the
 /// start file; apply the fixes in memory; write the result to a temporary file
 /// in the folder; move it over the copy. `existing` says what to do when

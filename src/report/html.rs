@@ -24,6 +24,7 @@ use std::fmt::Write;
 
 use super::{ExportInfo, FixesSection, MetadataSection, Report, VeraPdfSection, Verdict};
 use crate::findings::{Finding, Severity};
+use crate::fix::FOLDER_SUFFIX;
 use crate::verapdf::{ProfileResult, VeraFinding, WcagOutcome};
 
 /// The seven sections of spec 02, stage 6, in order. The changes to the PDF after
@@ -343,10 +344,11 @@ fn precheck(out: &mut String, findings: &[Finding]) {
 
 fn fixes(out: &mut String, fixes: &FixesSection, document: &str) {
     if let Some(original) = &fixes.original {
+        let stem = original.strip_suffix(".docx").unwrap_or(original);
         paragraph(
             out,
             &format!(
-                "The original {original} was not changed. Adapdf made its fixes in {document}."
+                "The original {original} was not changed. Adapdf made its fixes in {document} in the folder {stem}{FOLDER_SUFFIX}."
             ),
         );
     }

@@ -129,8 +129,8 @@ describe("what the screen says while Apply is off (D)", () => {
 
 describe("the names of files and folders", () => {
   it("are cut from a Windows path", () => {
-    expect(fileNameOf("C:\\Docs\\Guide - Adapdf\\Guide (accessible).docx")).toBe("Guide (accessible).docx");
-    expect(folderOf("C:\\Docs\\Guide - Adapdf\\Guide (accessible).docx")).toBe("C:\\Docs\\Guide - Adapdf");
+    expect(fileNameOf("C:\\Docs\\Guide - Adapdf\\accessible.docx")).toBe("accessible.docx");
+    expect(folderOf("C:\\Docs\\Guide - Adapdf\\accessible.docx")).toBe("C:\\Docs\\Guide - Adapdf");
     expect(fileNameOf("Guide.docx")).toBe("Guide.docx");
     expect(folderOf("Guide.docx")).toBe("");
   });

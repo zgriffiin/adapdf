@@ -112,7 +112,8 @@ export function ResultScreen({
       <h3 className="section-heading">Fixes applied</h3>
       {report.fixes.original !== null ? (
         <p>
-          The original {report.fixes.original} was not changed. Adapdf made its fixes in {summary.document}.
+          The original {report.fixes.original} was not changed. Adapdf made its fixes in {summary.document} in the folder{" "}
+          {report.fixes.original.replace(/\.docx$/i, "")} - Adapdf.
         </p>
       ) : null}
       {report.fixes.applied.length === 0 ? (

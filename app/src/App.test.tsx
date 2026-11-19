@@ -186,7 +186,7 @@ describe("the findings screen (A-01, A-02, A-04)", () => {
   it("explains that fixes are not available when Word has the file open", async () => {
     await openDocument([lst002.lst001], [], {
       fix_offers: () => {
-        throw { message: "Guide (accessible).docx is open in Word (the lock file is next to it). Close the document in Word first, then try again." };
+        throw { message: "accessible.docx is open in Word (the lock file is next to it). Close the document in Word first, then try again." };
       },
     });
     expect(screen.getByRole("status")).toHaveTextContent("The tool cannot offer fixes now.");
@@ -271,18 +271,18 @@ describe("the fix flow (A-02, A-03, A-04)", () => {
     // the new findings. The page works on the copy from now on.
     const heading2 = await screen.findByRole("heading", {
       level: 2,
-      name: /^Guide \(accessible\)\.docx: Found 0 errors and 1 warning\.$/,
+      name: /^accessible\.docx: Found 0 errors and 1 warning\.$/,
     });
     await waitFor(() => expect(heading2).toHaveFocus());
     const region = screen.getByRole("status");
     expect(region).toHaveTextContent("The fixes were applied.");
     expect(region).toHaveTextContent("1 fix applied.");
     expect(region).toHaveTextContent(
-      "Saved your fixes to Guide (accessible).docx. Your original Guide.docx was not changed.",
+      "Saved your fixes to accessible.docx. Your original Guide.docx was not changed.",
     );
     expect(region).not.toHaveTextContent("Backup");
     expect(screen.getByText(/Working on:/).closest("p")).toHaveTextContent(
-      "Working on: Guide (accessible).docx in C:\\Docs\\Guide - Adapdf (the accessible copy)",
+      "Working on: accessible.docx in C:\\Docs\\Guide - Adapdf (the accessible copy)",
     );
     expect(screen.getByRole("button", { name: "Export PDF" })).toBeEnabled();
     // The next calls are about the copy.
@@ -486,7 +486,7 @@ describe("the export (A-02, A-04)", () => {
       export: () => exportResultOf(view),
       open_report: () => {
         if (fail) {
-          throw { message: "Guide.accessibility.html is not there. Run the export again." };
+          throw { message: "report.html is not there. Run the export again." };
         }
         return null;
       },
@@ -496,7 +496,7 @@ describe("the export (A-02, A-04)", () => {
     await user.click(screen.getByRole("button", { name: "Open the report in your browser" }));
     await waitFor(() => expect(backend.calls.some((c) => c.command === "open_report")).toBe(true));
     expect(backend.calls.find((c) => c.command === "open_report")?.args).toEqual({
-      path: `${GUIDE_FOLDER}\\Guide.accessibility.html`,
+      path: `${GUIDE_FOLDER}\\report.html`,
     });
     fail = true;
     await user.click(screen.getByRole("button", { name: "Open the report in your browser" }));
@@ -561,7 +561,7 @@ describe("the sign-off (A-04, A-08)", () => {
 
     await waitFor(() => expect(backend.calls.some((c) => c.command === "save_signoff")).toBe(true));
     expect(backend.calls.find((c) => c.command === "save_signoff")?.args).toEqual({
-      reportJson: `${GUIDE_FOLDER}\\Guide.accessibility.json`,
+      reportJson: `${GUIDE_FOLDER}\\report.json`,
       signoff: {
         name: "A. Reviewer",
         date: "2026-03-06",
@@ -599,7 +599,7 @@ describe("the sign-off (A-04, A-08)", () => {
   it("shows the message of the tool when the sign-off cannot be saved", async () => {
     const { user } = await openResult(viewOf(), {
       save_signoff: () => {
-        throw { message: "The report Guide.accessibility.json cannot be replaced (access denied). The sign-off was not saved." };
+        throw { message: "The report report.json cannot be replaced (access denied). The sign-off was not saved." };
       },
     });
     await user.type(within(form()).getByRole("textbox", { name: "Your name" }), "A. Reviewer");
@@ -619,13 +619,13 @@ describe("the sign-off (A-04, A-08)", () => {
       }),
     );
     const backend = setupBackend({ read_report: () => saved });
-    backend.chosen.push("C:\\Docs\\Guide.accessibility.json");
+    backend.chosen.push("C:\\Docs\\report.json");
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: "Open an earlier report" }));
     await screen.findByRole("heading", { level: 2, name: /^Result for Guide\.docx:/ });
     expect(backend.calls).toEqual([
-      { command: "read_report", args: { path: "C:\\Docs\\Guide.accessibility.json" } },
+      { command: "read_report", args: { path: "C:\\Docs\\report.json" } },
     ]);
     const boxes = within(form()).getAllByRole("checkbox") as HTMLInputElement[];
     expect(boxes.map((box) => box.checked)).toEqual([true, true, true, true, true, false, false]);
@@ -639,10 +639,10 @@ describe("the sign-off (A-04, A-08)", () => {
   it("shows why an earlier report cannot be opened", async () => {
     const backend = setupBackend({
       read_report: () => {
-        throw { message: "Guide.accessibility.json: this is not a report that this tool wrote." };
+        throw { message: "report.json: this is not a report that this tool wrote." };
       },
     });
-    backend.chosen.push("C:\\Docs\\Guide.accessibility.json");
+    backend.chosen.push("C:\\Docs\\report.json");
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: "Open an earlier report" }));
@@ -701,7 +701,7 @@ describe("every screen says which file it works on, and where it is (D)", () => 
       "Working on: Guide.docx in C:\\Docs (your original)",
     );
     expect(
-      screen.getByText(/Your original is never changed\. Fixes are saved in a copy, Guide \(accessible\)\.docx, in the folder Guide - Adapdf\./),
+      screen.getByText(/Your original is never changed\. Fixes are saved in a copy, accessible\.docx, in the folder Guide - Adapdf\./),
     ).toBeInTheDocument();
     expect(await wcagViolations(document.body)).toEqual([]);
   });
@@ -740,7 +740,7 @@ describe("an accessible copy that exists (A)", () => {
   it("asks which to use, and Continue is the first choice", async () => {
     await openWithCopy();
     expect(heading()).toHaveFocus();
-    expect(screen.getByText(/Adapdf made Guide \(accessible\)\.docx from this document earlier/)).toBeInTheDocument();
+    expect(screen.getByText(/Adapdf made accessible\.docx from this document earlier/)).toBeInTheDocument();
     const buttons = screen.getAllByRole("button").map((b) => b.textContent);
     expect(buttons.slice(0, 2)).toEqual(["Open folder", "Continue with the accessible copy"]);
     expect(screen.getByRole("button", { name: "Start over from the original" })).toBeEnabled();
@@ -752,10 +752,10 @@ describe("an accessible copy that exists (A)", () => {
       check: (args) => checkOf(String(args.path), [txb004]),
     });
     await user.click(screen.getByRole("button", { name: "Continue with the accessible copy" }));
-    await screen.findByRole("heading", { level: 2, name: /^Guide \(accessible\)\.docx: Found/ });
+    await screen.findByRole("heading", { level: 2, name: /^accessible\.docx: Found/ });
     expect(backend.calls.filter((c) => c.command === "check").map((c) => c.args)).toEqual([{ path: COPY }]);
     expect(screen.getByText(/Working on:/).closest("p")).toHaveTextContent(
-      "Guide (accessible).docx in C:\\Docs\\Guide - Adapdf (the accessible copy)",
+      "accessible.docx in C:\\Docs\\Guide - Adapdf (the accessible copy)",
     );
   });
 
@@ -803,7 +803,7 @@ describe("Open in Word (C)", () => {
       open_in_word: () => null,
     });
     await user.click(screen.getByRole("button", { name: "Continue with the accessible copy" }));
-    await screen.findByRole("heading", { level: 2, name: /^Guide \(accessible\)\.docx: Found/ });
+    await screen.findByRole("heading", { level: 2, name: /^accessible\.docx: Found/ });
     await user.click(screen.getByRole("button", { name: "Open in Word" }));
     await waitFor(() => expect(backend.calls.some((c) => c.command === "open_in_word")).toBe(true));
     expect(backend.calls.find((c) => c.command === "open_in_word")?.args).toEqual({ path: COPY });
@@ -838,7 +838,7 @@ describe("Open in Word (C)", () => {
     });
     expect(backend.calls.find((c) => c.command === "open_in_word")?.args).toEqual({ path: COPY });
     // The page now works on the copy, and says what to do in Word.
-    await screen.findByRole("heading", { level: 2, name: /^Guide \(accessible\)\.docx: Found/ });
+    await screen.findByRole("heading", { level: 2, name: /^accessible\.docx: Found/ });
     await waitFor(() =>
       expect(screen.getByRole("status")).toHaveTextContent(
         "Make your changes in Word, save, then choose Check again.",
@@ -861,7 +861,7 @@ describe("Open in Word (C)", () => {
       },
     });
     await user.click(screen.getByRole("button", { name: "Continue with the accessible copy" }));
-    await screen.findByRole("heading", { level: 2, name: /^Guide \(accessible\)\.docx: Found/ });
+    await screen.findByRole("heading", { level: 2, name: /^accessible\.docx: Found/ });
     await user.click(screen.getByRole("button", { name: "Open in Word" }));
     await waitFor(() =>
       expect(screen.getByRole("status")).toHaveTextContent("The document did not open in Word."),
@@ -873,12 +873,12 @@ describe("Open in Word (C)", () => {
       fix_offers: () => {
         throw {
           message:
-            "Guide (accessible).docx is open in Word (the lock file ~$ide (accessible).docx is next to it). Close the document in Word first, then try again.",
+            "accessible.docx is open in Word (the lock file ~$cessible.docx is next to it). Close the document in Word first, then try again.",
         };
       },
     });
     await user.click(screen.getByRole("button", { name: "Continue with the accessible copy" }));
-    await screen.findByRole("heading", { level: 2, name: /^Guide \(accessible\)\.docx: Found/ });
+    await screen.findByRole("heading", { level: 2, name: /^accessible\.docx: Found/ });
     expect(screen.getByRole("status")).toHaveTextContent("Close the document in Word first, then try again.");
     expect(screen.queryByRole("button", { name: "Fix problems" })).not.toBeInTheDocument();
   });
@@ -1013,7 +1013,7 @@ describe("the result screen after the changes of version 0.2", () => {
 
   it("lists the fixes that Adapdf made, and names the original", async () => {
     const report = reportOf();
-    report.summary.document = "Guide (accessible).docx";
+    report.summary.document = "accessible.docx";
     report.fixes = {
       original: "Guide.docx",
       applied: [
@@ -1029,7 +1029,7 @@ describe("the result screen after the changes of version 0.2", () => {
     };
     await resultOf(viewOf(report));
     expect(
-      screen.getByText("The original Guide.docx was not changed. Adapdf made its fixes in Guide (accessible).docx."),
+      screen.getByText("The original Guide.docx was not changed. Adapdf made its fixes in accessible.docx in the folder Guide - Adapdf."),
     ).toBeInTheDocument();
     expect(screen.getByText("Set the title.")).toBeInTheDocument();
     expect(screen.getByText("Text typed or chosen: Parks Training Guide")).toBeInTheDocument();

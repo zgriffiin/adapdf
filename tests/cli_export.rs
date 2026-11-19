@@ -75,17 +75,13 @@ fn cli_export_exit_1_on_errors() {
     // is next to the original.
     assert_eq!(names(&dir), ["Guide - Adapdf", "Guide.docx"]);
     let adapdf_folder = dir.join("Guide - Adapdf");
-    assert_eq!(
-        names(&adapdf_folder),
-        ["Guide.accessibility.html", "Guide.accessibility.json"]
-    );
-    let html = fs::read_to_string(adapdf_folder.join("Guide.accessibility.html")).unwrap();
+    assert_eq!(names(&adapdf_folder), ["report.html", "report.json"]);
+    let html = fs::read_to_string(adapdf_folder.join("report.html")).unwrap();
     assert!(html.contains("<html lang=\"en\">"));
     assert!(html.contains("Result: <strong>Fail</strong>"));
-    let json: Value = serde_json::from_str(
-        &fs::read_to_string(adapdf_folder.join("Guide.accessibility.json")).unwrap(),
-    )
-    .unwrap();
+    let json: Value =
+        serde_json::from_str(&fs::read_to_string(adapdf_folder.join("report.json")).unwrap())
+            .unwrap();
     assert_eq!(json["summary"]["verdict"], "fail");
     assert_eq!(json["schema_version"], 3);
     assert_eq!(json["precheck"][0]["rule_id"], "HDG-002");
@@ -107,10 +103,7 @@ fn cli_export_blocks_every_error_rule_and_doc_005() {
         assert_eq!(output.status.code(), Some(1), "{name}: {}", stderr(&output));
         let adapdf_folder = dir.join("Guide - Adapdf");
         assert!(!adapdf_folder.join("Guide.pdf").exists(), "{name}");
-        assert!(
-            adapdf_folder.join("Guide.accessibility.html").exists(),
-            "{name}"
-        );
+        assert!(adapdf_folder.join("report.html").exists(), "{name}");
         assert!(stdout(&output).contains(fixture.rule.as_str()), "{name}");
     }
 }

@@ -132,7 +132,7 @@ fn input() -> Input {
 /// veraPDF rule and a WCAG warning.
 fn full_report() -> Report {
     let mut input = input();
-    input.document = "Guide (accessible).docx".to_string();
+    input.document = "accessible.docx".to_string();
     input.original = Some("Guide.docx".to_string());
     input.findings = findings();
     input.applied_fixes = vec![
@@ -323,7 +323,7 @@ fn report_lists_every_fix_of_the_log_and_names_its_original() {
     // The statement comes first.
     assert!(
         section.contains(
-            "The original Guide.docx was not changed. Adapdf made its fixes in Guide (accessible).docx."
+            "The original Guide.docx was not changed. Adapdf made its fixes in accessible.docx in the folder Guide - Adapdf."
         ),
         "{section}"
     );
@@ -360,7 +360,7 @@ fn report_lists_every_fix_of_the_log_and_names_its_original() {
     assert!(!none.contains("The original"), "{none}");
     // A copy with an empty log still names its original.
     let mut input = input();
-    input.document = "Guide (accessible).docx".to_string();
+    input.document = "accessible.docx".to_string();
     input.original = Some("Guide.docx".to_string());
     let copy = section_text(&xml(&html::render(&build(input))), 3);
     assert!(
@@ -368,9 +368,7 @@ fn report_lists_every_fix_of_the_log_and_names_its_original() {
         "{copy}"
     );
     assert!(
-        copy.contains(
-            "No fixes were made by Adapdf. The Word document is Guide (accessible).docx."
-        ),
+        copy.contains("No fixes were made by Adapdf. The Word document is accessible.docx."),
         "{copy}"
     );
 }
@@ -870,14 +868,14 @@ fn the_json_has_the_sections_in_order_and_a_schema_version() {
 #[test]
 fn console_summary_names_the_errors_and_the_files() {
     let report = full_report();
-    let text = report.console_summary(&[std::path::Path::new("C:/g/Guide.accessibility.html")]);
+    let text = report.console_summary(&[std::path::Path::new("C:/g/report.html")]);
     assert!(
-        text.starts_with("Guide (accessible).docx: Fail (3 errors"),
+        text.starts_with("accessible.docx: Fail (3 errors"),
         "{text}"
     );
     assert!(text.contains("[DOC-001] Message of DOC-001."));
     assert!(text.contains("[veraPDF 7.3-1]"), "{text}");
-    assert!(text.contains("Wrote C:/g/Guide.accessibility.html"));
+    assert!(text.contains("Wrote C:/g/report.html"));
 }
 
 #[test]
