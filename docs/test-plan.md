@@ -2874,6 +2874,21 @@ the test that it should, and the files were restored.
   deep folder (full path of the copy over 259 characters) and of one in a short folder, with the app
   from the installer. Do not publish the file of `73fa2f2`.
 
+- **Release build of 0.2.0 (2026-11-18, after the path fix):** `Adapdf_0.2.0_x64-setup.exe`,
+  41,901,918 bytes, SHA-256 `dc4bcd8b6f68c63ca1062b0f9ee56aa96ac5cc274c8598f5a77081842d3d4ce4`,
+  built from commit `40d6ab8` (the later commits change
+  only a test and documents). Release suite `cargo test --features windows_word,verapdf --no-fail-fast`: 896
+  tests, 895 passed on the first run; `cli_export_exit_0_on_a_pass` failed only on the order of
+  its expected file list, was fixed and passed on its own. Quick install test on one computer:
+  a silent upgrade over an earlier 0.2.0 build (exit 0, one uninstall entry, the new
+  `adapdf-app.exe`), then one driven run from the installed copy (`ADAPDF_VENDOR=C:/nowhere`, no
+  Java in its environment): check and fix of `LST-002-fail.docx`, Pass export of
+  `DOC-001-pass.docx` into `DOC-001-pass - Adapdf\`, original unchanged, axe 0 violations on 20
+  screens, bundled `java.exe`, no connection to another address in the sampling. Not repeated for
+  this file: a clean install, an uninstall, the upgrade over 0.1.0 (done on the earlier build
+  `f447d4d5...`), and an export from a folder with a long path through the installed copy (the
+  long-path export is tested in the release suite, S3-22). The app stays installed on that
+  computer.
 - **Before release (0.2.0).** Build the installer with `scripts/build-installer.ps1` and record
   its SHA-256 (write it in `SHA256SUMS.txt` on the release). On that exact file, run I-01, I-03,
   I-04, I-05, I-10, I-11 and N-03. Run I-12 (upgrade over the installed 0.1.0: install 0.1.0
