@@ -113,7 +113,7 @@ fn cli_export_exit_0_on_a_pass() {
     assert_eq!(names(dir.path()), ["Guide - Adapdf", "Guide.docx"]);
     assert_eq!(
         names(&dir.path().join("Guide - Adapdf")),
-        ["report.html", "report.json", "Guide.pdf"]
+        ["Guide.pdf", "report.html", "report.json"]
     );
     assert_eq!(
         fs::read(&docx).unwrap(),
